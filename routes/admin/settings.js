@@ -5,7 +5,7 @@ import { getDefaultRestaurantId } from '../../src/services/restaurantService.js'
 import { requireRole } from '../../src/middleware/auth.js';
 
 const router = express.Router();
-router.use(requireRole(['SUPER_ADMIN']));
+router.use(requireRole(['SUPER_ADMIN', 'ADMIN']));
 
 /**
  * GET /api/admin/settings

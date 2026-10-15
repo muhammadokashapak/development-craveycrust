@@ -98,6 +98,8 @@ function showDashboard() {
   if (authGate) authGate.classList.add('hidden');
   if (dashboardApp) dashboardApp.classList.remove('hidden');
   loadBrandDisplay();
+  loadDashboardStats();
+  if (typeof loadOrders === 'function') loadOrders();
 }
 
 function showAuthError(msg) {
@@ -201,7 +203,9 @@ if (authLoginForm) {
         if (data.user) updateSidebarUserProfile(data.user);
         showDashboard();
         checkStatus();
-        fetchLiveLogs(true);
+        if (data.user?.role === 'SUPER_ADMIN') {
+          fetchLiveLogs(true);
+        }
       } else {
         showAuthError(data.error || 'Invalid credentials. Please try again.');
       }
@@ -228,10 +232,19 @@ let currentUserRole = 'ADMIN';
 
 function applyRolePermissions(user) {
   if (!user) return;
+  if (user.username === 'admin' || user.username === 'admin@craveycrust.com') {
+    user.role = 'ADMIN';
+  }
   currentUserRole = user.role || 'ADMIN';
   const isSuper = currentUserRole === 'SUPER_ADMIN';
 
-  // 1. Toggle Super Admin exclusive sidebar items (Prompt, Settings, Customer Chats)
+  if (isSuper) {
+    document.body.classList.add('is-superadmin');
+  } else {
+    document.body.classList.remove('is-superadmin');
+  }
+
+  // 1. Toggle Super Admin exclusive sidebar items (Prompt, Settings)
   const superOnlyNavs = document.querySelectorAll('[data-min-role="SUPER_ADMIN"]');
   superOnlyNavs.forEach(el => {
     if (isSuper) {
@@ -243,19 +256,33 @@ function applyRolePermissions(user) {
     }
   });
 
-  // 2. Toggle WhatsApp terminal vs centered connection view
+  // Customer Chats: strictly visible ONLY for Super Admin, strictly HIDDEN for Admin
+  const navChats = document.getElementById('navChats');
+  if (navChats) {
+    if (isSuper) {
+      navChats.classList.remove('hidden');
+      navChats.style.removeProperty('display');
+      navChats.style.display = 'flex';
+    } else {
+      navChats.classList.add('hidden');
+      navChats.style.setProperty('display', 'none', 'important');
+    }
+  }
+
+  // 2. Toggle WhatsApp terminal vs centered connection view (Super Admin Only)
   const waTerminalRight = document.getElementById('waTerminalRight');
   const waSplitContainer = document.getElementById('waSplitContainer');
   if (waTerminalRight && waSplitContainer) {
     if (isSuper) {
       waTerminalRight.classList.remove('hidden');
-      waTerminalRight.style.display = '';
+      waTerminalRight.style.removeProperty('display');
+      waTerminalRight.style.display = 'block';
       waSplitContainer.style.gridTemplateColumns = '1fr 1fr';
       waSplitContainer.style.maxWidth = '';
       waSplitContainer.style.margin = '';
     } else {
       waTerminalRight.classList.add('hidden');
-      waTerminalRight.style.display = 'none';
+      waTerminalRight.style.setProperty('display', 'none', 'important');
       waSplitContainer.style.gridTemplateColumns = '1fr';
       waSplitContainer.style.maxWidth = '680px';
       waSplitContainer.style.margin = '0 auto';
@@ -277,6 +304,9 @@ window.applyRolePermissions = applyRolePermissions;
 // User Profile display in sidebar
 function updateSidebarUserProfile(user) {
   if (!user) return;
+  if (user.username === 'admin' || user.username === 'admin@craveycrust.com') {
+    user.role = 'ADMIN';
+  }
   const avatar = document.getElementById('sidebarAvatar');
   const uname = document.getElementById('sidebarUsername');
   const urole = document.getElementById('sidebarRole');
@@ -285,10 +315,11 @@ function updateSidebarUserProfile(user) {
   if (uname) uname.textContent = username;
   if (avatar) avatar.textContent = username.charAt(0).toUpperCase();
   if (urole) {
-    if (user.role === 'SUPER_ADMIN') urole.textContent = 'Super Admin';
-    else if (user.role === 'ADMIN') urole.textContent = 'Admin';
-    else if (user.role === 'STAFF') urole.textContent = 'Staff';
-    else urole.textContent = user.role || 'Admin';
+    if (user.username === 'admin' || user.role !== 'SUPER_ADMIN') {
+      urole.textContent = 'Admin';
+    } else {
+      urole.textContent = 'Super Admin';
+    }
   }
 
   applyRolePermissions(user);
@@ -297,6 +328,7 @@ window.updateSidebarUserProfile = updateSidebarUserProfile;
 
 // Unified Dashboard Logout
 window.handleDashboardLogout = function() {
+  document.body.classList.remove('is-superadmin');
   localStorage.removeItem('wa_dash_token');
   showAuthGate();
 };
@@ -322,7 +354,9 @@ async function initAuth() {
         if (data.user) updateSidebarUserProfile(data.user);
         showDashboard();
         checkStatus();
-        fetchLiveLogs(true);
+        if (data.user?.role === 'SUPER_ADMIN') {
+          fetchLiveLogs(true);
+        }
         return;
       }
     }
@@ -763,11 +797,11 @@ async function checkStatus() {
 
       const termPromptPrefix = document.getElementById('terminalPromptPrefix') || document.querySelector('.prompt-long');
       if (termPromptPrefix) {
-        const brand = localStorage.getItem('app_brand_name') || 'Store Admin';
-        const slug = (brand && !/cravey/i.test(brand) && brand !== 'Store Admin')
-          ? brand.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '')
-          : 'bot';
-        termPromptPrefix.textContent = `${slug}@system:`;
+        termPromptPrefix.textContent = 'admin@system:';
+      }
+      const termTitle = document.getElementById('terminalTitleText') || document.querySelector('.term-title-text');
+      if (termTitle) {
+        termTitle.textContent = 'admin@system:~$';
       }
     } 
     else if (current.state === 'pairing_code') {
@@ -1117,7 +1151,7 @@ if (terminalForm && terminalInput) {
     // Render user command
     const userLine = document.createElement('div');
     userLine.className = 'term-line term-user-cmd';
-    userLine.innerHTML = `<span class="term-green">xortlogix@bot:~$</span> <strong>${escapeHtml(cmd)}</strong>`;
+    userLine.innerHTML = `<span class="term-green">admin@system:~$</span> <strong>${escapeHtml(cmd)}</strong>`;
     if (terminalBody) {
       terminalBody.appendChild(userLine);
       terminalBody.scrollTop = terminalBody.scrollHeight;
@@ -1149,9 +1183,9 @@ if (terminalForm && terminalInput) {
   });
 }
 
-// Live Logs Polling
+// Live Logs Polling (SUPER_ADMIN ONLY)
 async function fetchLiveLogs(forceRerender = false) {
-  if (!isAuthenticated || activeTerminalTab !== 'logs' || !terminalBody) return;
+  if (!isAuthenticated || currentUserRole !== 'SUPER_ADMIN' || activeTerminalTab !== 'logs' || !terminalBody) return;
 
   try {
     const res = await fetch('/api/terminal/logs', { cache: 'no-store' });
@@ -1226,13 +1260,16 @@ window.showToast = showToast;
 
 // ─── View Switcher ─────────────────────────────────────────────────────
 function switchView(viewName) {
-  // Role-based view protection: block settings and chats for non-superadmin
+  // Role-based view protection: block customer chats for admin
   if (currentUserRole !== 'SUPER_ADMIN') {
-    if (viewName === 'settings' || viewName === 'chats') {
+    if (viewName === 'chats') {
       viewName = 'dashboard';
     }
   }
 
+  if (viewName === 'chats') {
+    viewName = 'dashboard';
+  }
   currentActiveView = viewName;
   const views = {
     dashboard:  { el: document.getElementById('viewDashboard'),  title: 'Dashboard Overview', sub: 'Real-time restaurant metrics & operations' },
@@ -1371,6 +1408,55 @@ async function loadDashboardStats() {
       if (elDelivery) elDelivery.textContent = stats.delivery_areas_count ?? 0;
       if (elTodayOrders) elTodayOrders.textContent = stats.today_orders_count ?? 0;
       if (elTodayRevenue) elTodayRevenue.textContent = `Rs. ${stats.today_revenue ?? 0}`;
+
+      const elTotalOrdersSub = document.getElementById('metricTotalOrdersSub');
+      if (elTotalOrdersSub && stats.total_orders_count !== undefined) {
+        elTotalOrdersSub.textContent = `All-time orders: ${stats.total_orders_count}`;
+      }
+      const elTotalRevenueSub = document.getElementById('metricTotalRevenueSub');
+      if (elTotalRevenueSub && stats.total_revenue !== undefined) {
+        elTotalRevenueSub.textContent = `All-time revenue: Rs. ${Number(stats.total_revenue).toLocaleString()}`;
+      }
+
+      // Update nav badge count for orders
+      if (stats.total_orders_count !== undefined) {
+        const navBadge = document.getElementById('navOrdersBadge');
+        if (navBadge) {
+          navBadge.textContent = stats.total_orders_count;
+          navBadge.classList.remove('hidden');
+        }
+      }
+
+      // Render recent live orders table on dashboard
+      const dashOrdersBody = document.getElementById('dashboardRecentOrdersBody');
+      const recentOrders = data.data?.recent_orders || [];
+      if (dashOrdersBody) {
+        if (recentOrders.length === 0) {
+          dashOrdersBody.innerHTML = '<tr><td colspan="8" class="table-empty">No orders recorded yet.</td></tr>';
+        } else {
+          dashOrdersBody.innerHTML = '';
+          recentOrders.forEach(ord => {
+            const tr = document.createElement('tr');
+            const timeStr = new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const dateStr = new Date(ord.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+            tr.innerHTML = `
+              <td><strong style="color: var(--accent); font-family: var(--f-mono);">${escapeHtml(ord.orderNumber)}</strong></td>
+              <td><strong>${escapeHtml(ord.customerName)}</strong></td>
+              <td><span class="subtext">${escapeHtml(ord.phone)}</span></td>
+              <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ord.itemsSummary || '')}">
+                <span>${ord.itemCount} items (${escapeHtml(ord.itemsSummary || '')})</span>
+              </td>
+              <td><strong>Rs. ${Number(ord.total).toLocaleString()}</strong></td>
+              <td><span class="badge-order-status ${ord.orderStatus}">${ord.orderStatus}</span></td>
+              <td><span class="subtext">${dateStr} ${timeStr}</span></td>
+              <td style="text-align: right;">
+                <button class="btn btn-secondary btn-xs" onclick="window.openOrderDetailModal('${ord.orderNumber}')">View</button>
+              </td>
+            `;
+            dashOrdersBody.appendChild(tr);
+          });
+        }
+      }
     }
   } catch (err) {
     console.error('Failed to load dashboard stats:', err);
@@ -2228,8 +2314,7 @@ async function loadSettings() {
 }
 
 function updateBrandDisplay(name) {
-  if (!name) return;
-  const cleanName = name;
+  const cleanName = 'Admin';
   localStorage.setItem('app_brand_name', cleanName);
   document.querySelectorAll('#sidebarBrandName, #authBrandName').forEach(el => {
     el.textContent = cleanName;
@@ -2237,7 +2322,7 @@ function updateBrandDisplay(name) {
   document.title = `${cleanName} — Management Dashboard`;
 
   // Dynamically update terminal window title and terminal prompt
-  const slug = cleanName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/^-+|-+$/g, '') || 'bot';
+  const slug = 'admin';
   const termTitle = document.getElementById('terminalTitleText') || document.querySelector('.term-title-text');
   if (termTitle) {
     termTitle.textContent = `${slug}@system:~$`;
@@ -4678,7 +4763,9 @@ function initRealtimeOrdersFeed() {
   const liveBadge = document.getElementById('realtimeLiveBadge');
 
   try {
-    realtimeEventSource = new EventSource('/api/admin/orders/stream');
+    const token = localStorage.getItem('wa_dash_token');
+    const streamUrl = token ? `/api/admin/orders/stream?token=${encodeURIComponent(token)}` : '/api/admin/orders/stream';
+    realtimeEventSource = new EventSource(streamUrl);
 
     realtimeEventSource.onopen = () => {
       if (liveBadge) liveBadge.style.display = 'inline-flex';

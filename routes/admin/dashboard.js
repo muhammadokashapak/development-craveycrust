@@ -18,7 +18,12 @@ router.get('/', async (req, res) => {
         }
 
         const restaurantId = req.user?.restaurantId;
-        const where = restaurantId ? { restaurant_id: restaurantId } : {};
+        let restId = restaurantId;
+        if (!restId || restId === 'default-restaurant') {
+            const { getDefaultRestaurantId } = await import('../../src/services/restaurantService.js');
+            restId = await getDefaultRestaurantId().catch(() => null);
+        }
+        const where = restId && restId !== 'default-restaurant' ? { restaurant_id: restId } : {};
 
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);
@@ -33,7 +38,10 @@ router.get('/', async (req, res) => {
             promotionsCount,
             deliveryAreasCount,
             customersCount,
+            totalOrdersCount,
             todayOrders,
+            allOrdersForRevenue,
+            recentOrdersRaw,
             restaurant,
         ] = await Promise.all([
             prisma.category.count({ where }),
@@ -41,17 +49,28 @@ router.get('/', async (req, res) => {
             prisma.menuItem.count({ where: { ...where, is_available: true, is_active: true } }),
             prisma.menuItem.count({ where: { ...where, OR: [{ is_available: false }, { is_active: false }] } }),
             prisma.menuVariant.count({
-                where: restaurantId ? { menu_item: { restaurant_id: restaurantId } } : {},
+                where: restId ? { menu_item: { restaurant_id: restId } } : {},
             }),
             prisma.deal.count({ where }),
             prisma.promotion.count({ where }),
             prisma.deliveryArea.count({ where }),
             prisma.customer.count({ where }),
+            prisma.order.count({ where }),
             prisma.order.findMany({
                 where: { ...where, created_at: { gte: startOfToday } },
                 select: { total: true, order_status: true },
             }),
-            restaurantId ? prisma.restaurant.findUnique({ where: { id: restaurantId }, select: { name: true, currency: true } }) : null,
+            prisma.order.findMany({
+                where: { ...where, order_status: { not: 'CANCELLED' } },
+                select: { total: true },
+            }),
+            prisma.order.findMany({
+                where,
+                orderBy: { created_at: 'desc' },
+                take: 5,
+                include: { order_items: true },
+            }),
+            restId ? prisma.restaurant.findUnique({ where: { id: restId }, select: { name: true, currency: true } }) : null,
         ]);
 
         let todayRevenue = 0;
@@ -61,10 +80,29 @@ router.get('/', async (req, res) => {
             }
         }
 
+        let totalRevenue = 0;
+        for (const o of allOrdersForRevenue) {
+            totalRevenue += Number(o.total);
+        }
+
+        const recentOrders = recentOrdersRaw.map(o => ({
+            id: o.id,
+            orderNumber: o.order_number,
+            customerName: o.customer_name,
+            phone: o.phone,
+            total: Number(o.total),
+            orderStatus: o.order_status,
+            paymentMethod: o.payment_method,
+            paymentStatus: o.payment_status,
+            itemCount: o.order_items.reduce((sum, i) => sum + i.quantity, 0),
+            itemsSummary: o.order_items.map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot}`).join(', '),
+            createdAt: o.created_at,
+        }));
+
         return res.json({
             success: true,
             data: {
-                restaurant_name: restaurant?.name && !/cravey/i.test(restaurant.name) ? restaurant.name : 'Store Admin',
+                restaurant_name: 'Admin',
                 currency: restaurant?.currency || 'PKR',
                 stats: {
                     categories_count: categoriesCount,
@@ -76,9 +114,12 @@ router.get('/', async (req, res) => {
                     promotions_count: promotionsCount,
                     delivery_areas_count: deliveryAreasCount,
                     customers_count: customersCount,
+                    total_orders_count: totalOrdersCount,
                     today_orders_count: todayOrders.length,
                     today_revenue: Math.round(todayRevenue * 100) / 100,
+                    total_revenue: Math.round(totalRevenue * 100) / 100,
                 },
+                recent_orders: recentOrders,
                 modules: {
                     orders: 'active',
                     deals: 'active',

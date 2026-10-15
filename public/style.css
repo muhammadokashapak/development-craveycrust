@@ -4183,14 +4183,51 @@ input:checked + .slider:before {
   margin-top: 2px;
 }
 
+/* Terminal & Live Logs Role Isolation (Disabled by default, visible ONLY for Super Admin) */
+#waTerminalRight,
+.whatsapp-split-right,
 #viewWhatsapp .whatsapp-split-right {
+  display: none !important;
+}
+
+body.is-superadmin #waTerminalRight,
+body.is-superadmin .whatsapp-split-right,
+body.is-superadmin #viewWhatsapp .whatsapp-split-right {
   flex: 1;
   min-height: 0;
   height: 100%;
   max-height: 100%;
-  display: flex;
+  display: flex !important;
   flex-direction: column;
   overflow: hidden;
+}
+
+#waSplitContainer,
+#viewWhatsapp #waSplitContainer {
+  grid-template-columns: 1fr !important;
+  max-width: 680px !important;
+  margin: 0 auto !important;
+}
+
+body.is-superadmin #waSplitContainer,
+body.is-superadmin #viewWhatsapp #waSplitContainer {
+  grid-template-columns: 1fr 1fr !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+
+/* Customer Chats Role Isolation - STRICTLY HIDDEN FOR ADMIN, VISIBLE ONLY FOR SUPER ADMIN */
+#navChats,
+#viewChats {
+  display: none !important;
+}
+
+body.is-superadmin #navChats {
+  display: flex !important;
+}
+
+body.is-superadmin #viewChats:not(.hidden) {
+  display: flex !important;
 }
 
 /* WhatsApp Terminal Card */

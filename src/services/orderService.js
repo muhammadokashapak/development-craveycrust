@@ -700,12 +700,15 @@ export async function getOrderByNumber({ restaurantId, orderNumber, orderId }) {
     const prisma = getDbClient();
     if (!prisma) return null;
 
-    const restId = restaurantId || await getDefaultRestaurantId();
-    const where = { restaurant_id: restId };
+    let restId = restaurantId;
+    if (!restId || restId === 'default-restaurant') {
+        restId = await getDefaultRestaurantId();
+    }
+    const where = restId && restId !== 'default-restaurant' ? { restaurant_id: restId } : {};
     if (orderNumber) where.order_number = orderNumber;
     if (orderId) where.id = orderId;
 
-    const order = await prisma.order.findFirst({
+    let order = await prisma.order.findFirst({
         where,
         include: {
             customer: true,
@@ -832,7 +835,18 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
     const prisma = getDbClient();
     if (!prisma) throw new Error('Database client not available');
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    let restId = restaurantId;
+    if (!restId || restId === 'default-restaurant') {
+        restId = await getDefaultRestaurantId();
+    } else {
+        const restExists = await prisma.restaurant.findUnique({
+            where: { id: restId },
+            select: { id: true },
+        });
+        if (!restExists) {
+            restId = await getDefaultRestaurantId();
+        }
+    }
     const where = { restaurant_id: restId };
 
     if (status && status !== 'ALL') {
@@ -902,7 +916,18 @@ export async function getAdminOrderMetrics({ restaurantId }) {
     const prisma = getDbClient();
     if (!prisma) throw new Error('Database client not available');
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    let restId = restaurantId;
+    if (!restId || restId === 'default-restaurant') {
+        restId = await getDefaultRestaurantId();
+    } else {
+        const restExists = await prisma.restaurant.findUnique({
+            where: { id: restId },
+            select: { id: true },
+        });
+        if (!restExists) {
+            restId = await getDefaultRestaurantId();
+        }
+    }
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);

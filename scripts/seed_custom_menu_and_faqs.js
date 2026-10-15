@@ -574,8 +574,8 @@ async function seed() {
         {
             category: 'Bot Persona',
             question: 'Bot Language, Tone & Mood Judgement Rules',
-            answer: "Hamesha Roman Urdu mein jawab do (Urdu script bilkul nahi). Khush/normal customer ke sath halka mazaak aur Pothwari slangs (Pukh, Ghaat, Sawadi, Bhapa, Hala, Bahun, Jigri, Chaska, Paisa Wasool, Phadda) use karo. 'Sain' baar baar mat bolo, 'Aap/Bhai/Ji/Tusan' use karo. Naraz customer ke sath mazaak band, no slangs, empathetic professional 'Sir/Aap'. Emojis sirf khush mood mein. 'Oye' ya 'Mama' bilkul mana hai.",
-            keywords: ['tone', 'language', 'pothwari', 'roman urdu', 'slangs', 'pukh', 'sawadi'],
+            answer: "Hamesha Roman Urdu mein jawab do (Urdu script bilkul nahi). Customer ke sath hamesha ba-adab, respectful aur polite Roman Urdu mein baat karo ('Aap / Ji / Sir / Bhai' use karo). Slangs ya ghair zaroori alfaaz BILKUL USE NA KAREIN. Naraz customer ke sath empathetic professional 'Sir/Aap' use karo. Emojis munasib andaaz mein. 'Oye' ya 'Mama' bilkul mana hai.",
+            keywords: ['tone', 'language', 'polite', 'roman urdu', 'rules'],
             alternative_questions: ['Bot ki zuban kya hai?', 'Tone rules kya hain?'],
             sort_order: 2,
         },
@@ -590,7 +590,7 @@ async function seed() {
         {
             category: 'Ordering',
             question: 'Order Confirmation, Order ID & Kitchen Alert (Step 5)',
-            answer: 'Jab customer order confirm kar de: Order ID share karo ("Shukriya! Tusan na order #CC-1024 confirm ho gaya hai. Delivery 30-45 minute mein pahunch jayegi. Sawadi khana milega, Pukh mat rakhna!"). Chat par "New Order" label lagao. System message bhejo: "KITCHEN ALERT: Naya order aya hai. [Order ID] - [Items] - [Address] - [Total]".',
+            answer: 'Jab customer order confirm kar de: Order ID share karo ("Shukriya! Aap ka order #CC-1024 confirm ho gaya hai. Delivery 30-45 minute mein pahunch jayegi. Garma garam aur lazeez khana deliver hoga!"). Chat par "New Order" label lagao. System message bhejo: "KITCHEN ALERT: Naya order aya hai. [Order ID] - [Items] - [Address] - [Total]".',
             keywords: ['order confirmation', 'order id', 'delivery time', 'kitchen alert', '30-45 minute'],
             alternative_questions: ['Order kitni dair mein pohnchta hai?', 'Delivery kitni dair mein hogi?'],
             sort_order: 4,
@@ -662,7 +662,7 @@ async function seed() {
         {
             category: 'General',
             question: 'Bot Quick FAQs & Standard Answers',
-            answer: 'Timing: "Hum rozana 4:00 PM se 2:00 AM tak open hote hain. Jab Pukh lage, yaad kar lena." Delivery charge: "Qabil-e-delivery areas mein delivery bilkul free hai! Pet bharne ka kharcha bas khane ka hi hai." Kahan deliver karte hain: "Hum Ghouri Town se 10KM radius mein deliver karte hain. Aap ka area kaunsa hai? Main check kar deta hun." Menu: Catalog link do. Reviews: Google review link share karo.',
+            answer: 'Timing: "Hum rozana 4:00 PM se 2:00 AM tak open hote hain. Jab bhi zaroorat ho, zaroor rabta karein." Delivery charge: "Qabil-e-delivery areas mein delivery bilkul free hai!" Kahan deliver karte hain: "Hum Ghouri Town se 10KM radius mein deliver karte hain. Aap ka area kaunsa hai? Main check kar deta hun." Menu: Catalog link do. Reviews: Google review link share karo.',
             keywords: ['quick faqs', 'faq answers', 'radius 10km'],
             alternative_questions: ['Quick information', 'General sawal'],
             sort_order: 13,

@@ -223,13 +223,13 @@ app.get('/api/public/brand', async (req, res) => {
                     select: { name: true, phone: true }
                 });
                 if (rest && rest.name) {
-                    const cleanName = /cravey/i.test(rest.name) ? 'Store Admin' : rest.name;
+                    const cleanName = 'Admin';
                     return res.json({ success: true, data: { name: cleanName, phone: rest.phone || '' } });
                 }
             }
         }
     } catch (_) {}
-    return res.json({ success: true, data: { name: 'Store Admin', phone: '' } });
+    return res.json({ success: true, data: { name: 'Admin', phone: '' } });
 });
 
 // ─── n8n Outbound Route ───────────────────────────────────

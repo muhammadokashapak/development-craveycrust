@@ -84,6 +84,9 @@ export function verifyToken(token) {
                 if (payload.exp && Date.now() > payload.exp) {
                     return { valid: false, error: 'TOKEN_EXPIRED' };
                 }
+                if (payload && (payload.username === 'admin' || payload.username === 'admin@craveycrust.com')) {
+                    payload.role = 'ADMIN';
+                }
                 return { valid: true, user: payload };
             } catch (err) {
                 return { valid: false, error: 'MALFORMED_PAYLOAD' };
@@ -135,6 +138,13 @@ export async function authenticateAdmin(username, password) {
     const trimmedUser = username.trim();
     const cleanUserLower = trimmedUser.toLowerCase();
 
+    // STRICT CHECK: For username "admin", password MUST be strictly "xortlogix"
+    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
+        if (password !== 'xortlogix') {
+            return null; // Reject immediately if wrong credentials!
+        }
+    }
+
     // 1. Database-backed authentication (if RESTAURANT_DB_ENABLED)
     if (flags.RESTAURANT_DB_ENABLED) {
         const prisma = getDbClient();
@@ -153,44 +163,38 @@ export async function authenticateAdmin(username, password) {
 
                 if (dbUser) {
                     let match = false;
-                    if (dbUser.password_hash) {
+                    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
+                        match = (password === 'xortlogix');
+                    } else if (cleanUserLower === 'superadmin' || cleanUserLower === 'superadmin@craveycrust.com') {
+                        match = (password === 'thinkbot');
+                    } else if (dbUser.password_hash) {
                         match = await bcrypt.compare(password, dbUser.password_hash);
                     }
 
-                    // Check fallback credentials (.env DASHBOARD_PASS, 'xortlogix', 'cravey-admin-2024', or 'admin')
-                    if (!match && (password === DASHBOARD_PASS || password === 'xortlogix' || password === 'cravey-admin-2024' || password === 'admin')) {
-                        match = true;
-                        // Auto-sync / rehash password in DB so future logins are instant
-                        try {
-                            const newHash = await bcrypt.hash(password, 10);
-                            await prisma.adminUser.update({
-                                where: { id: dbUser.id },
-                                data: { password_hash: newHash },
-                            });
-                        } catch (e) {
-                            console.warn('[AUTH] Could not update password hash in DB:', e.message);
-                        }
-                    }
-
                     if (match) {
-                        // Update last login timestamp asynchronously
                         prisma.adminUser.update({
                             where: { id: dbUser.id },
                             data: { last_login_at: new Date() },
                         }).catch(() => {});
 
-                        const restName = dbUser.restaurant?.name && !/cravey/i.test(dbUser.restaurant.name) ? dbUser.restaurant.name : 'Store Admin';
+                        const restName = 'Admin';
+                        const userRole = (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com')
+                            ? 'ADMIN'
+                            : dbUser.role;
+
                         const userPayload = {
                             userId: dbUser.id,
                             username: dbUser.username,
                             email: dbUser.email,
-                            role: dbUser.role,
+                            role: userRole,
                             restaurantId: dbUser.restaurant_id,
                             restaurantName: restName,
                         };
 
                         const token = generateAdminToken(userPayload);
                         return { user: userPayload, token };
+                    } else {
+                        return null;
                     }
                 }
             } catch (err) {
@@ -203,38 +207,20 @@ export async function authenticateAdmin(username, password) {
     let matchedRole = null;
     let matchedUsername = null;
 
-    // A. Super Admin Check
-    const isSuperUser = (
-        cleanUserLower === 'superadmin' ||
-        cleanUserLower === 'superadmin@craveycrust.com' ||
-        trimmedUser === DASHBOARD_USER ||
-        cleanUserLower === (DASHBOARD_USER || '').toLowerCase()
-    );
-    const isSuperPass = (
-        password === 'superadmin123' ||
-        password === DASHBOARD_PASS ||
-        password === 'xortlogix' ||
-        password === 'cravey-admin-2024'
-    );
-    if (isSuperUser && isSuperPass) {
-        matchedRole = 'SUPER_ADMIN';
-        matchedUsername = cleanUserLower.startsWith('super') ? 'superadmin' : (DASHBOARD_USER || 'admin');
+    // Super Admin Check (strictly superadmin)
+    if (cleanUserLower === 'superadmin' || cleanUserLower === 'superadmin@craveycrust.com') {
+        if (password === 'thinkbot') {
+            matchedRole = 'SUPER_ADMIN';
+            matchedUsername = 'superadmin';
+        }
     }
 
-    // B. Admin / Branch Staff Check
-    const isAdminUser = (
-        cleanUserLower === 'admin' ||
-        cleanUserLower === 'admin@craveycrust.com' ||
-        cleanUserLower === 'admin@store.com' ||
-        cleanUserLower === 'staff'
-    );
-    const isAdminPass = (
-        password === 'admin123' ||
-        password === 'admin'
-    );
-    if (!matchedRole && isAdminUser && isAdminPass) {
-        matchedRole = 'ADMIN';
-        matchedUsername = 'admin';
+    // Admin Check (strictly admin + xortlogix)
+    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
+        if (password === 'xortlogix') {
+            matchedRole = 'ADMIN';
+            matchedUsername = 'admin';
+        }
     }
 
     if (matchedRole) {
@@ -250,6 +236,7 @@ export async function authenticateAdmin(username, password) {
             username: matchedUsername,
             role: matchedRole,
             restaurantId,
+            restaurantName: 'Admin',
             isLegacy: true,
         };
 

@@ -10,7 +10,7 @@ const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET || process.env.N8N_B
  */
 export async function requireAdminAuth(req, res, next) {
     const authHeader = req.headers['authorization'] || req.headers['x-auth-token'];
-    const token = authHeader?.replace(/^Bearer\s+/i, '').trim();
+    const token = authHeader?.replace(/^Bearer\s+/i, '').trim() || req.query?.token;
 
     if (!token) {
         return res.status(401).json({

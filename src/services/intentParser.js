@@ -826,7 +826,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_cancel_order',
-                    reply: `Theek hai Bhapa! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
+                    reply: `Theek hai Ji! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
                 };
             }
 
@@ -844,13 +844,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'fast_cancel_placed_order',
-                        reply: `Bhapa, aap ka order *#${orderNum}* cancel kar diya gaya hai. Koi aur khidmat ho to zaroor bataiye ga!`,
+                        reply: `Aap ka order *#${orderNum}* cancel kar diya gaya hai. Koi aur khidmat ho to zaroor bataiye ga!`,
                     };
                 } else {
                     return {
                         handled: true,
                         routeName: 'fast_cancel_placed_order_failed',
-                        reply: `Bhapa, order *#${orderNum}* cancel nahi ho saka: ${cancelRes?.message || 'Order tayar ho chuka hai ya kitchen mein ja chuka hai.'}`,
+                        reply: `Order *#${orderNum}* cancel nahi ho saka: ${cancelRes?.message || 'Order tayar ho chuka hai ya kitchen mein ja chuka hai.'}`,
                     };
                 }
             }
@@ -858,7 +858,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'fast_cancel_empty',
-                reply: `Bhapa, aap ke cart mein koi item nahi hai aur koi pending order nahi hai. Agar kuch mangwana hai to 'menu' ya 'deals' likhein! 😊`,
+                reply: `Aap ke cart mein koi item nahi hai aur koi pending order nahi hai. Agar kuch mangwana hai to 'menu' ya 'deals' likhein! 😊`,
             };
         } catch (err) {
             console.error('[FAST_ROUTE] Error processing cancellation:', err.message);
@@ -993,7 +993,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'order_status_check',
-                        reply: `Hala ${recentOrder.customer_name || 'Bhapa'}! Aap ka order *#${recentOrder.order_number}* ${statusUrdu}! 🎉\n\n💰 Total Bill: *Rs. ${Number(recentOrder.total)}* (${recentOrder.payment_method})\n📍 Delivery Address: ${recentOrder.delivery_address || 'Provided pin'}\n\nCravey Crust ka sawadi khana jald aap tak pahunch jayega! Shukriya!`,
+                        reply: `Assalam o Alaikum ${recentOrder.customer_name || 'Ji'}! Aap ka order *#${recentOrder.order_number}* ${statusUrdu}! 🎉\n\n💰 Total Bill: *Rs. ${Number(recentOrder.total)}* (${recentOrder.payment_method})\n📍 Delivery Address: ${recentOrder.delivery_address || 'Provided pin'}\n\nCravey Crust ka lazeez khana jald aap tak pahunch jayega! Shukriya!`,
                     };
                 }
             }
@@ -1106,7 +1106,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         return {
                             handled: true,
                             routeName: 'order_summary_ready',
-                            reply: `Sain ${details.name}, aap ki details mil gayin hain! Yeh raha aap ka mukammal order check kar lein:\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 70)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa (03434919319 - Muhammad Shoaib)'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nBhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+                            reply: `${details.name} Ji, aap ki details mil gayin hain! Yeh raha aap ka mukammal order check kar lein:\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 70)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa (03434919319 - Muhammad Shoaib)'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
                         };
                     } else {
                         // Some details still missing
@@ -1115,7 +1115,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         if (!details.address && !details.location) missing.push('• Mukammal Delivery Address (ya WhatsApp Location Pin)');
                         if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
 
-                        const greetingName = details.name ? `${details.name} bhai! ` : 'Bhapa! ';
+                        const greetingName = details.name ? `${details.name} Ji! ` : 'Ji! ';
                         return {
                             handled: true,
                             routeName: 'checkout_partial_details',
@@ -1178,7 +1178,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         return {
                             handled: true,
                             routeName: 'order_summary_ready',
-                            reply: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 60)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nBhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+                            reply: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 60)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
                         };
                     }
 
@@ -1242,7 +1242,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     ? matchedDeal.deal_items.map(di => `• ${di.menu_item?.name || ''}${di.menu_variant?.name ? ' (' + di.menu_variant.name + ')' : ''}`).join('\n')
                     : (matchedDeal.description ? matchedDeal.description.split(',').map(s => `• ${s.trim()}`).join('\n') : `• ${matchedDeal.name}`);
 
-                const reply = `Bhapa, *${matchedDeal.name}* mein aap ko milega:\n\n${itemsList}\n\nQeemat sirf *Rs. ${Number(matchedDeal.deal_price)}* hai! Bahun chaska deal hai.\nKya yeh order kar doon aap ke liye? (Order karne ke liye *'Haan'* ya *'Order kar do'* likhein)`;
+                const reply = `*${matchedDeal.name}* mein aap ko milega:\n\n${itemsList}\n\nQeemat sirf *Rs. ${Number(matchedDeal.deal_price)}* hai! Bohot behtareen deal hai.\nKya yeh order kar doon aap ke liye? (Order karne ke liye *'Haan'* ya *'Order kar do'* likhein)`;
 
                 if (userSessionId) {
                     _lastDiscussedDealBySession.set(userSessionId, {
@@ -1334,7 +1334,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'address_change_prompt',
-                reply: `Koi masla nahi Bhapa! Naya address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp Location Pin) yahan likh kar bhej dein taake hum update kar dein! 📍`,
+                reply: `Koi masla nahi Ji! Naya address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp Location Pin) yahan likh kar bhej dein taake hum update kar dein! 📍`,
             };
         } catch (_) {}
     }
@@ -1385,12 +1385,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'order_summary_ready',
-                        reply: `Wah ${details.name} bhai! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${addressStr.slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}**\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nBhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+                        reply: `Wah ${details.name} bhai! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${addressStr.slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}**\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
                     };
                 }
 
                 // If payment method or name is still needed:
-                const greetingName = details.name ? `${details.name} bhai! ` : 'Bhapa! ';
+                const greetingName = details.name ? `${details.name} bhai! ` : 'Ji! ';
                 const missing = [];
                 if (!details.name) missing.push('• Aap ka Naam (Name)');
                 if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
@@ -1404,7 +1404,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'location_saved_no_cart',
-                    reply: `Zabardast Bhapa! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\nAb koi item ya deal select karein taake order place ho sake! Menu dekhne ke liye 'menu' ya 'deals' likhein.`,
+                    reply: `Zabardast! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\nAb koi item ya deal select karein taake order place ho sake! Menu dekhne ke liye 'menu' ya 'deals' likhein.`,
                 };
             }
         } catch (err) {
@@ -1473,7 +1473,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'order_summary_ready',
-                        reply: `Theek hai ${details.name} bhai! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || details.location?.address || 'Google Maps Location').slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nBhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+                        reply: `Theek hai ${details.name} bhai! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || details.location?.address || 'Google Maps Location').slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
                     };
                 }
 
@@ -1485,7 +1485,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'payment_selected',
-                    reply: `Theek hai Bhapa! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\nAb bas yeh details bata dein:\n${missing.join('\n')}\n\nJaise hi aap batayenge, order confirm ho jayega!`,
+                    reply: `Theek hai Ji! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\nAb bas yeh details bata dein:\n${missing.join('\n')}\n\nJaise hi aap batayenge, order confirm ho jayega!`,
                 };
             } else {
                 // Cart is empty but we've saved the payment — acknowledge it
@@ -1496,14 +1496,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'payment_selected_no_cart',
-                        reply: `Theek hai Bhapa! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\nOrder karne ke liye pehle koi item ya deal select karein (menu ya deals likhein). Agar aapne pehle koi item select kiya tha to mujhe batayein!`,
+                        reply: `Theek hai Ji! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\nOrder karne ke liye pehle koi item ya deal select karein (menu ya deals likhein). Agar aapne pehle koi item select kiya tha to mujhe batayein!`,
                     };
                 }
                 // All details present but cart empty — just acknowledge
                 return {
                     handled: true,
                     routeName: 'payment_selected_no_cart',
-                    reply: `Theek hai Bhapa! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai. Ab koi item ya deal select karein taake order place ho sake!`,
+                    reply: `Theek hai Ji! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai. Ab koi item ya deal select karein taake order place ho sake!`,
                 };
             }
         } catch (err) {
@@ -1564,13 +1564,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `Walaikum Assalam! *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Batao Bhapa, Pukh lagi ay? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+                reply: `Walaikum Assalam! *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
             };
         } catch (_) {
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Walaikum Assalam! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Batao Bhapa, Pukh lagi ay? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!',
+                reply: 'Walaikum Assalam! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!',
             };
         }
     }
@@ -1583,7 +1583,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `Alhamdulillah main bilkul theek hoon Bhapa! Main *${store}* ka AI assistant *Burger Raja* hoon. Aaj koi sawadi khana mangwana hai? Hamara menu dekhne ke liye 'menu' ya 'deals' likhein!`,
+                reply: `Alhamdulillah main bilkul theek hoon! Main *${store}* ka AI assistant *Burger Raja* hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye 'menu' ya 'deals' likhein!`,
             };
         } catch (_) {
             return {
@@ -1604,7 +1604,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'store_review',
-                reply: `Shukriya! Hum *${store}* par hamesha behtareen aur sawadi khana dene ki koshish karte hain.\n\nAap apna qeemti feedback aur 5-star review is Google link par de sakte hain:\n⭐ ${reviewUrl}\n\nShukriya!`,
+                reply: `Shukriya! Hum *${store}* par hamesha behtareen aur lazeez khana dene ki koshish karte hain.\n\nAap apna qeemti feedback aur 5-star review is Google link par de sakte hain:\n⭐ ${reviewUrl}\n\nShukriya!`,
             };
         } catch (_) {}
     }
@@ -1634,7 +1634,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         return {
             handled: true,
             routeName: 'language_restriction',
-            reply: 'Nahi Bhapa! Main sirf Roman Urdu, Urdu aur English samajhta hoon aur inhi mein baat kar sakta hoon. 😊\n\nBataiye, Cravey Crust se aaj kya order lagana hai? Mazedaar pizzas ya juicy burgers? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein!',
+            reply: 'Nahi Ji! Main sirf Roman Urdu, Urdu aur English samajhta hoon aur inhi mein baat kar sakta hoon. 😊\n\nBataiye, Cravey Crust se aaj kya order lagana hai? Mazedaar pizzas ya juicy burgers? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein!',
         };
     }
 

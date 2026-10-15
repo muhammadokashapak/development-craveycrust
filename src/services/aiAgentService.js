@@ -412,7 +412,7 @@ async function executeTool(toolName, args, context) {
                 if (!context.confirmIntent) {
                     return {
                         error: 'CONFIRMATION_REQUIRED',
-                        message: 'Customer ne abhi tak final confirmation nahi di. Pehle customer ko mukammal Order Summary dikhao (Items, Total Bill, Delivery Address, Contact Phone, Payment Method) aur poocho: "Bhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?". Jab customer "Haan", "Confirm" ya "Order kar do" kahe, sirf tab order book karein.'
+                        message: 'Customer ne abhi tak final confirmation nahi di. Pehle customer ko mukammal Order Summary dikhao (Items, Total Bill, Delivery Address, Contact Phone, Payment Method) aur poocho: "Ji, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?". Jab customer "Haan", "Confirm" ya "Order kar do" kahe, sirf tab order book karein.'
                     };
                 }
 
