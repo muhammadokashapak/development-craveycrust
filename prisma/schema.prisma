@@ -1,0 +1,643 @@
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  Restaurant Management System — Prisma Schema               ║
+// ║  Restaurant, Auth, Menu, Orders, WhatsApp Multi-Session      ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+}
+
+enum SpicyLevel {
+  NONE
+  MILD
+  MEDIUM
+  HOT
+}
+
+// ─── Restaurant ───────────────────────────────────────────────────────────
+
+model Restaurant {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  logo_url String?
+  phone    String?
+  address  String?
+
+  currency String @default("PKR")
+  timezone String @default("Asia/Karachi")
+
+  opening_time String?
+  closing_time String?
+
+  min_order            Decimal? @db.Decimal(10, 2)
+  default_delivery_fee Decimal? @db.Decimal(10, 2)
+
+  cod_enabled       Boolean @default(true)
+  easypaisa_enabled Boolean @default(false)
+  easypaisa_number  String?
+  account_name      String?
+
+  admin_notification_phone String?
+
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  admin_users        AdminUser[]
+  categories         Category[]
+  menu_items         MenuItem[]
+  deals              Deal[]
+  promotions         Promotion[]
+  delivery_areas     DeliveryArea[]
+  settings           RestaurantSetting[]
+  customers          Customer[]
+  sessions           ConversationSession[]
+  carts              Cart[]
+  orders             Order[]
+  processed_messages ProcessedMessage[]
+  faq_categories     FAQCategory[]
+  faqs               FAQ[]
+
+  @@map("restaurants")
+}
+
+// ─── AdminUser ────────────────────────────────────────────────────────────
+
+model AdminUser {
+  id            String    @id @default(cuid())
+  restaurant_id String
+  username      String
+  email         String?
+  password_hash String
+  role          AdminRole @default(ADMIN)
+  is_active     Boolean   @default(true)
+  last_login_at DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@unique([restaurant_id, username])
+  @@unique([email])
+  @@index([restaurant_id])
+  @@map("admin_users")
+}
+
+// ─── Category ─────────────────────────────────────────────────────────────
+
+model Category {
+  id            String   @id @default(cuid())
+  restaurant_id String
+  name          String
+  slug          String
+  description   String?
+  is_active     Boolean  @default(true)
+  sort_order    Int      @default(0)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  menu_items MenuItem[]
+
+  @@unique([restaurant_id, slug])
+  @@index([restaurant_id, is_active])
+  @@index([restaurant_id, sort_order])
+  @@map("categories")
+}
+
+// ─── MenuItem ─────────────────────────────────────────────────────────────
+
+model MenuItem {
+  id            String     @id @default(cuid())
+  restaurant_id String
+  category_id   String
+  name          String
+  slug          String
+  description   String?
+  base_price    Decimal    @db.Decimal(10, 2)
+  image_url     String?
+  spicy_level   SpicyLevel @default(NONE)
+  is_available  Boolean    @default(true)
+  is_active     Boolean    @default(true)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  restaurant  Restaurant    @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  category    Category      @relation(fields: [category_id], references: [id])
+  variants    MenuVariant[]
+  deal_items  DealItem[]
+  cart_items  CartItem[]
+  order_items OrderItem[]
+
+  @@unique([restaurant_id, slug])
+  @@index([restaurant_id, category_id])
+  @@index([restaurant_id, is_active, is_available])
+  @@map("menu_items")
+}
+
+// ─── MenuVariant ──────────────────────────────────────────────────────────
+
+model MenuVariant {
+  id           String   @id @default(cuid())
+  menu_item_id String
+  name         String
+  price        Decimal  @db.Decimal(10, 2)
+  is_available Boolean  @default(true)
+  sort_order   Int      @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  menu_item   MenuItem    @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  deal_items  DealItem[]
+  cart_items  CartItem[]
+  order_items OrderItem[]
+
+  @@index([menu_item_id, is_available])
+  @@index([menu_item_id, sort_order])
+  @@map("menu_variants")
+}
+
+// ─── RestaurantSetting ────────────────────────────────────────────────────
+
+model RestaurantSetting {
+  id            String   @id @default(cuid())
+  restaurant_id String
+  key           String
+  value         String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@unique([restaurant_id, key])
+  @@index([restaurant_id])
+  @@map("restaurant_settings")
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  Phase 3: Deals, Promotions & Delivery Areas                  ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum PromotionTargetType {
+  ALL
+  CATEGORY
+  MENU_ITEM
+  VARIANT
+  DEAL
+}
+
+// ─── Deal ─────────────────────────────────────────────────────────────────
+
+model Deal {
+  id            String    @id @default(cuid())
+  restaurant_id String
+  name          String
+  slug          String
+  description   String?
+  image_url     String?
+  deal_price    Decimal   @db.Decimal(10, 2)
+  start_at      DateTime?
+  end_at        DateTime?
+  is_active     Boolean   @default(true)
+  sort_order    Int       @default(0)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  restaurant  Restaurant  @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  deal_items  DealItem[]
+  cart_items  CartItem[]
+  order_items OrderItem[]
+
+  @@unique([restaurant_id, slug])
+  @@index([restaurant_id, is_active])
+  @@index([restaurant_id, sort_order])
+  @@map("deals")
+}
+
+// ─── DealItem ─────────────────────────────────────────────────────────────
+
+model DealItem {
+  id              String   @id @default(cuid())
+  deal_id         String
+  menu_item_id    String
+  menu_variant_id String?
+  quantity        Int      @default(1)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  deal         Deal         @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+  menu_item    MenuItem     @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  menu_variant MenuVariant? @relation(fields: [menu_variant_id], references: [id], onDelete: SetNull)
+
+  @@index([deal_id])
+  @@index([menu_item_id])
+  @@map("deal_items")
+}
+
+// ─── Promotion ────────────────────────────────────────────────────────────
+
+model Promotion {
+  id               String       @id @default(cuid())
+  restaurant_id    String
+  name             String
+  code             String?
+  description      String?
+  discount_type    DiscountType @default(PERCENTAGE)
+  discount_value   Decimal      @db.Decimal(10, 2)
+  minimum_order    Decimal?     @db.Decimal(10, 2)
+  maximum_discount Decimal?     @db.Decimal(10, 2)
+  start_at         DateTime?
+  end_at           DateTime?
+  is_active        Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  restaurant Restaurant        @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  targets    PromotionTarget[]
+
+  @@index([restaurant_id, is_active])
+  @@index([code])
+  @@map("promotions")
+}
+
+// ─── PromotionTarget ──────────────────────────────────────────────────────
+
+model PromotionTarget {
+  id           String              @id @default(cuid())
+  promotion_id String
+  target_type  PromotionTargetType @default(ALL)
+  target_id    String?
+
+  promotion Promotion @relation(fields: [promotion_id], references: [id], onDelete: Cascade)
+
+  @@index([promotion_id])
+  @@map("promotion_targets")
+}
+
+// ─── DeliveryArea ─────────────────────────────────────────────────────────
+
+model DeliveryArea {
+  id            String   @id @default(cuid())
+  restaurant_id String
+  name          String
+  slug          String
+  delivery_fee  Decimal  @db.Decimal(10, 2)
+  minimum_order Decimal? @db.Decimal(10, 2)
+  is_active     Boolean  @default(true)
+  sort_order    Int      @default(0)
+  latitude      Float?
+  longitude     Float?
+  radius_km     Float?
+  aliases       String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  orders     Order[]
+
+  @@unique([restaurant_id, slug])
+  @@index([restaurant_id, is_active])
+  @@index([restaurant_id, sort_order])
+  @@map("delivery_areas")
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  Phase 4: Customers, Cart, Orders & Real-time State          ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+enum SessionStage {
+  START
+  BROWSING_MENU
+  BUILDING_CART
+  WAITING_NAME
+  WAITING_CONTACT
+  WAITING_LOCATION
+  WAITING_PAYMENT
+  WAITING_ORDER_CONFIRMATION
+  ORDER_CONFIRMED
+  WAITING_CANCEL_ORDER_ID
+  WAITING_CANCEL_CONFIRMATION
+  CANCELLED
+}
+
+enum CartStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  ABANDONED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  EASYPAISA
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum ChangedByType {
+  CUSTOMER
+  ADMIN
+  STAFF
+  SYSTEM
+}
+
+// ─── Customer ─────────────────────────────────────────────────────────────
+
+model Customer {
+  id             String    @id @default(cuid())
+  restaurant_id  String
+  name           String?
+  phone          String?
+  whatsapp_phone String?
+  first_order_at DateTime?
+  last_order_at  DateTime?
+  total_orders   Int       @default(0)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  restaurant Restaurant            @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  orders     Order[]
+  carts      Cart[]
+
+  @@unique([restaurant_id, whatsapp_phone])
+  @@index([restaurant_id, phone])
+  @@map("customers")
+}
+
+// ─── ConversationSession ──────────────────────────────────────────────────
+
+model ConversationSession {
+  id                      String       @id @default(cuid())
+  restaurant_id           String
+  session_key             String       @unique
+  chat_id                 String
+  verified_phone          String?
+  stage                   SessionStage @default(START)
+  pending_order_id        String?
+  pending_cancel_order_id String?
+  last_activity_at        DateTime     @default(now())
+  expires_at              DateTime
+  created_at              DateTime     @default(now())
+  updated_at              DateTime     @updatedAt
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  carts      Cart[]
+
+  @@index([restaurant_id, chat_id])
+  @@index([expires_at])
+  @@map("conversation_sessions")
+}
+
+// ─── Cart ─────────────────────────────────────────────────────────────────
+
+model Cart {
+  id            String     @id @default(cuid())
+  restaurant_id String
+  session_id    String
+  customer_id   String?
+  status        CartStatus @default(ACTIVE)
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  expires_at    DateTime?
+
+  restaurant Restaurant          @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  session    ConversationSession @relation(fields: [session_id], references: [id], onDelete: Cascade)
+  customer   Customer?           @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  items      CartItem[]
+
+  @@index([restaurant_id, session_id])
+  @@index([restaurant_id, status])
+  @@map("carts")
+}
+
+// ─── CartItem ─────────────────────────────────────────────────────────────
+
+model CartItem {
+  id              String   @id @default(cuid())
+  cart_id         String
+  menu_item_id    String?
+  menu_variant_id String?
+  deal_id         String?
+  quantity        Int      @default(1)
+  notes           String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  cart         Cart         @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  menu_item    MenuItem?    @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+  menu_variant MenuVariant? @relation(fields: [menu_variant_id], references: [id], onDelete: SetNull)
+  deal         Deal?        @relation(fields: [deal_id], references: [id], onDelete: Cascade)
+
+  @@index([cart_id])
+  @@map("cart_items")
+}
+
+// ─── Order ────────────────────────────────────────────────────────────────
+
+model Order {
+  id                 String        @id @default(cuid())
+  order_number       String        @unique
+  restaurant_id      String
+  customer_id        String?
+
+  customer_name      String
+  phone              String
+  whatsapp_phone     String?
+
+  delivery_address   String?
+  delivery_area_id   String?
+  delivery_area_name String?
+
+  latitude           Float?
+  longitude          Float?
+  google_maps_url    String?
+
+  subtotal           Decimal       @db.Decimal(10, 2)
+  discount_total     Decimal       @default(0) @db.Decimal(10, 2)
+  delivery_fee       Decimal       @default(0) @db.Decimal(10, 2)
+  total              Decimal       @db.Decimal(10, 2)
+
+  payment_method     PaymentMethod @default(COD)
+  payment_status     PaymentStatus @default(PENDING)
+  order_status       OrderStatus   @default(CONFIRMED)
+
+  notes              String?
+
+  source             String        @default("WHATSAPP")
+  source_chat_id     String?
+  source_session_id  String?
+
+  idempotency_key    String?
+
+  created_at         DateTime      @default(now())
+  updated_at         DateTime      @updatedAt
+
+  restaurant     Restaurant           @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  customer       Customer?            @relation(fields: [customer_id], references: [id], onDelete: SetNull)
+  delivery_area  DeliveryArea?        @relation(fields: [delivery_area_id], references: [id], onDelete: SetNull)
+  order_items    OrderItem[]
+  status_history OrderStatusHistory[]
+
+  @@index([restaurant_id, order_status])
+  @@index([restaurant_id, created_at])
+  @@index([restaurant_id, phone])
+  @@index([idempotency_key])
+  @@map("orders")
+}
+
+// ─── OrderItem ────────────────────────────────────────────────────────────
+
+model OrderItem {
+  id                    String   @id @default(cuid())
+  order_id              String
+  menu_item_id          String?
+  menu_variant_id       String?
+  deal_id               String?
+
+  item_name_snapshot    String?
+  variant_name_snapshot String?
+  deal_name_snapshot    String?
+
+  unit_price            Decimal  @db.Decimal(10, 2)
+  quantity              Int      @default(1)
+  discount_amount       Decimal  @default(0) @db.Decimal(10, 2)
+  line_total            Decimal  @db.Decimal(10, 2)
+
+  notes                 String?
+  created_at            DateTime @default(now())
+
+  order        Order        @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  menu_item    MenuItem?    @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  menu_variant MenuVariant? @relation(fields: [menu_variant_id], references: [id], onDelete: SetNull)
+  deal         Deal?        @relation(fields: [deal_id], references: [id], onDelete: SetNull)
+
+  @@index([order_id])
+  @@map("order_items")
+}
+
+// ─── OrderStatusHistory ───────────────────────────────────────────────────
+
+model OrderStatusHistory {
+  id              String        @id @default(cuid())
+  order_id        String
+  previous_status OrderStatus?
+  new_status      OrderStatus
+  changed_by_type ChangedByType @default(SYSTEM)
+  changed_by_id   String?
+  reason          String?
+  created_at      DateTime      @default(now())
+
+  order Order @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id, created_at])
+  @@map("order_status_history")
+}
+
+// ─── ProcessedMessage ─────────────────────────────────────────────────────
+
+model ProcessedMessage {
+  id              String   @id @default(cuid())
+  restaurant_id   String
+  message_id      String?
+  chat_id         String?
+  idempotency_key String
+  result_type     String?
+  result_id       String?
+  processed_at    DateTime @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@unique([restaurant_id, idempotency_key])
+  @@index([chat_id])
+  @@map("processed_messages")
+}
+
+// ─── FAQCategory (Phase 4.5) ───────────────────────────────────────────────
+
+model FAQCategory {
+  id            String   @id @default(cuid())
+  restaurant_id String
+  name          String
+  slug          String
+  description   String?
+  sort_order    Int      @default(0)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  faqs          FAQ[]
+
+  @@unique([restaurant_id, slug])
+  @@index([restaurant_id, is_active])
+  @@index([restaurant_id, sort_order])
+  @@map("faq_categories")
+}
+
+// ─── FAQ (Phase 4.5) ───────────────────────────────────────────────────────
+
+model FAQ {
+  id                    String       @id @default(cuid())
+  restaurant_id         String
+  category_id           String?
+
+  question              String       @db.Text
+  answer                String       @db.Text
+
+  keywords              String[]     @default([])
+  alternative_questions String[]     @default([])
+
+  is_active             Boolean      @default(true)
+  sort_order            Int          @default(0)
+  language              String?      @default("en")
+
+  created_by            String?
+  updated_by            String?
+
+  created_at            DateTime     @default(now())
+  updated_at            DateTime     @updatedAt
+
+  restaurant            Restaurant   @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  category              FAQCategory? @relation(fields: [category_id], references: [id], onDelete: SetNull)
+
+  @@index([restaurant_id, is_active])
+  @@index([restaurant_id, category_id])
+  @@index([restaurant_id, sort_order])
+  @@map("faqs")
+}
+
