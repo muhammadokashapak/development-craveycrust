@@ -808,6 +808,63 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Follow-up: Affirmative confirmation of pending Order Summary ──
     const userSessionId = sessionKey || chatId || whatsappPhone;
+
+    // ── Check Fast Route: Order Cancellation / Cart Clear (Zero Tokens) ──
+    const isCancelOrClearRequest = /^(?:cancel|cancel\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*dein|karden|order|my\s*order)?|order\s*cancel(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*dein))?|cart\s*(?:clear|khali)(?:\s*(?:kr\s*do|kardo|kar\s*do))?|clear\s*cart|nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo)[\s!.?]*$/i.test(lower.trim());
+    if (isCancelOrClearRequest && userSessionId) {
+        try {
+            const { getActiveCart, clearCart } = await import('./cartService.js');
+            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            const cache = await getCatalogCache();
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            if (cart?.items && cart.items.length > 0) {
+                await clearCart({ sessionKey: userSessionId });
+                clearSessionOrderDetails(userSessionId, cleanPhone);
+                _lastDiscussedDealBySession.delete(userSessionId);
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_order',
+                    reply: `Theek hai Bhapa! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
+                };
+            }
+
+            // If cart is empty, check if user specified an order number like CC-123456
+            const orderMatch = lower.match(/#?CC-\d{6}/i);
+            if (orderMatch) {
+                const { cancelOrder } = await import('./orderService.js');
+                const orderNum = orderMatch[0].replace('#', '').toUpperCase();
+                const cancelRes = await cancelOrder({
+                    restaurantId: cache.restId,
+                    orderNumber: orderNum,
+                    reason: 'Customer requested cancellation via WhatsApp',
+                });
+                if (cancelRes?.success) {
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_placed_order',
+                        reply: `Bhapa, aap ka order *#${orderNum}* cancel kar diya gaya hai. Koi aur khidmat ho to zaroor bataiye ga!`,
+                    };
+                } else {
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_placed_order_failed',
+                        reply: `Bhapa, order *#${orderNum}* cancel nahi ho saka: ${cancelRes?.message || 'Order tayar ho chuka hai ya kitchen mein ja chuka hai.'}`,
+                    };
+                }
+            }
+
+            return {
+                handled: true,
+                routeName: 'fast_cancel_empty',
+                reply: `Bhapa, aap ke cart mein koi item nahi hai aur koi pending order nahi hai. Agar kuch mangwana hai to 'menu' ya 'deals' likhein! 😊`,
+            };
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing cancellation:', err.message);
+        }
+    }
+
     const hasCartModification = /\b(add|extra|aur|kuch|change|badal|hatao?|nikal|kam|zyada|\d+\s*x|\d+\s*bar|\d+\s*martaba|fries|drink|pepsi|7up|burger|pizza|deal|deals)\b/i.test(lower);
     const isOrderFinalConfirmation = !hasCartModification &&
         /^(?:haan|han|hn|jee|ji|yes|yep|ok|ok\s*done|theek\s*hai?|done|confirm|confirm\s*(?:hai|h|kr\s*do|kar\s*do)?|book\s*(?:kar\s*do|kr\s*do)|order\s*(?:kar\s*do|kr\s*do|book\s*kar\s*do)|final\s*(?:kar\s*do|kr\s*do)|bhej\s*do|haan\s*kar\s*do|haan\s*kr\s*do|order\s*final)$/i.test(lower.trim()) && wordCount <= 5;

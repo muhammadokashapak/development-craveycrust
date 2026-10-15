@@ -430,10 +430,23 @@ async function executeTool(toolName, args, context) {
             }
 
             // 15. request_order_cancellation
-            case 'request_order_cancellation': {
+            case 'request_order_cancellation':
+            case 'cancel_order': {
+                const orderNum = (args.orderNumber || '').toUpperCase().trim();
+                if (!orderNum) {
+                    const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                    if (cart?.items && cart.items.length > 0) {
+                        await clearCartService({ sessionKey });
+                        try {
+                            const { clearSessionOrderDetails } = await import('./sessionService.js');
+                            clearSessionOrderDetails(sessionKey, whatsappPhone);
+                        } catch (_) {}
+                        return { success: true, cartCleared: true, message: 'Cart khali aur pending order cancel kar diya gaya hai.' };
+                    }
+                    return { error: 'ORDER_NUMBER_REQUIRED', message: 'Order cancel karne ke liye CC-XXXXXX order number dein.' };
+                }
                 const prisma = getDbClient();
                 if (!prisma) return { error: 'Database unavailable' };
-                const orderNum = (args.orderNumber || '').toUpperCase().trim();
                 const order = await prisma.order.findFirst({
                     where: { restaurant_id: restId, order_number: orderNum },
                     select: { id: true, order_number: true, order_status: true },
@@ -481,7 +494,10 @@ async function executeTool(toolName, args, context) {
             }
 
             // 18. request_human_handover
-            case 'request_human_handover': {
+            case 'request_human_handover':
+            case 'transfer_to_human_agent':
+            case 'human_handover':
+            case 'handover': {
                 const muteRes = await muteChatForHandover({
                     chatId,
                     sessionKey,
