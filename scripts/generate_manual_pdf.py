@@ -605,7 +605,7 @@ The customer selects one or more items (e.g. <em>"1 Large Fajita Pizza and 1 Gar
 
 <h3>Step 2: Customer Name Verification</h3>
 <p>
-If the customer's phone number is already registered in the PostgreSQL <code>Customer</code> table from a previous order, their name is pre-populated (e.g., <em>"Asim bhai, aapka naam Asim Khan hi use karein?"</em>). For new users, the bot systematically requests their full name to attach to the kitchen ticket.
+If the customer's phone number is already registered in the PostgreSQL <code>Customer</code> table from a previous order, their name is pre-populated (e.g., <em>"Ali bhai, aapka naam Ali Ahmed hi use karein?"</em>). For new users, the bot systematically requests their full name to attach to the kitchen ticket.
 </p>
 
 <h3>Step 3: Delivery Zone Verification & Fee Calculation</h3>
@@ -701,7 +701,7 @@ cd full-bot</code></pre>
 <pre><code>PORT=3000
 SERVER_IP=localhost
 PREFIX=.
-OWNER_NUMBER=923001234567
+OWNER_NUMBER=92300XXXXXXX
 
 # Admin Dashboard Security
 DASHBOARD_USER=admin
@@ -784,7 +784,7 @@ The pairing code method is the fastest, cleanest, and most reliable way to link 
 
 <div class="diagram-box">
 Step 1: Open Dashboard (http://localhost:3000)
-Step 2: Enter WhatsApp Number (e.g. 923001234567) ──► Click "Get Pairing Code"
+Step 2: Enter WhatsApp Number (e.g. 92300XXXXXXX) ──► Click "Get Pairing Code"
 Step 3: Server generates 8-digit alphanumeric token (e.g. "K7WP-92LA")
 Step 4: On Phone: WhatsApp ➜ Linked Devices ➜ Link a Device ➜ "Link with phone number instead"
 Step 5: Enter the 8-digit code ──► Immediate Secure Pairing & Session Persistence
@@ -793,7 +793,7 @@ Step 5: Enter the 8-digit code ──► Immediate Secure Pairing & Session Pers
 <ol>
   <li>Access the dashboard at <code>http://localhost:3000</code>.</li>
   <li>In the <strong>WhatsApp Connection Hub</strong> card, select <strong>"Pairing Code Mode"</strong>.</li>
-  <li>Enter the phone number hosting the restaurant WhatsApp account, including country code (e.g., <code>923001234567</code> for Pakistan). Do not enter <code>+</code> or dashes.</li>
+  <li>Enter the phone number hosting the restaurant WhatsApp account, including country code (e.g., <code>92300XXXXXXX</code> for Pakistan). Do not enter <code>+</code> or dashes.</li>
   <li>Click <strong>Request Pairing Code</strong>. Within 2-3 seconds, an 8-character code will appear in large letters.</li>
   <li>Open WhatsApp on the target smartphone. Tap the three dots (Android) or Settings (iPhone) ➜ <strong>Linked Devices</strong> ➜ <strong>Link a Device</strong>.</li>
   <li>Tap <strong>"Link with phone number instead"</strong> at the bottom of the camera screen.</li>
@@ -830,7 +830,7 @@ Open your web browser and navigate to:
 </p>
 <pre><code>http://&lt;your-server-ip&gt;:3000</code></pre>
 <p>
-Log in with the credentials defined in your <code>.env</code> file (Default: User: <code>admin</code>, Password: <code>xortlogix</code>).
+Log in with the credentials defined in your <code>.env</code> file (Default: User: <code>admin</code>, Password: <code>your_secure_password</code>).
 </p>
 
 <h2>7.2 The Kitchen Kanban Pipeline</h2>

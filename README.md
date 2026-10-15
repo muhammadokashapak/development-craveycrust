@@ -180,12 +180,12 @@ Here is an authentic breakdown of how Cravey Crust executes an entire order from
             
             Aapka shubh naam (Full Name) kya hai?
 
-[Customer]  Asim Khan
-[CraveyBot] Shukriya Asim bhai! 📍 Barahe mehrbani apna complete delivery address ya 
+[Customer]  Ali Ahmed
+[CraveyBot] Shukriya Ali bhai! 📍 Barahe mehrbani apna complete delivery address ya 
             WhatsApp Live Location share kar dein.
 
-[Customer]  House 45, Street 12, Sector F-8/2, Islamabad
-[CraveyBot] Perfect! Delivery Zone verify ho gaya: Sector F-8 (Delivery Fee: Rs. 150).
+[Customer]  House 12, Street 4, Sector G-11/3, Islamabad
+[CraveyBot] Perfect! Delivery Zone verify ho gaya: Sector G-11 (Delivery Fee: Rs. 150).
             
             🛒 Order Summary:
             ───────────────────────
@@ -200,7 +200,7 @@ Here is an authentic breakdown of how Cravey Crust executes an entire order from
             3. EasyPaisa
 
 [Customer]  COD
-[CraveyBot] Mubarak ho Asim bhai! 🎉
+[CraveyBot] Mubarak ho Ali bhai! 🎉
             Aapka Order #CRV-8942 kitchen mein confirm ho chuka hai! 👨‍🍳
             Estimated delivery time: 35-45 minutes.
             
@@ -384,7 +384,7 @@ Once your server is running, open the Admin Dashboard in your browser:
 
 ### Method 1: 8-Digit Pairing Code (Recommended — No Camera Needed)
 1. Open the dashboard and locate the **Connect WhatsApp** card.
-2. Enter your full WhatsApp phone number including country code without `+` or spaces (e.g. `923001234567`).
+2. Enter your full WhatsApp phone number including country code without `+` or spaces (e.g. `92300XXXXXXX`).
 3. Click **Get Pairing Code**.
 4. An 8-digit code (e.g. `W8KJ-39LA`) will appear on your screen.
 5. On your phone:
@@ -409,9 +409,9 @@ Once your server is running, open the Admin Dashboard in your browser:
 | `PORT` | `Number` | `3000` | Port for Express web server and admin dashboard |
 | `SERVER_IP` | `String` | `localhost` | Hostname or IP binding |
 | `PREFIX` | `String` | `.` | Command prefix for bot triggers (`.menu`, `.handover`) |
-| `OWNER_NUMBER` | `String` | `923001234567` | Phone number of the restaurant owner for alerts |
+| `OWNER_NUMBER` | `String` | `92300XXXXXXX` | Phone number of the restaurant owner for alerts |
 | `DASHBOARD_USER` | `String` | `admin` | Username for dashboard authentication |
-| `DASHBOARD_PASS` | `String` | `xortlogix` | Password for dashboard access |
+| `DASHBOARD_PASS` | `String` | `your_secure_password` | Password for dashboard access |
 | `DATABASE_URL` | `String` | `postgresql://...` | Connection URI for PostgreSQL database |
 | `STANDALONE_AI_ENABLED` | `Boolean` | `true` | Run built-in AI without external webhook dependencies |
 | `AI_PRIMARY_PROVIDER` | `String` | `gemini` | Primary LLM engine (`gemini`, `deepseek`, `openai`) |
