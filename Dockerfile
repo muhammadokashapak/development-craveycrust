@@ -27,8 +27,11 @@ RUN ./node_modules/.bin/prisma generate
 # Copy remaining application files
 COPY . .
 
+# Ensure entrypoint is executable
+RUN chmod +x docker-entrypoint.sh
+
 # Expose HTTP port for keep-alive server
 EXPOSE 3000
 
-# Start the bot
-CMD ["npm", "start"]
+# Start via entrypoint script
+ENTRYPOINT ["./docker-entrypoint.sh"]
