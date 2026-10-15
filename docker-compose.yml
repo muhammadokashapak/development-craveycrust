@@ -14,8 +14,7 @@ services:
 
     environment:
       # ── Existing bot vars (unchanged) ────────────────────────
-      - PORT=${PORT:-3000}
-      - PREFIX=${PREFIX:-.}
+      - PORT=${PORT:-3000} - PREFIX=${PREFIX:-.}
       - OWNER_NUMBER=${OWNER_NUMBER:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
@@ -23,10 +22,9 @@ services:
       - N8N_ENABLED=${N8N_ENABLED:-false}
       - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-https://n8n.srv2029678.hstgr.cloud/webhook/whatsapp-incoming}
       - N8N_BOT_SECRET=${N8N_BOT_SECRET:-my-test-secret-123}
-      - N8N_TIMEOUT=${N8N_TIMEOUT:-10000}
-      - SERVER_IP=${SERVER_IP:-localhost}
-      # ── Phase 1: Database (all default false/unset — safe) ────
-      - DATABASE_URL=${DOCKER_DATABASE_URL:-postgresql://cravey:change-this-strong-password-minimum-32-chars@cravey-postgres:5432/cravey_crust}
+      - N8N_TIMEOUT=${N8N_TIMEOUT:-10000} - SERVER_IP=${SERVER_IP:-localhost}
+      # ── Phase 1: Database (Fixed variable name) ────
+      - DATABASE_URL=${DATABASE_URL:-postgresql://cravey:change-this-strong-password-minimum-32-chars@cravey-postgres:5432/cravey_crust}
       - REDIS_URL=${REDIS_URL:-}
       # ── Feature Flags (core hardened defaults) ───────────────────────────
       - RESTAURANT_DB_ENABLED=${RESTAURANT_DB_ENABLED:-true}
@@ -37,6 +35,20 @@ services:
       - N8N_INTEGRATION_ENABLED=${N8N_INTEGRATION_ENABLED:-false}
       - KNOWLEDGE_BASE_ENABLED=${KNOWLEDGE_BASE_ENABLED:-true}
       - WHATSAPP_ORDERING_ENABLED=${WHATSAPP_ORDERING_ENABLED:-true}
+      # ── AI Configuration ─────────────────────────────────────────
+      - STANDALONE_AI_ENABLED=${STANDALONE_AI_ENABLED:-true}
+      - AI_PRIMARY_PROVIDER=${AI_PRIMARY_PROVIDER:-gemini}
+      - AI_FALLBACK_PROVIDER=${AI_FALLBACK_PROVIDER:-gemini}
+      - AI_TEMPERATURE=${AI_TEMPERATURE:-0.2}
+      - AI_MAX_TOKENS=${AI_MAX_TOKENS:-1024} - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
+      - DEEPSEEK_API_KEYS=${DEEPSEEK_API_KEYS:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}
+      - OPENAI_API_KEYS=${OPENAI_API_KEYS:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - BOT_DOMAIN=${BOT_DOMAIN:-localhost}
 
     volumes:
       - ./auth:/app/auth
@@ -59,46 +71,34 @@ services:
     stdin_open: true
     tty: true
 
-    # Depend on postgres container startup
     depends_on:
       - cravey-postgres
 
-  # ─── PostgreSQL Database ─────────────────────────────────────────────────
-  # SECURITY: No ports block — NOT exposed to host or internet.
-  # Only accessible within Docker internal network 'default'.
   cravey-postgres:
     image: postgres:16-alpine
     container_name: cravey-postgres
     restart: unless-stopped
-
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-cravey_crust}
       POSTGRES_USER:     ${POSTGRES_USER:-cravey}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-strong-password-in-env}
-
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-    # Health check so status can be monitored via docker inspect
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cravey} -d ${POSTGRES_DB:-cravey_crust}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cravey} -d${POSTGRES_DB:-cravey_crust}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
-
     networks:
       - default
     ports:
       - "127.0.0.1:5432:5432"
 
-  # ─── Redis (session/cache layer — Phase 6) ────────────────────────────────
-  # SECURITY: No ports block — NOT exposed to host or internet.
   cravey-redis:
     image: redis:7-alpine
     container_name: cravey-redis
     restart: unless-stopped
-
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:-change-this-redis-password-in-env}
@@ -106,19 +106,15 @@ services:
       --maxmemory-policy allkeys-lru
       --save 60 1
       --loglevel warning
-
     volumes:
       - redis_data:/data
-
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-this-redis-password-in-env}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
-
     networks:
       - default
-    # NO 'ports:' block — Redis is internal only
 
 networks:
   n8n_default:
