@@ -90,3 +90,34 @@ export function requireInternalSecret(req, res, next) {
 
     next();
 }
+
+/**
+ * Middleware ensuring current authenticated user has an allowed role.
+ * e.g. requireRole(['SUPER_ADMIN'])
+ *
+ * @param {string[]} allowedRoles
+ */
+export function requireRole(allowedRoles = ['SUPER_ADMIN']) {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required',
+                },
+            });
+        }
+        const userRole = req.user.role || 'ADMIN';
+        if (!allowedRoles.includes(userRole)) {
+            return res.status(403).json({
+                success: false,
+                error: {
+                    code: 'FORBIDDEN',
+                    message: 'Access denied: This action requires higher administrative privileges (Super Admin)',
+                },
+            });
+        }
+        next();
+    };
+}

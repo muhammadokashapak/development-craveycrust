@@ -42,22 +42,37 @@ async function main() {
     });
     console.log(`✅ Restaurant: ${restaurant.name} (${restaurant.id})`);
 
-    // ── Admin User ────────────────────────────────────────────
-    const password_hash = await bcrypt.hash('admin12345', 12);
+    // ── Admin Users (Super Admin & Admin / Staff) ────────────
+    const superadmin_hash = await bcrypt.hash('superadmin123', 12);
+    const admin_hash = await bcrypt.hash('admin123', 12);
 
-    const adminUser = await prisma.adminUser.upsert({
-        where: { email: 'admin@store.com' },
-        update: {},
+    const superAdminUser = await prisma.adminUser.upsert({
+        where: { email: 'superadmin@craveycrust.com' },
+        update: { role: 'SUPER_ADMIN' },
         create: {
             restaurant_id: restaurant.id,
-            username: 'admin',
-            email: 'admin@store.com',
-            password_hash,
+            username: 'superadmin',
+            email: 'superadmin@craveycrust.com',
+            password_hash: superadmin_hash,
             role: 'SUPER_ADMIN',
             is_active: true,
         },
     });
-    console.log(`✅ Admin user: ${adminUser.username} (${adminUser.email})`);
+    console.log(`✅ Super Admin: ${superAdminUser.username} (${superAdminUser.email})`);
+
+    const adminUser = await prisma.adminUser.upsert({
+        where: { email: 'admin@craveycrust.com' },
+        update: { role: 'ADMIN' },
+        create: {
+            restaurant_id: restaurant.id,
+            username: 'admin',
+            email: 'admin@craveycrust.com',
+            password_hash: admin_hash,
+            role: 'ADMIN',
+            is_active: true,
+        },
+    });
+    console.log(`✅ Admin / Branch Manager: ${adminUser.username} (${adminUser.email})`);
 
     // ── Restaurant Settings ───────────────────────────────────
     const settings = [

@@ -54,6 +54,8 @@ import adminVariantsRouter from './routes/admin/variants.js';
 import adminSettingsRouter from './routes/admin/settings.js';
 import adminPromptRouter from './routes/admin/prompt.js';
 import adminUploadRouter from './routes/admin/upload.js';
+import adminChatsRouter from './routes/admin/chats.js';
+import { recordChatMessage } from './src/services/chatService.js';
 import internalMenuRouter from './routes/internal/menu.js';
 
 // ─── Phase 3: Deals, Promotions & Delivery Areas ──────────
@@ -297,6 +299,7 @@ app.use('/api/admin/customers', requireAdminAuth, adminCustomersRouter);
 app.use('/api/admin/sync', requireAdminAuth, adminSyncRouter);
 app.use('/api/admin/faq-categories', requireAdminAuth, adminFaqCategoriesRouter);
 app.use('/api/admin/faqs', requireAdminAuth, adminFaqsRouter);
+app.use('/api/admin/chats', requireAdminAuth, adminChatsRouter);
 
 // Protect all other /api endpoints (WhatsApp multi-session APIs)
 app.use('/api', (req, res, next) => {
@@ -1306,6 +1309,16 @@ async function handleMessage(sock, msg, session) {
             // ── Route to Standalone AI Agent (Fast routes + AI + Token logging) ──
             const identity = resolveSenderIdentity(sock, msg, session);
             console.log(`[AI] Processing message from ${senderNum} (${jid})`);
+
+            // Record incoming customer chat
+            recordChatMessage({
+                chatId: jid,
+                phone: senderNum,
+                customerName: identity?.name || null,
+                sender: 'user',
+                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : 'Message'),
+            }).catch(() => {});
+
             try {
                 const aiReply = await aiProcessMessage({
                     sock,
@@ -1319,6 +1332,15 @@ async function handleMessage(sock, msg, session) {
                     await sock.sendMessage(jid, { text: aiReply }).catch(err => {
                         console.error(`[AI] Failed to send reply to ${jid}:`, err.message);
                     });
+
+                    // Record outgoing bot chat reply
+                    recordChatMessage({
+                        chatId: jid,
+                        phone: senderNum,
+                        customerName: identity?.name || null,
+                        sender: 'bot',
+                        message: aiReply,
+                    }).catch(() => {});
                 }
             } catch (agentErr) {
                 console.error(`[AI] Agent error for ${jid}:`, agentErr.message);

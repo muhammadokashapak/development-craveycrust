@@ -199,22 +199,45 @@ export async function authenticateAdmin(username, password) {
         }
     }
 
-    // 2. Legacy fallback (.env DASHBOARD_USER / DASHBOARD_PASS)
-    const isUserMatch = (
-        trimmedUser === DASHBOARD_USER ||
-        cleanUserLower === (DASHBOARD_USER || '').toLowerCase() ||
-        cleanUserLower === 'admin' ||
-        cleanUserLower === 'admin@store.com'
-    );
+    // 2. Built-in / Fallback Credentials (works with or without DB)
+    let matchedRole = null;
+    let matchedUsername = null;
 
-    const isPassMatch = (
+    // A. Super Admin Check
+    const isSuperUser = (
+        cleanUserLower === 'superadmin' ||
+        cleanUserLower === 'superadmin@craveycrust.com' ||
+        trimmedUser === DASHBOARD_USER ||
+        cleanUserLower === (DASHBOARD_USER || '').toLowerCase()
+    );
+    const isSuperPass = (
+        password === 'superadmin123' ||
         password === DASHBOARD_PASS ||
         password === 'xortlogix' ||
-        password === 'cravey-admin-2024' ||
+        password === 'cravey-admin-2024'
+    );
+    if (isSuperUser && isSuperPass) {
+        matchedRole = 'SUPER_ADMIN';
+        matchedUsername = cleanUserLower.startsWith('super') ? 'superadmin' : (DASHBOARD_USER || 'admin');
+    }
+
+    // B. Admin / Branch Staff Check
+    const isAdminUser = (
+        cleanUserLower === 'admin' ||
+        cleanUserLower === 'admin@craveycrust.com' ||
+        cleanUserLower === 'admin@store.com' ||
+        cleanUserLower === 'staff'
+    );
+    const isAdminPass = (
+        password === 'admin123' ||
         password === 'admin'
     );
+    if (!matchedRole && isAdminUser && isAdminPass) {
+        matchedRole = 'ADMIN';
+        matchedUsername = 'admin';
+    }
 
-    if (isUserMatch && isPassMatch) {
+    if (matchedRole) {
         let restaurantId = 'default-restaurant';
         try {
             if (flags.RESTAURANT_DB_ENABLED) {
@@ -223,9 +246,9 @@ export async function authenticateAdmin(username, password) {
         } catch (_) {}
 
         const userPayload = {
-            userId: 'env-admin',
-            username: DASHBOARD_USER || 'admin',
-            role: 'SUPER_ADMIN',
+            userId: matchedRole === 'SUPER_ADMIN' ? 'env-superadmin' : 'env-admin',
+            username: matchedUsername,
+            role: matchedRole,
             restaurantId,
             isLegacy: true,
         };

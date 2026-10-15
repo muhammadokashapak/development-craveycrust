@@ -223,6 +223,57 @@ if (authLoginForm) {
   });
 }
 
+// Role-Based Access Control State
+let currentUserRole = 'ADMIN';
+
+function applyRolePermissions(user) {
+  if (!user) return;
+  currentUserRole = user.role || 'ADMIN';
+  const isSuper = currentUserRole === 'SUPER_ADMIN';
+
+  // 1. Toggle Super Admin exclusive sidebar items (Prompt, Settings, Customer Chats)
+  const superOnlyNavs = document.querySelectorAll('[data-min-role="SUPER_ADMIN"]');
+  superOnlyNavs.forEach(el => {
+    if (isSuper) {
+      el.classList.remove('hidden');
+      el.style.display = '';
+    } else {
+      el.classList.add('hidden');
+      el.style.display = 'none';
+    }
+  });
+
+  // 2. Toggle WhatsApp terminal vs centered connection view
+  const waTerminalRight = document.getElementById('waTerminalRight');
+  const waSplitContainer = document.getElementById('waSplitContainer');
+  if (waTerminalRight && waSplitContainer) {
+    if (isSuper) {
+      waTerminalRight.classList.remove('hidden');
+      waTerminalRight.style.display = '';
+      waSplitContainer.style.gridTemplateColumns = '1fr 1fr';
+      waSplitContainer.style.maxWidth = '';
+      waSplitContainer.style.margin = '';
+    } else {
+      waTerminalRight.classList.add('hidden');
+      waTerminalRight.style.display = 'none';
+      waSplitContainer.style.gridTemplateColumns = '1fr';
+      waSplitContainer.style.maxWidth = '680px';
+      waSplitContainer.style.margin = '0 auto';
+    }
+  }
+
+  // 3. Toggle Add buttons in Menu & Deals
+  const addMenuBtn = document.getElementById('openAddMenuItemBtn');
+  if (addMenuBtn) {
+    addMenuBtn.style.display = isSuper ? '' : 'none';
+  }
+  const addDealBtn = document.getElementById('openAddDealBtn');
+  if (addDealBtn) {
+    addDealBtn.style.display = isSuper ? '' : 'none';
+  }
+}
+window.applyRolePermissions = applyRolePermissions;
+
 // User Profile display in sidebar
 function updateSidebarUserProfile(user) {
   if (!user) return;
@@ -239,6 +290,8 @@ function updateSidebarUserProfile(user) {
     else if (user.role === 'STAFF') urole.textContent = 'Staff';
     else urole.textContent = user.role || 'Admin';
   }
+
+  applyRolePermissions(user);
 }
 window.updateSidebarUserProfile = updateSidebarUserProfile;
 
@@ -1173,6 +1226,13 @@ window.showToast = showToast;
 
 // ─── View Switcher ─────────────────────────────────────────────────────
 function switchView(viewName) {
+  // Role-based view protection: block prompt, settings, and chats for non-superadmin
+  if (currentUserRole !== 'SUPER_ADMIN') {
+    if (viewName === 'prompt' || viewName === 'settings' || viewName === 'chats') {
+      viewName = 'dashboard';
+    }
+  }
+
   currentActiveView = viewName;
   const views = {
     dashboard:  { el: document.getElementById('viewDashboard'),  title: 'Dashboard Overview', sub: 'Real-time restaurant metrics & operations' },
@@ -1183,6 +1243,7 @@ function switchView(viewName) {
     delivery:   { el: document.getElementById('viewDelivery'),   title: 'Delivery Areas',     sub: 'Delivery zones, fees and minimum order amounts' },
     customers:      { el: document.getElementById('viewCustomers'),      title: 'Customers Directory', sub: 'Verified WhatsApp customers and lifetime order history' },
     customerDetail: { el: document.getElementById('viewCustomerDetail'), title: 'Customer Profile',   sub: 'Complete customer order history, metrics & data management' },
+    chats:      { el: document.getElementById('viewChats'),      title: 'Customer Chats',     sub: 'Live WhatsApp customer conversation audit log and bot responses' },
     faq:        { el: document.getElementById('viewFaq'),        title: 'FAQ / Knowledge Base', sub: 'Authoritative dynamic knowledge base & customer answering policies' },
     whatsapp:   { el: document.getElementById('viewWhatsapp'),   title: 'WhatsApp Bot',       sub: 'Multi-session connection and terminal' },
     prompt:     { el: document.getElementById('viewPrompt'),     title: 'AI Bot Prompt & Instructions', sub: 'Customize WhatsApp bot instructions, personality and rules in real-time' },
@@ -1195,6 +1256,10 @@ function switchView(viewName) {
 
   const target = views[viewName] || views.dashboard;
   if (target.el) target.el.classList.remove('hidden');
+
+  if (viewName === 'chats' && typeof window.loadConversations === 'function') {
+    window.loadConversations();
+  }
 
   const pageTitle = document.getElementById('pageTitle');
   const pageSubtitle = document.getElementById('pageSubtitle');
@@ -1662,6 +1727,7 @@ function renderMenuItemsTable() {
               <line x1="3" y1="18" x2="3.01" y2="18"></line>
             </svg>
           </button>
+          ${currentUserRole === 'SUPER_ADMIN' ? `
           <button class="btn-table-icon" title="Edit" onclick="window.openEditMenuItem('${item.id}')">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1674,6 +1740,7 @@ function renderMenuItemsTable() {
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
           </button>
+          ` : ''}
         </div>
       </td>
     `;
@@ -2641,9 +2708,9 @@ function renderDealsTable() {
         <td><small>${validStr}</small></td>
         <td>${statusBadge}</td>
         <td style="text-align: right; white-space: nowrap;">
-          <button class="btn btn-secondary btn-xs" onclick="window.openEditDealModal('${d.id}')">Edit</button>
+          ${currentUserRole === 'SUPER_ADMIN' ? `<button class="btn btn-secondary btn-xs" onclick="window.openEditDealModal('${d.id}')">Edit</button>` : ''}
           <button class="btn btn-secondary btn-xs" onclick="window.toggleDealStatus('${d.id}', ${d.is_active})">${d.is_active ? 'Disable' : 'Enable'}</button>
-          <button class="btn btn-danger btn-xs" onclick="window.deleteDeal('${d.id}')">Delete</button>
+          ${currentUserRole === 'SUPER_ADMIN' ? `<button class="btn btn-danger btn-xs" onclick="window.deleteDeal('${d.id}')">Delete</button>` : ''}
         </td>
       </tr>
     `;
@@ -5250,6 +5317,184 @@ if (faqCategoryFilter) faqCategoryFilter.addEventListener('change', () => loadFa
 
 const faqStatusFilter = document.getElementById('faqStatusFilter');
 if (faqStatusFilter) faqStatusFilter.addEventListener('change', () => loadFaqs(true));
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CUSTOMER CHATS MODULE (SUPER ADMIN EXCLUSIVE)
+// ══════════════════════════════════════════════════════════════════════════════
+let activeChatCustomer = null;
+let chatPollTimer = null;
+
+async function loadConversations(searchQuery = '') {
+  const container = document.getElementById('chatsConversationsList');
+  if (!container) return;
+
+  try {
+    const q = searchQuery || (document.getElementById('chatsSearchInput') ? document.getElementById('chatsSearchInput').value : '');
+    const url = `/api/admin/chats/conversations${q ? `?search=${encodeURIComponent(q)}` : ''}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!data.success) {
+      container.innerHTML = `<div style="padding: 20px; text-align: center; color: var(--fg-muted); font-size: 13px;">${escapeHtml(data.error || 'Failed to load conversations')}</div>`;
+      return;
+    }
+
+    const conversations = data.data?.conversations || [];
+    if (conversations.length === 0) {
+      container.innerHTML = `<div style="padding: 28px 16px; text-align: center; color: var(--fg-muted); font-size: 13px;">No customer chats recorded yet.</div>`;
+      return;
+    }
+
+    container.innerHTML = '';
+    conversations.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'chat-conv-item';
+      const isSelected = activeChatCustomer && activeChatCustomer.chatId === c.chatId;
+
+      item.style.cssText = `
+        padding: 10px 12px;
+        border-radius: var(--r-md);
+        margin-bottom: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: all 0.15s ease;
+        background: ${isSelected ? 'var(--bg-surface-3, rgba(255, 255, 255, 0.08))' : 'transparent'};
+        border: 1px solid ${isSelected ? 'var(--accent)' : 'transparent'};
+      `;
+
+      const initial = (c.customerName || c.phone || 'C').charAt(0).toUpperCase();
+      const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+      item.innerHTML = `
+        <div class="user-avatar" style="width: 36px; height: 36px; min-width: 36px; font-size: 14px; font-weight: 700; background: var(--bg-surface); border: 1px solid var(--border);">
+          ${escapeHtml(initial)}
+        </div>
+        <div style="flex: 1; min-width: 0;">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+            <strong style="font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-primary);">${escapeHtml(c.customerName || c.phone)}</strong>
+            <span style="font-size: 10px; color: var(--fg-muted);">${escapeHtml(timeStr)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+            <span style="font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
+              ${c.lastMessageSender === 'bot' ? '🤖 ' : ''}${escapeHtml(c.lastMessage || '')}
+            </span>
+            <span class="badge-tag" style="font-size: 10px; padding: 1px 5px;">${c.totalMessages}</span>
+          </div>
+        </div>
+      `;
+
+      item.addEventListener('click', () => {
+        openCustomerChatThread(c);
+      });
+      container.appendChild(item);
+    });
+
+  } catch (err) {
+    console.error('Error loading conversations:', err);
+  }
+}
+window.loadConversations = loadConversations;
+
+async function openCustomerChatThread(customer) {
+  activeChatCustomer = customer;
+  
+  // Re-render conversations list to update active highlight
+  loadConversations();
+
+  // Update Chat Header
+  const headerName = document.getElementById('chatActiveName');
+  const headerPhone = document.getElementById('chatActivePhone');
+  const headerAvatar = document.getElementById('chatActiveAvatar');
+  const badge = document.getElementById('chatActiveStatusBadge');
+
+  if (headerName) headerName.textContent = customer.customerName || customer.phone;
+  if (headerPhone) headerPhone.textContent = `+${customer.phone || customer.chatId.split('@')[0]}`;
+  if (headerAvatar) headerAvatar.textContent = (customer.customerName || customer.phone || 'C').charAt(0).toUpperCase();
+  if (badge) badge.style.display = 'inline-block';
+
+  await fetchAndRenderChatMessages(customer.chatId);
+}
+window.openCustomerChatThread = openCustomerChatThread;
+
+async function fetchAndRenderChatMessages(chatId) {
+  const thread = document.getElementById('chatMessagesThread');
+  const countLabel = document.getElementById('chatMsgCountLabel');
+  if (!thread || !chatId) return;
+
+  try {
+    const res = await fetch(`/api/admin/chats/conversations/${encodeURIComponent(chatId)}/messages`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const messages = data.data?.messages || [];
+    if (countLabel) countLabel.textContent = `${messages.length} messages`;
+
+    thread.innerHTML = '';
+    if (messages.length === 0) {
+      thread.innerHTML = '<div style="text-align: center; color: var(--fg-muted); padding: 40px;">No messages recorded yet for this customer.</div>';
+      return;
+    }
+
+    messages.forEach(m => {
+      const isUser = m.sender === 'user';
+      const bubbleRow = document.createElement('div');
+      bubbleRow.style.cssText = `
+        display: flex;
+        justify-content: ${isUser ? 'flex-start' : 'flex-end'};
+        margin-bottom: 6px;
+        width: 100%;
+      `;
+
+      const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+      bubbleRow.innerHTML = `
+        <div style="
+          max-width: 78%;
+          padding: 9px 13px;
+          border-radius: ${isUser ? '14px 14px 14px 3px' : '14px 14px 3px 14px'};
+          background: ${isUser ? 'var(--bg-surface-2, #262930)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'};
+          color: ${isUser ? 'var(--fg-primary)' : '#ffffff'};
+          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+          border: 1px solid ${isUser ? 'var(--border)' : 'transparent'};
+        ">
+          <div style="font-size: 11px; margin-bottom: 3px; opacity: 0.85; font-weight: 600; display: flex; justify-content: space-between; gap: 10px;">
+            <span>${isUser ? (m.customerName ? `👤 ${escapeHtml(m.customerName)}` : '👤 Customer') : '🍔 Burger Raja'}</span>
+            <span style="font-weight: 400; font-size: 10px;">${escapeHtml(timeStr)}</span>
+          </div>
+          <div style="font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;">${escapeHtml(m.message)}</div>
+        </div>
+      `;
+      thread.appendChild(bubbleRow);
+    });
+
+    // Auto-scroll to bottom of thread
+    thread.scrollTop = thread.scrollHeight;
+  } catch (err) {
+    console.error('Failed to load chat messages:', err);
+  }
+}
+window.fetchAndRenderChatMessages = fetchAndRenderChatMessages;
+
+// Event listeners for chats toolbar
+const chatsRefreshBtn = document.getElementById('chatsRefreshBtn');
+if (chatsRefreshBtn) {
+  chatsRefreshBtn.addEventListener('click', () => {
+    loadConversations();
+    if (activeChatCustomer) fetchAndRenderChatMessages(activeChatCustomer.chatId);
+  });
+}
+
+const chatsSearchInput = document.getElementById('chatsSearchInput');
+if (chatsSearchInput) {
+  let searchTimer;
+  chatsSearchInput.addEventListener('input', (e) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      loadConversations(e.target.value.trim());
+    }, 300);
+  });
+}
 
 
 

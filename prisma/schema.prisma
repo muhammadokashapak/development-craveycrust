@@ -72,6 +72,7 @@ model Restaurant {
   processed_messages ProcessedMessage[]
   faq_categories     FAQCategory[]
   faqs               FAQ[]
+  chat_messages      ChatMessage[]
 
   @@map("restaurants")
 }
@@ -639,5 +640,26 @@ model FAQ {
   @@index([restaurant_id, category_id])
   @@index([restaurant_id, sort_order])
   @@map("faqs")
+}
+
+// ─── ChatMessage (Customer Conversation History) ───────────────────────────
+
+model ChatMessage {
+  id            String   @id @default(cuid())
+  restaurant_id String
+  chat_id       String   // e.g. 923001234567@s.whatsapp.net
+  phone         String   // e.g. 923001234567
+  customer_name String?
+  sender        String   // "user" | "bot"
+  message       String   @db.Text
+  message_type  String   @default("text")
+  created_at    DateTime @default(now())
+
+  restaurant    Restaurant @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@index([restaurant_id, chat_id])
+  @@index([restaurant_id, phone])
+  @@index([restaurant_id, created_at])
+  @@map("chat_messages")
 }
 

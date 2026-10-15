@@ -178,6 +178,14 @@
           </svg>
           <span>Customers</span>
         </button>
+        <button class="nav-item" type="button" data-view="chats" id="navChats" data-min-role="SUPER_ADMIN">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            <line x1="8" y1="9" x2="16" y2="9"></line>
+            <line x1="8" y1="13" x2="13" y2="13"></line>
+          </svg>
+          <span>Customer Chats</span>
+        </button>
         <button class="nav-item" type="button" data-view="faq">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
@@ -195,7 +203,7 @@
           <span>WhatsApp Bot</span>
           <span id="navWaDot" class="status-dot status-dot-sm"></span>
         </button>
-        <button class="nav-item" type="button" data-view="prompt">
+        <button class="nav-item" type="button" data-view="prompt" id="navPrompt" data-min-role="SUPER_ADMIN">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             <path d="M8 9h8"></path>
@@ -203,7 +211,7 @@
           </svg>
           <span>Bot Prompt</span>
         </button>
-        <button class="nav-item" type="button" data-view="settings">
+        <button class="nav-item" type="button" data-view="settings" id="navSettings" data-min-role="SUPER_ADMIN">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -414,7 +422,7 @@
             </select>
           </div>
 
-          <button id="openAddMenuItemBtn" class="btn btn-primary btn-sm" type="button">
+          <button id="openAddMenuItemBtn" class="btn btn-primary btn-sm" type="button" data-min-role="SUPER_ADMIN">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -494,7 +502,7 @@
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" id="dealsSearchInput" placeholder="Search deals..." />
             </div>
-            <button id="openAddDealBtn" class="btn btn-primary btn-sm" type="button" onclick="window.openAddDealModal()">
+            <button id="openAddDealBtn" class="btn btn-primary btn-sm" type="button" onclick="window.openAddDealModal()" data-min-role="SUPER_ADMIN">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               <span>Add Deal</span>
             </button>
@@ -599,9 +607,9 @@
           </div>
         </div>
 
-        <!-- Main Content Area: Centered Connection Card (Terminal Web Console Hidden) -->
-        <div class="whatsapp-split-container" style="grid-template-columns: 1fr; max-width: 680px; margin: 0 auto;">
-          <div class="whatsapp-split-left">
+        <!-- Main Content Area: Dynamic Split Layout -->
+        <div class="whatsapp-split-container" id="waSplitContainer">
+          <div class="whatsapp-split-left" id="waSplitLeft">
             <main class="main-card">
               <!-- SCREEN 1: ADD PHONE NUMBER (DEFAULT IDLE) -->
               <section id="phoneSection" class="view-section">
@@ -788,8 +796,8 @@
             </main>
           </div>
 
-          <!-- Right Half: Terminal Web Console (Hidden) -->
-          <div class="whatsapp-split-right hidden" style="display: none !important;">
+          <!-- Right Half: Terminal Web Console (Super Admin Only) -->
+          <div class="whatsapp-split-right hidden" id="waTerminalRight" data-min-role="SUPER_ADMIN" style="display: none !important;">
             <section class="terminal-card">
               <div class="terminal-header">
                 <div class="terminal-controls">
@@ -1261,6 +1269,58 @@
                 <tr><td colspan="7" class="table-empty">Loading order history...</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW: CUSTOMER CHATS (SUPER ADMIN ONLY) -->
+      <section id="viewChats" class="workspace-view hidden" style="height: calc(100vh - 120px); max-height: calc(100vh - 120px); display: flex; flex-direction: column; overflow: hidden; padding: 0;">
+        <div class="chats-workspace-grid" style="display: grid; grid-template-columns: 330px 1fr; height: 100%; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; box-shadow: var(--shadow-sm);">
+          
+          <!-- Left Column: Conversations List -->
+          <div class="chats-sidebar-col" style="border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100%; background: var(--bg-surface-2, rgba(255, 255, 255, 0.02)); overflow: hidden;">
+            <div style="padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center;">
+              <div class="toolbar-search" style="flex: 1; margin: 0;">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" id="chatsSearchInput" placeholder="Search customer, phone..." style="width: 100%; padding: 6px 10px 6px 32px; font-size: 13px;" />
+              </div>
+              <button type="button" id="chatsRefreshBtn" class="btn btn-secondary btn-sm" title="Refresh Live Chats" style="padding: 7px 10px;">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              </button>
+            </div>
+            
+            <div id="chatsConversationsList" style="flex: 1; overflow-y: auto; padding: 8px;">
+              <div style="text-align: center; color: var(--fg-muted); padding: 30px 16px; font-size: 13px;">Loading conversations...</div>
+            </div>
+          </div>
+
+          <!-- Right Column: Active Conversation Messages Thread -->
+          <div class="chats-main-col" style="display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--bg-surface);">
+            <!-- Chat Header -->
+            <div id="chatActiveHeader" style="padding: 12px 20px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface);">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div id="chatActiveAvatar" class="user-avatar" style="width: 38px; height: 38px; font-size: 15px; font-weight: 700; background: var(--accent); color: #fff;">💬</div>
+                <div>
+                  <h4 id="chatActiveName" style="margin: 0; font-size: 15px; font-weight: 600;">Select a Conversation</h4>
+                  <span id="chatActivePhone" style="font-size: 12px; color: var(--fg-muted);">WhatsApp Customer Chat Log</span>
+                </div>
+              </div>
+              <div id="chatActiveStatusBadge" class="badge-tag badge-active" style="display: none;">Verified WhatsApp</div>
+            </div>
+
+            <!-- Messages Thread -->
+            <div id="chatMessagesThread" style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--fg-muted); font-size: 14px;">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 12px; opacity: 0.5;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <span>Select a customer from the left list to view their live conversation history</span>
+              </div>
+            </div>
+
+            <!-- Live Audit Log Footer -->
+            <div style="padding: 10px 20px; border-top: 1px solid var(--border); background: var(--bg-surface-2, rgba(255, 255, 255, 0.02)); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--fg-muted);">
+              <span>🔒 Live WhatsApp Audit Log — Customer messages & Raja bot responses are saved in real-time.</span>
+              <span id="chatMsgCountLabel" style="font-family: var(--f-mono);">0 messages</span>
+            </div>
           </div>
         </div>
       </section>

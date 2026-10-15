@@ -1,7 +1,9 @@
 import express from 'express';
 import { getPromptInfo, saveCustomPrompt, resetCustomPrompt } from '../../src/config/systemPrompt.js';
+import { requireRole } from '../../src/middleware/auth.js';
 
 const router = express.Router();
+router.use(requireRole(['SUPER_ADMIN']));
 
 /**
  * GET /api/admin/prompt
