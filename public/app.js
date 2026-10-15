@@ -1173,6 +1173,7 @@ window.showToast = showToast;
 
 // ─── View Switcher ─────────────────────────────────────────────────────
 function switchView(viewName) {
+  if (viewName === 'prompt') viewName = 'dashboard';
   currentActiveView = viewName;
   const views = {
     dashboard:  { el: document.getElementById('viewDashboard'),  title: 'Dashboard Overview', sub: 'Real-time restaurant metrics & operations' },
