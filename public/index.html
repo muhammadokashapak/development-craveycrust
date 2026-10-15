@@ -915,16 +915,6 @@
                 <textarea id="setOutOfDeliveryMsg" rows="3" placeholder="Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.&#10;&#10;Barah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!"></textarea>
                 <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Agar customer ki location delivery range se bahar ho ya unapproved area mein ho to bot ye dynamic message bhejega.</span>
               </div>
-              <div class="settings-card-action">
-                <button type="submit" id="saveSettingsBtn" class="btn btn-primary">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                  <span>Save Settings</span>
-                </button>
-              </div>
             </div>
           </div>
 
@@ -1009,18 +999,20 @@
                 <textarea id="setHumanHandoffMsg" rows="2" placeholder="Aapki request humare support agent ko forward kar di gayi hai, humara representative jald aapse rabta karega."></textarea>
                 <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Automated reply sent to the customer upon requesting a human agent.</span>
               </div>
-
-              <div class="settings-card-action" style="margin-top: 10px;">
-                <button type="submit" id="saveSettingsBtn2" class="btn btn-primary" onclick="document.getElementById('settingsForm').requestSubmit()">
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                  <span>Save Settings</span>
-                </button>
-              </div>
             </div>
+          </div>
+
+          <!-- Single Unified Save Button for Entire Settings Form -->
+          <div class="settings-save-unified-bar" style="grid-column: 1 / -1; display: flex; justify-content: flex-end; align-items: center; padding: 16px 20px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--r-md); margin-top: 8px; gap: 16px; flex-wrap: wrap;">
+            <span style="font-size: 13px; color: var(--fg-muted); flex: 1; min-width: 220px;">Yeh button dabane se tamaam Profile, Timings, Delivery, Payments aur Support settings aik sath save ho jayengi.</span>
+            <button type="submit" id="saveSettingsBtn" class="btn btn-primary" style="padding: 10px 28px; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span>Save Settings</span>
+            </button>
           </div>
         </form>
       </section>
