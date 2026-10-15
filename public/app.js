@@ -1226,9 +1226,9 @@ window.showToast = showToast;
 
 // ─── View Switcher ─────────────────────────────────────────────────────
 function switchView(viewName) {
-  // Role-based view protection: block prompt, settings, and chats for non-superadmin
+  // Role-based view protection: block settings and chats for non-superadmin
   if (currentUserRole !== 'SUPER_ADMIN') {
-    if (viewName === 'prompt' || viewName === 'settings' || viewName === 'chats') {
+    if (viewName === 'settings' || viewName === 'chats') {
       viewName = 'dashboard';
     }
   }

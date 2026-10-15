@@ -3,7 +3,7 @@ import { getPromptInfo, saveCustomPrompt, resetCustomPrompt } from '../../src/co
 import { requireRole } from '../../src/middleware/auth.js';
 
 const router = express.Router();
-router.use(requireRole(['SUPER_ADMIN']));
+router.use(requireRole(['SUPER_ADMIN', 'ADMIN']));
 
 /**
  * GET /api/admin/prompt
