@@ -599,8 +599,8 @@
           </div>
         </div>
 
-        <!-- Main Content Area: Split 50/50 Layout (Left: QR / Connection, Right: Terminal) -->
-        <div class="whatsapp-split-container">
+        <!-- Main Content Area: Centered Connection Card (Terminal Web Console Hidden) -->
+        <div class="whatsapp-split-container" style="grid-template-columns: 1fr; max-width: 680px; margin: 0 auto;">
           <div class="whatsapp-split-left">
             <main class="main-card">
               <!-- SCREEN 1: ADD PHONE NUMBER (DEFAULT IDLE) -->
@@ -788,8 +788,8 @@
             </main>
           </div>
 
-          <!-- Right Half: Terminal Web Console -->
-          <div class="whatsapp-split-right">
+          <!-- Right Half: Terminal Web Console (Hidden) -->
+          <div class="whatsapp-split-right hidden" style="display: none !important;">
             <section class="terminal-card">
               <div class="terminal-header">
                 <div class="terminal-controls">
