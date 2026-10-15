@@ -248,6 +248,27 @@ async function executeTool(toolName, args, context) {
                             menuItemId = resolved.item.id;
                             if (resolved.hasVariants && resolved.variants?.length === 1) {
                                 variantId = resolved.variants[0].id;
+                            } else if (resolved.hasVariants && resolved.variants?.length > 1 && !variantId) {
+                                const sizeQuery = `${args.itemName} ${args.variantName || args.size || ''}`.toLowerCase();
+                                const matchedVariant = resolved.variants.find(v => {
+                                    const vName = v.name.toLowerCase();
+                                    return sizeQuery.includes(vName) ||
+                                           (vName.includes('small') && /\b(?:small|s)\b/i.test(sizeQuery)) ||
+                                           (vName.includes('medium') && /\b(?:medium|med|m)\b/i.test(sizeQuery)) ||
+                                           (vName.includes('large') && /\b(?:large|lrg|l)\b/i.test(sizeQuery)) ||
+                                           (vName.includes('party') && /\b(?:party|p)\b/i.test(sizeQuery));
+                                });
+                                if (matchedVariant) {
+                                    variantId = matchedVariant.id;
+                                } else {
+                                    const variantOptions = resolved.variants.map(v => `${v.name} (Rs. ${Number(v.price)})`).join(', ');
+                                    return {
+                                        requiresVariant: true,
+                                        itemName: resolved.item.name,
+                                        variants: resolved.variants.map(v => ({ name: v.name, price: Number(v.price) })),
+                                        message: `"${resolved.item.name}" ke mukhtalif sizes mojood hain (${variantOptions}). Pehle customer se poochein ke kaunsa size add karna hai aur size milne ke baad cart mein add karein.`
+                                    };
+                                }
                             }
                         }
                     } else if (resolved.status === 'AMBIGUOUS') {
@@ -391,7 +412,7 @@ async function executeTool(toolName, args, context) {
                 if (!context.confirmIntent) {
                     return {
                         error: 'CONFIRMATION_REQUIRED',
-                        message: 'Customer ne abhi tak final confirmation nahi di. Pehle customer ko mukammal Order Summary dikhao (Items, Total Bill, Delivery Address, Contact Phone, Payment Method) aur poocho: "Bhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink, Fries ya Garlic Bread), ya yeh order confirm kar dein?". Jab customer "Haan", "Confirm" ya "Order kar do" kahe, sirf tab order book karein.'
+                        message: 'Customer ne abhi tak final confirmation nahi di. Pehle customer ko mukammal Order Summary dikhao (Items, Total Bill, Delivery Address, Contact Phone, Payment Method) aur poocho: "Bhapa, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?". Jab customer "Haan", "Confirm" ya "Order kar do" kahe, sirf tab order book karein.'
                     };
                 }
 
