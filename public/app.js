@@ -5638,30 +5638,17 @@ async function fetchAndRenderChatMessages(chatId) {
     messages.forEach(m => {
       const isUser = m.sender === 'user';
       const bubbleRow = document.createElement('div');
-      bubbleRow.style.cssText = `
-        display: flex;
-        justify-content: ${isUser ? 'flex-start' : 'flex-end'};
-        margin-bottom: 6px;
-        width: 100%;
-      `;
+      bubbleRow.className = `chat-bubble-row ${isUser ? 'chat-row-user' : 'chat-row-bot'}`;
 
       const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
       bubbleRow.innerHTML = `
-        <div style="
-          max-width: 78%;
-          padding: 9px 13px;
-          border-radius: ${isUser ? '14px 14px 14px 3px' : '14px 14px 3px 14px'};
-          background: ${isUser ? 'var(--bg-surface-2, #262930)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)'};
-          color: ${isUser ? 'var(--fg-primary)' : '#ffffff'};
-          box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-          border: 1px solid ${isUser ? 'var(--border)' : 'transparent'};
-        ">
-          <div style="font-size: 11px; margin-bottom: 3px; opacity: 0.85; font-weight: 600; display: flex; justify-content: space-between; gap: 10px;">
-            <span>${isUser ? (m.customerName ? `👤 ${escapeHtml(m.customerName)}` : '👤 Customer') : '🍔 Burger Raja'}</span>
-            <span style="font-weight: 400; font-size: 10px;">${escapeHtml(timeStr)}</span>
+        <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-bot'}">
+          <div class="chat-meta">
+            <span class="chat-name">${isUser ? (m.customerName ? `👤 ${escapeHtml(m.customerName)}` : '👤 Customer') : '🍔 Burger Raja'}</span>
+            <span class="chat-time">${escapeHtml(timeStr)}</span>
           </div>
-          <div style="font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;">${escapeHtml(m.message)}</div>
+          <div class="chat-body">${escapeHtml(m.message)}</div>
         </div>
       `;
       thread.appendChild(bubbleRow);
