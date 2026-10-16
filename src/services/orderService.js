@@ -8,6 +8,7 @@ import { generateOrderNumber } from './orderNumberService.js';
 import { broadcastOrderEvent } from './realtimeService.js';
 import { updateSessionStage } from './sessionService.js';
 import { sendAdminNewOrderNotification, sendCustomerOrderStatusNotification, sendCancellationNotification } from './whatsappNotificationService.js';
+import { updateCustomerNameForChat } from './chatService.js';
 
 const Decimal = Prisma.Decimal;
 
@@ -403,6 +404,16 @@ export async function createOrder(params) {
         paymentMethod: orderResult.payment_method,
         createdAt: orderResult.created_at,
     });
+
+    // Synchronize confirmed customer name to customer chats & records
+    if (orderResult.customer_name && (session.chat_id || orderResult.phone)) {
+        updateCustomerNameForChat({
+            chatId: session.chat_id,
+            phone: orderResult.phone || session.verified_phone,
+            customerName: orderResult.customer_name,
+            restaurantId: restId,
+        }).catch(err => console.warn('[ORDER_SERVICE] updateCustomerNameForChat error:', err.message));
+    }
 
     const fullOrder = await getOrderByNumber({ restaurantId: restId, orderNumber: orderResult.order_number });
     

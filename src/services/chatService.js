@@ -19,6 +19,9 @@ if (!fs.existsSync(DATA_DIR)) {
 
 // In-memory buffer for fast retrieval & fallback
 let _localChatStore = [];
+const _confirmedNamesByChat = new Map();
+const _confirmedNamesByPhone = new Map();
+
 try {
     if (fs.existsSync(CHAT_BACKUP_FILE)) {
         const raw = fs.readFileSync(CHAT_BACKUP_FILE, 'utf8');
@@ -61,6 +64,84 @@ function sanitizePhone(phone, chatId) {
 }
 
 /**
+ * Update and persist customer name across in-memory chat store, database messages, and customer records.
+ */
+export async function updateCustomerNameForChat({ chatId, phone, customerName, restaurantId } = {}) {
+    if (!customerName || typeof customerName !== 'string') return;
+    const cleanName = customerName.trim();
+    if (!cleanName || cleanName.toLowerCase() === 'customer' || cleanName.toLowerCase() === 'null' || cleanName.toLowerCase() === 'undefined') return;
+
+    const cleanChatId = chatId ? String(chatId).trim() : null;
+    let cleanPhone = phone ? String(phone).replace(/\D/g, '') : null;
+    const localPakPhone = cleanPhone && cleanPhone.startsWith('92') && cleanPhone.length === 12 ? '0' + cleanPhone.slice(2) : cleanPhone;
+    const intlPakPhone = cleanPhone && cleanPhone.startsWith('03') && cleanPhone.length === 11 ? '92' + cleanPhone.slice(1) : cleanPhone;
+
+    if (cleanChatId) _confirmedNamesByChat.set(cleanChatId, cleanName);
+    if (cleanPhone) _confirmedNamesByPhone.set(cleanPhone, cleanName);
+    if (localPakPhone) _confirmedNamesByPhone.set(localPakPhone, cleanName);
+    if (intlPakPhone) _confirmedNamesByPhone.set(intlPakPhone, cleanName);
+
+    // 1. Backfill all matching messages in in-memory store
+    let updatedCount = 0;
+    for (let i = 0; i < _localChatStore.length; i++) {
+        const entry = _localChatStore[i];
+        const matchChat = cleanChatId && (entry.chat_id === cleanChatId || entry.chatId === cleanChatId);
+        const entryPhone = entry.phone ? String(entry.phone).replace(/\D/g, '') : null;
+        const matchPhone = (cleanPhone && entryPhone === cleanPhone) ||
+                           (localPakPhone && entryPhone === localPakPhone) ||
+                           (intlPakPhone && entryPhone === intlPakPhone);
+
+        if (matchChat || matchPhone) {
+            entry.customer_name = cleanName;
+            if (cleanPhone && !entry.phone) {
+                entry.phone = cleanPhone;
+            }
+            updatedCount++;
+        }
+    }
+
+    if (updatedCount > 0) {
+        scheduleSaveLocal();
+    }
+
+    // 2. Persist update to DB asynchronously
+    setImmediate(async () => {
+        try {
+            const prisma = getDbClient();
+            if (!prisma) return;
+
+            const orConditions = [];
+            if (cleanChatId) orConditions.push({ chat_id: cleanChatId });
+            if (cleanPhone) orConditions.push({ phone: cleanPhone });
+            if (localPakPhone && localPakPhone !== cleanPhone) orConditions.push({ phone: localPakPhone });
+            if (intlPakPhone && intlPakPhone !== cleanPhone) orConditions.push({ phone: intlPakPhone });
+
+            if (prisma.chatMessage && orConditions.length > 0) {
+                await prisma.chatMessage.updateMany({
+                    where: { OR: orConditions },
+                    data: { customer_name: cleanName },
+                }).catch(() => {});
+            }
+
+            if (prisma.customer && (cleanPhone || localPakPhone)) {
+                await prisma.customer.updateMany({
+                    where: {
+                        OR: [
+                            ...(cleanPhone ? [{ phone: cleanPhone }, { whatsapp_phone: cleanPhone }] : []),
+                            ...(localPakPhone ? [{ phone: localPakPhone }, { whatsapp_phone: localPakPhone }] : []),
+                            ...(intlPakPhone ? [{ phone: intlPakPhone }, { whatsapp_phone: intlPakPhone }] : []),
+                        ],
+                    },
+                    data: { name: cleanName },
+                }).catch(() => {});
+            }
+        } catch (err) {
+            console.warn('[CHAT_SERVICE] Error updating customer name in DB:', err.message);
+        }
+    });
+}
+
+/**
  * Record a message (user, bot, or staff) in real-time.
  */
 export async function recordChatMessage({
@@ -80,9 +161,16 @@ export async function recordChatMessage({
     const cleanSender = (sender === 'bot' || sender === 'agent') ? 'bot' : 'user';
     const timestamp = new Date();
 
-    // Clean customer name
+    // Check confirmed names cache first (highest authority)
     let cleanName = null;
-    if (customerName && typeof customerName === 'string') {
+    if (cleanChatId && _confirmedNamesByChat.has(cleanChatId)) {
+        cleanName = _confirmedNamesByChat.get(cleanChatId);
+    } else if (cleanPhone && _confirmedNamesByPhone.has(cleanPhone)) {
+        cleanName = _confirmedNamesByPhone.get(cleanPhone);
+    }
+
+    // Clean customer name if provided and not yet confirmed
+    if (!cleanName && customerName && typeof customerName === 'string') {
         const trimmed = customerName.trim();
         if (trimmed && trimmed.toLowerCase() !== 'null' && trimmed.toLowerCase() !== 'undefined' && trimmed.toLowerCase() !== 'customer') {
             cleanName = trimmed;
@@ -306,10 +394,66 @@ export async function getConversations({ restaurantId, search, limit = 50, page 
         }
     }
 
-    // 3. Cross-reference customer table for any unknown names
+    // 3. Prioritize Confirmed Order Customer Names from Order table
+    if (prisma && prisma.order) {
+        try {
+            const recentOrders = await prisma.order.findMany({
+                where: restId ? { restaurant_id: restId } : {},
+                orderBy: { created_at: 'desc' },
+                take: 1000,
+                select: {
+                    customer_name: true,
+                    phone: true,
+                    whatsapp_phone: true,
+                    source_chat_id: true,
+                },
+            });
+
+            const orderNameByChat = new Map();
+            const orderNameByPhone = new Map();
+
+            for (const ord of recentOrders) {
+                const oName = ord.customer_name?.trim();
+                if (!oName || oName.toLowerCase() === 'customer' || oName.toLowerCase() === 'null') continue;
+
+                if (ord.source_chat_id && !orderNameByChat.has(ord.source_chat_id)) {
+                    orderNameByChat.set(ord.source_chat_id, oName);
+                    _confirmedNamesByChat.set(ord.source_chat_id, oName);
+                }
+                const p1 = ord.whatsapp_phone ? ord.whatsapp_phone.replace(/\D/g, '') : null;
+                const p2 = ord.phone ? ord.phone.replace(/\D/g, '') : null;
+                for (const p of [p1, p2]) {
+                    if (p && !orderNameByPhone.has(p)) {
+                        orderNameByPhone.set(p, oName);
+                        _confirmedNamesByPhone.set(p, oName);
+                        if (p.startsWith('92') && p.length === 12) {
+                            orderNameByPhone.set('0' + p.slice(2), oName);
+                            _confirmedNamesByPhone.set('0' + p.slice(2), oName);
+                        }
+                        if (p.startsWith('03') && p.length === 11) {
+                            orderNameByPhone.set('92' + p.slice(1), oName);
+                            _confirmedNamesByPhone.set('92' + p.slice(1), oName);
+                        }
+                    }
+                }
+            }
+
+            for (const [key, conv] of conversationsMap.entries()) {
+                const confName = orderNameByChat.get(conv.chatId) ||
+                                 orderNameByChat.get(key) ||
+                                 (conv.phone ? orderNameByPhone.get(conv.phone) : null) ||
+                                 (conv.phone && conv.phone.startsWith('92') && conv.phone.length === 12 ? orderNameByPhone.get('0' + conv.phone.slice(2)) : null);
+                if (confName) {
+                    conv.customerName = confName;
+                }
+            }
+        } catch (_) {}
+    }
+
+    // 4. Cross-reference customer table for any unknown or placeholder names
     if (prisma && prisma.customer) {
         try {
-            const unknownList = Array.from(conversationsMap.values()).filter(c => !c.customerName || c.customerName === 'Customer');
+            const unknownList = Array.from(conversationsMap.values()).filter(c => !c.customerName || c.customerName === 'Customer' || c.customerName.startsWith('Customer ('));
             if (unknownList.length > 0) {
                 const phones = unknownList.map(c => c.phone).filter(Boolean);
                 const altPhones = phones.map(p => p.startsWith('92') && p.length === 12 ? '0' + p.slice(2) : p);
@@ -328,9 +472,9 @@ export async function getConversations({ restaurantId, search, limit = 50, page 
 
                 const nameByPhone = new Map();
                 for (const cust of matchedCustomers) {
-                    if (cust.name) {
-                        if (cust.whatsapp_phone) nameByPhone.set(cust.whatsapp_phone, cust.name);
-                        if (cust.phone) nameByPhone.set(cust.phone, cust.name);
+                    if (cust.name && cust.name.trim() && cust.name !== 'Customer') {
+                        if (cust.whatsapp_phone) nameByPhone.set(cust.whatsapp_phone, cust.name.trim());
+                        if (cust.phone) nameByPhone.set(cust.phone, cust.name.trim());
                     }
                 }
 
@@ -381,6 +525,50 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
     const prisma = getDbClient();
     let messages = [];
 
+    // First find any associated phone from local store or DB messages
+    let associatedPhone = null;
+    const localSample = _localChatStore.findLast(m => (m.chat_id === cleanChatId || m.chatId === cleanChatId) && m.phone);
+    if (localSample?.phone) {
+        associatedPhone = String(localSample.phone).replace(/\D/g, '');
+    }
+
+    // Resolve most authoritative confirmed customer name
+    let resolvedCustomerName = _confirmedNamesByChat.get(cleanChatId) ||
+                               (associatedPhone ? _confirmedNamesByPhone.get(associatedPhone) : null) ||
+                               (associatedPhone && associatedPhone.startsWith('92') && associatedPhone.length === 12 ? _confirmedNamesByPhone.get('0' + associatedPhone.slice(2)) : null) ||
+                               null;
+
+    if (!resolvedCustomerName && prisma) {
+        try {
+            if (prisma.order) {
+                const orConditions = [
+                    { source_chat_id: cleanChatId },
+                    { phone: cleanChatId.split('@')[0] },
+                    { whatsapp_phone: cleanChatId.split('@')[0] },
+                ];
+                if (associatedPhone) {
+                    orConditions.push({ phone: associatedPhone });
+                    orConditions.push({ whatsapp_phone: associatedPhone });
+                    if (associatedPhone.startsWith('92') && associatedPhone.length === 12) {
+                        const local03 = '0' + associatedPhone.slice(2);
+                        orConditions.push({ phone: local03 });
+                        orConditions.push({ whatsapp_phone: local03 });
+                    }
+                }
+                const ord = await prisma.order.findFirst({
+                    where: { OR: orConditions },
+                    orderBy: { created_at: 'desc' },
+                    select: { customer_name: true },
+                });
+                if (ord?.customer_name && ord.customer_name.trim()) {
+                    resolvedCustomerName = ord.customer_name.trim();
+                    _confirmedNamesByChat.set(cleanChatId, resolvedCustomerName);
+                    if (associatedPhone) _confirmedNamesByPhone.set(associatedPhone, resolvedCustomerName);
+                }
+            }
+        } catch (_) {}
+    }
+
     // 1. Try DB
     if (prisma && prisma.chatMessage) {
         try {
@@ -403,7 +591,7 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
                     id: m.id,
                     chatId: m.chat_id,
                     phone: m.phone,
-                    customerName: m.customer_name,
+                    customerName: (m.sender === 'user' && resolvedCustomerName) ? resolvedCustomerName : (m.customer_name || resolvedCustomerName),
                     sender: m.sender,
                     message: m.message,
                     messageType: m.message_type,
@@ -420,7 +608,7 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
             id: m.id,
             chatId: m.chat_id,
             phone: m.phone,
-            customerName: m.customer_name,
+            customerName: (m.sender === 'user' && resolvedCustomerName) ? resolvedCustomerName : (m.customer_name || resolvedCustomerName),
             sender: m.sender,
             message: m.message,
             messageType: m.message_type,

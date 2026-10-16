@@ -56,6 +56,7 @@ import adminPromptRouter from './routes/admin/prompt.js';
 import adminUploadRouter from './routes/admin/upload.js';
 import adminChatsRouter from './routes/admin/chats.js';
 import { recordChatMessage } from './src/services/chatService.js';
+import { getSessionOrderDetails } from './src/services/sessionService.js';
 import internalMenuRouter from './routes/internal/menu.js';
 
 // ─── Phase 3: Deals, Promotions & Delivery Areas ──────────
@@ -1422,7 +1423,11 @@ async function handleMessage(sock, msg, session) {
             // ── Route to Standalone AI Agent (Fast routes + AI + Token logging) ──
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
-            const customerName = msg.pushName || identity?.name || null;
+            let customerName = msg.pushName || identity?.name || null;
+            const liveDetails = getSessionOrderDetails(session?.id || jid, customerPhone);
+            if (liveDetails?.name) {
+                customerName = liveDetails.name;
+            }
             console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
 
             // Record incoming customer chat
@@ -1502,7 +1507,11 @@ async function handleMessage(sock, msg, session) {
         try {
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
-            const customerName = msg.pushName || identity?.name || null;
+            let customerName = msg.pushName || identity?.name || null;
+            const liveDetailsOrder = getSessionOrderDetails(session?.id || jid, customerPhone);
+            if (liveDetailsOrder?.name) {
+                customerName = liveDetailsOrder.name;
+            }
 
             // Record incoming customer chat
             recordChatMessage({

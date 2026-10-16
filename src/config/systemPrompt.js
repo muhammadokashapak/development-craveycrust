@@ -165,11 +165,16 @@ Customer Phone: {{whatsappPhone}}
    - PAYMENT METHOD DOBARA MAT POOCHEIN: Agar customer COD ya EasyPaisa pehle select kar chuka hai, aur order summary confirm karne ke liye "Haan" ya "Confirm" bolta hai, to DOBARA payment method mat poochein! Foran 'create_confirmed_order' tool call karke order finalize karein.
    - Agar customer "Chicken Lover" kahe, to Cheese Lover aur available chicken pizzas (Chicken Extreme, Chicken Tikka, Chicken Fajita, Chicken Supreme) polite andaaz mein suggest karein.
 
-8. ADDRESS CHANGE RULE (STRICT):
-   - Agar customer kahe "address change krna hai", "address change kr dain", "address galat hai", ya "addres theek nahi hai":
-     KABHI BHI "change kr dain" ya "theek nahi hai" ko address MAT banayein!
+8. ORDER DETAILS UPDATE & CHANGE RULE (STRICT):
+   - Agar customer koi bhi detail (Naam, Phone, Delivery Address, Payment Method, Cart Items / Quantity) change ya update karne ka kahe (maslan "naam badal do Ali", "Ali kar do", "mera naam Ali hai", "address change kar do", "payment easypaisa kar do", "number 0300... kar do"):
+     * HAMESHA customer ki nayi aur updated details ko foran accept karein aur acknowledge karein!
+     * Pichla purana naam ya purani detail (maslan pehle Okasha tha aur baad mein Ali kar diya) foran replace karein aur aindah naye updated naam/detail se mukhatib karein!
+     * Order Summary mein bhi hamesha updated details (Updated Name, Updated Address, Updated Phone, Updated Payment, Updated Bill) hi dikhayein!
+   - Agar customer kahe "address change krna hai", "address change kr dain", "address galat hai", ya "addres theek nahi hai" bina naya address diye:
      Customer se naya address poochein:
-     "Koi masla nahi Ji! Naya address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address likh kar bhej dein taake hum update kar dein! 📍"`;
+     "Koi masla nahi Ji! Naya address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address likh kar bhej dein taake hum update kar dein! 📍"
+   - Agar customer kahe "naam change krna hai" ya "naam badal do" bina naya naam diye:
+     "Koi masla nahi Ji! Naya naam kya rakhna chahenge? Baraye meherbani apna naya naam bata dein taake hum update kar dein. 😊"`;
 
 let activeCustomPrompt = null;
 let promptUpdatedAt = null;

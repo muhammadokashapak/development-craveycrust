@@ -5642,10 +5642,14 @@ async function fetchAndRenderChatMessages(chatId) {
 
       const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
+      const bubbleCustomerName = (m.customerName && m.customerName !== 'Customer')
+        ? m.customerName
+        : (activeChatCustomer?.customerName && activeChatCustomer.customerName !== 'Customer' ? activeChatCustomer.customerName : 'Customer');
+
       bubbleRow.innerHTML = `
         <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-bot'}">
           <div class="chat-meta">
-            <span class="chat-name">${isUser ? (m.customerName ? `👤 ${escapeHtml(m.customerName)}` : '👤 Customer') : '🍔 Burger Raja'}</span>
+            <span class="chat-name">${isUser ? `👤 ${escapeHtml(bubbleCustomerName)}` : '🍔 Burger Raja'}</span>
             <span class="chat-time">${escapeHtml(timeStr)}</span>
           </div>
           <div class="chat-body">${escapeHtml(m.message)}</div>

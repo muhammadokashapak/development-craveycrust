@@ -23,6 +23,7 @@ import { checkFastRoute, extractCustomerDetails, cleanExtractedAddress, setLastD
 import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
 import { extractLocationFromText } from '../../utils/location.js';
 import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails } from './sessionService.js';
+import { updateCustomerNameForChat } from './chatService.js';
 
 // ─── Local Direct Service Imports (No HTTP round-trips) ───────────────────
 import { getDefaultRestaurantId } from './restaurantService.js';
@@ -851,10 +852,16 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     }
     const extracted = extractCustomerDetails(effectiveText, sessionDetails);
     const updatePayload = {};
-    if (extracted.name && !sessionDetails.name) updatePayload.name = extracted.name;
-    if (extracted.address && !sessionDetails.address) updatePayload.address = extracted.address;
-    if (extracted.paymentMethod && !sessionDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-    if (extracted.phone && !sessionDetails.phoneConfirmed && !sessionDetails.phone) {
+    if (extracted.name && (!sessionDetails.name || extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase())) {
+        updatePayload.name = extracted.name;
+    }
+    if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase())) {
+        updatePayload.address = extracted.address;
+    }
+    if (extracted.paymentMethod && (!sessionDetails.paymentMethod || extracted.paymentMethod !== sessionDetails.paymentMethod)) {
+        updatePayload.paymentMethod = extracted.paymentMethod;
+    }
+    if (extracted.phone && (!sessionDetails.phone || extracted.phone !== sessionDetails.phone || !sessionDetails.phoneConfirmed)) {
         updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? (whatsappPhone || '').replace(/\D/g, '') : extracted.phone;
         updatePayload.phoneConfirmed = true;
     }
@@ -866,24 +873,34 @@ export async function processMessage({ sock, msg, session, text, identity, locat
             updatePayload.phoneConfirmed = true;
         }
     }
-    // If name & phone are confirmed and awaiting address (Step 3)
-    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && !sessionDetails.address && !updatePayload.address && !activeLocation) {
+    // If name & phone are confirmed and awaiting address (Step 3) or explicit address update provided
+    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
         const candidate = cleanExtractedAddress(effectiveText);
         const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim());
-        if (candidate && candidate.length >= 3 && !isNotAddr) {
+        if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
             updatePayload.address = candidate;
         }
     }
-    // If name, phone & address are confirmed and awaiting payment (Step 4)
-    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && (sessionDetails.address || updatePayload.address || activeLocation) && !sessionDetails.paymentMethod && !updatePayload.paymentMethod) {
-        if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(effectiveText.toLowerCase())) {
+    // If payment method update requested (Step 4 or subsequent modification)
+    if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(effectiveText.toLowerCase())) {
+        if (!sessionDetails.paymentMethod || sessionDetails.paymentMethod !== 'COD') {
             updatePayload.paymentMethod = 'COD';
-        } else if (/^(?:easypaisa|easy\s*paisa|ep|2)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:easypaisa|easy\s*paisa|ep)\b/i.test(effectiveText.toLowerCase())) {
+        }
+    } else if (/^(?:easypaisa|easy\s*paisa|ep|2)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:easypaisa|easy\s*paisa|ep)\b/i.test(effectiveText.toLowerCase())) {
+        if (!sessionDetails.paymentMethod || sessionDetails.paymentMethod !== 'EASYPAISA') {
             updatePayload.paymentMethod = 'EASYPAISA';
         }
     }
+
     if (Object.keys(updatePayload).length > 0) {
         updateSessionOrderDetails(sessionKey, updatePayload, whatsappPhone);
+        if (updatePayload.name) {
+            updateCustomerNameForChat({
+                chatId: jid || sessionKey,
+                phone: whatsappPhone,
+                customerName: updatePayload.name,
+            }).catch(() => {});
+        }
     }
 
     // Load active cart for real-time prompt grounding
