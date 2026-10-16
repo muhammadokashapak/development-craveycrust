@@ -5640,6 +5640,8 @@ async function fetchAndRenderChatMessages(chatId) {
       const bubbleRow = document.createElement('div');
       bubbleRow.className = `chat-bubble-row ${isUser ? 'chat-row-user' : 'chat-row-bot'}`;
 
+      const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
       // Authoritative customer name: The conversation/thread's confirmed customer name takes full precedence
       const threadName = (activeChatCustomer?.customerName && activeChatCustomer.customerName !== 'Customer' && !activeChatCustomer.customerName.startsWith('Customer ('))
         ? activeChatCustomer.customerName.trim()
