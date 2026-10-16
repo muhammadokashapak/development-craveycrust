@@ -1128,13 +1128,16 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
         }),
     ]);
 
-    // Fallback: If scoped restaurant returned 0 orders, but there are global orders,
-    // and no date/search/status filters are restricting it, check if we should fall back to all orders
-    if (totalCount === 0 && restId && !status && !date && (!search || !search.trim())) {
-        const globalCount = await prisma.order.count();
+    // Fallback: If scoped restaurant returned 0 orders, but global orders exist in DB,
+    // fall back without restaurant_id condition so orders are never hidden from admins
+    if (totalCount === 0 && restId) {
+        const globalConditions = conditions.filter(c => !c.restaurant_id);
+        const globalWhere = globalConditions.length > 0 ? { AND: globalConditions } : {};
+        const globalCount = await prisma.order.count({ where: globalWhere });
         if (globalCount > 0) {
             totalCount = globalCount;
             rawOrders = await prisma.order.findMany({
+                where: globalWhere,
                 orderBy: { created_at: 'desc' },
                 skip,
                 take: limit,

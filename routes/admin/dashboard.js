@@ -3,6 +3,14 @@ import { getDbClient } from '../../src/db/client.js';
 
 const router = express.Router();
 
+// Ensure dashboard metrics and recent orders are never cached
+router.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+});
+
 /**
  * GET /api/admin/dashboard
  * Summary statistics based exclusively on real database counts
@@ -23,7 +31,18 @@ router.get('/', async (req, res) => {
             const { getDefaultRestaurantId } = await import('../../src/services/restaurantService.js');
             restId = await getDefaultRestaurantId().catch(() => null);
         }
-        const where = restId && restId !== 'default-restaurant' ? { restaurant_id: restId } : {};
+        let where = restId && restId !== 'default-restaurant' ? { restaurant_id: restId } : {};
+
+        // If scoped restaurant has 0 orders but global orders exist, fall back to all orders
+        if (where.restaurant_id) {
+            const countForRest = await prisma.order.count({ where });
+            if (countForRest === 0) {
+                const totalGlobal = await prisma.order.count();
+                if (totalGlobal > 0) {
+                    where = {};
+                }
+            }
+        }
 
         const startOfToday = new Date();
         startOfToday.setHours(0, 0, 0, 0);

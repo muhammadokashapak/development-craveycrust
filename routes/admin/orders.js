@@ -11,6 +11,14 @@ import { getDefaultRestaurantId } from '../../src/services/restaurantService.js'
 
 const router = express.Router();
 
+// Ensure orders endpoints are never cached by browser, CDN or proxy
+router.use((req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    next();
+});
+
 /**
  * GET /api/admin/orders/stream
  * Real-time Server-Sent Events (SSE) feed for Admin Dashboard
@@ -20,10 +28,12 @@ router.get('/stream', (req, res) => {
 });
 
 async function resolveRestaurantId(req) {
-    if (req.user?.role === 'SUPER_ADMIN') {
-        return null;
+    // In Cravey Crust standalone store, both ADMIN and SUPER_ADMIN must see all orders.
+    // If a specific query filter is provided, honour it; otherwise null fetches all orders.
+    if (req.query?.restaurantId && req.query.restaurantId !== 'ALL') {
+        return req.query.restaurantId;
     }
-    return req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+    return null;
 }
 
 /**

@@ -85,6 +85,13 @@ const dashLogoutBtn = document.getElementById('dashLogoutBtn');
 
 let isAuthenticated = false;
 
+// Orders State Variables (declared globally at top to avoid TDZ ReferenceErrors)
+let currentOrderStatusFilter = 'ALL';
+let activeOrdersList = [];
+let realtimeEventSource = null;
+let ordersPageState = { page: 1, pageSize: 10 };
+let _lastRenderedOrdersSignature = '';
+
 function showAuthGate() {
   isAuthenticated = false;
   document.documentElement.classList.remove('auth-saved');
@@ -99,7 +106,7 @@ function showDashboard() {
   if (dashboardApp) dashboardApp.classList.remove('hidden');
   loadBrandDisplay();
   loadDashboardStats();
-  if (typeof loadOrders === 'function') loadOrders();
+  if (typeof loadOrders === 'function') loadOrders(false);
   if (typeof initRealtimeOrdersFeed === 'function') initRealtimeOrdersFeed();
 }
 
@@ -1314,6 +1321,23 @@ function switchView(viewName) {
     }
   }
 
+  if (viewName === 'dashboard') {
+    if (window._dashboardInterval) clearInterval(window._dashboardInterval);
+    window._dashboardInterval = setInterval(() => {
+      if (currentActiveView === 'dashboard') {
+        loadDashboardStats();
+      } else {
+        clearInterval(window._dashboardInterval);
+        window._dashboardInterval = null;
+      }
+    }, 5000);
+  } else {
+    if (window._dashboardInterval) {
+      clearInterval(window._dashboardInterval);
+      window._dashboardInterval = null;
+    }
+  }
+
   if (viewName === 'orders') {
     if (window._ordersInterval) clearInterval(window._ordersInterval);
     window._ordersInterval = setInterval(() => {
@@ -1324,7 +1348,7 @@ function switchView(viewName) {
         clearInterval(window._ordersInterval);
         window._ordersInterval = null;
       }
-    }, 15000);
+    }, 5000);
     if (typeof initRealtimeOrdersFeed === 'function') {
       if (!realtimeEventSource || realtimeEventSource.readyState === 2) {
         initRealtimeOrdersFeed();
@@ -1425,7 +1449,14 @@ if (sidebarUserCard) {
 // ─── Dashboard Stats Controller ────────────────────────────────────────
 async function loadDashboardStats() {
   try {
-    const res = await fetch('/api/admin/dashboard');
+    const res = await fetch(`/api/admin/dashboard?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
     if (!res.ok) return;
     const data = await res.json();
     if (data.success && data.data?.stats) {
@@ -3658,10 +3689,6 @@ if (deliverySearchInput) {
 // PHASE 4: ORDERS, CUSTOMERS & REAL-TIME STREAM CONTROLLERS
 // ══════════════════════════════════════════════════════════════
 
-let currentOrderStatusFilter = 'ALL';
-let activeOrdersList = [];
-let realtimeEventSource = null;
-
 const VALID_STATUS_TRANSITIONS_MAP = {
   PENDING: [{ to: 'CONFIRMED', label: 'Confirm Order', cls: 'btn-primary' }, { to: 'CANCELLED', label: 'Cancel Order', cls: 'btn-danger' }],
   CONFIRMED: [{ to: 'CANCELLED', label: 'Cancel Order', cls: 'btn-danger' }],
@@ -3673,8 +3700,7 @@ const VALID_STATUS_TRANSITIONS_MAP = {
 };
 
 // ─── Orders Loader ──────────────────────────────────────────
-let ordersPageState = { page: 1, pageSize: 10 };
-let _lastRenderedOrdersSignature = '';
+// Note: ordersPageState and _lastRenderedOrdersSignature are declared at top to avoid TDZ errors
 
 function renderOrdersTable(force = false) {
   const tbody = document.getElementById('ordersTableBody');
@@ -3774,8 +3800,16 @@ async function loadOrders(resetPage = false) {
     }
     if (searchVal) params.set('search', searchVal);
     if (dateVal) params.set('date', dateVal);
+    params.set('_t', Date.now());
 
-    const res = await fetch(`/api/admin/orders?${params.toString()}`);
+    const res = await fetch(`/api/admin/orders?${params.toString()}`, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
     const data = await res.json();
     if (!data.success) {
       if (!activeOrdersList || activeOrdersList.length === 0) {
@@ -3788,7 +3822,7 @@ async function loadOrders(resetPage = false) {
     activeOrdersList = orders;
 
     // Render cleanly without blank flashes
-    renderOrdersTable();
+    renderOrdersTable(true);
 
     // Cache orders locally in background if no filter active
     if (!searchVal && !dateVal && (!currentOrderStatusFilter || currentOrderStatusFilter === 'ALL')) {
@@ -4873,7 +4907,11 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`🔔 New Order ${orderData.orderNumber || ''} received!`, 'success');
-        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
+        if (typeof loadOrders === 'function') {
+          loadOrders(false).then(() => {
+            if (typeof renderOrdersTable === 'function') renderOrdersTable(true);
+          });
+        }
         loadDashboardStats();
       } catch (err) {
         console.error('SSE order.created parse error:', err);
@@ -4885,7 +4923,11 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`Order ${orderData.orderNumber || ''} status updated to ${orderData.newStatus || ''}`, 'info');
-        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
+        if (typeof loadOrders === 'function') {
+          loadOrders(false).then(() => {
+            if (typeof renderOrdersTable === 'function') renderOrdersTable(true);
+          });
+        }
         loadDashboardStats();
       } catch (err) {
         console.error('SSE status_changed parse error:', err);
@@ -4897,7 +4939,11 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`Order ${orderData.orderNumber || ''} was cancelled`, 'warning');
-        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
+        if (typeof loadOrders === 'function') {
+          loadOrders(false).then(() => {
+            if (typeof renderOrdersTable === 'function') renderOrdersTable(true);
+          });
+        }
         loadDashboardStats();
       } catch (err) {
         console.error('SSE order.cancelled parse error:', err);
@@ -4909,7 +4955,11 @@ function initRealtimeOrdersFeed() {
         if (!e.data || e.data.startsWith(':')) return;
         const payload = JSON.parse(e.data);
         if (payload.event === 'order.created' || payload.event === 'order.status_changed' || payload.event === 'order.cancelled' || payload.event === 'order.deleted') {
-          if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
+          if (typeof loadOrders === 'function') {
+            loadOrders(false).then(() => {
+              if (typeof renderOrdersTable === 'function') renderOrdersTable(true);
+            });
+          }
           loadDashboardStats();
         }
       } catch (_) {}
