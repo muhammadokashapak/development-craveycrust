@@ -855,6 +855,31 @@ function closeLogoutModal() {
   logoutModal.classList.add('hidden');
 }
 
+const repairKeysBtn = document.getElementById('repairKeysBtn');
+if (repairKeysBtn) {
+  repairKeysBtn.addEventListener('click', async () => {
+    repairKeysBtn.disabled = true;
+    const origHtml = repairKeysBtn.innerHTML;
+    repairKeysBtn.innerHTML = `<span>Repairing...</span>`;
+    try {
+      const res = await fetch(`/api/sessions/${currentSessionId}/repair-keys`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message || 'Session encryption keys refreshed successfully', 'success');
+      } else {
+        showToast(data.error || 'Failed to repair keys', 'error');
+      }
+    } catch (err) {
+      showToast('Error repairing keys: ' + err.message, 'error');
+    } finally {
+      setTimeout(() => {
+        repairKeysBtn.disabled = false;
+        repairKeysBtn.innerHTML = origHtml;
+      }, 1000);
+    }
+  });
+}
+
 if (logoutBtn) logoutBtn.addEventListener('click', openLogoutModal);
 if (headerLogoutBtn) headerLogoutBtn.addEventListener('click', openLogoutModal);
 if (cancelLogoutBtn) cancelLogoutBtn.addEventListener('click', closeLogoutModal);

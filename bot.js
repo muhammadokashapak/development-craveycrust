@@ -129,6 +129,8 @@ class WhatsAppSession {
         this.user = null; // { name, id, number }
         this.startTime = Date.now();
         this.authDir = path.join(sessionsBaseDir, id);
+        this.msgRetryCounterCache = new Map();
+        this.msgRetryCounterCache.del = (key) => this.msgRetryCounterCache.delete(key);
         if (!fs.existsSync(this.authDir)) {
             fs.mkdirSync(this.authDir, { recursive: true });
         }
@@ -141,10 +143,44 @@ class WhatsAppSession {
                 for (const f of files) {
                     fs.rmSync(path.join(this.authDir, f), { recursive: true, force: true });
                 }
+                if (this.msgRetryCounterCache) {
+                    this.msgRetryCounterCache.clear();
+                }
                 console.log(`🗑️ Auth cleared for session ${this.id}`);
             } catch (err) {
                 console.error(`Error clearing auth for session ${this.id}:`, err.message);
             }
+        }
+    }
+
+    clearPeerSessions(specificSender = null) {
+        if (!fs.existsSync(this.authDir)) return 0;
+        try {
+            let cleared = 0;
+            const files = fs.readdirSync(this.authDir);
+            const targetFilter = specificSender
+                ? String(specificSender).split('@')[0].split(':')[0].replace(/\D/g, '')
+                : null;
+
+            for (const f of files) {
+                // NEVER delete creds.json, app-state-sync-key, or essential account identity
+                if (f === 'creds.json') continue;
+                if (f.startsWith('session-')) {
+                    if (!targetFilter || f.includes(targetFilter)) {
+                        try {
+                            fs.rmSync(path.join(this.authDir, f), { force: true });
+                            cleared++;
+                        } catch (_) {}
+                    }
+                }
+            }
+            if (cleared > 0) {
+                console.log(`🧹 [${this.id}] Cleared ${cleared} desynced peer session file(s)${targetFilter ? ` for ${targetFilter}` : ''} to trigger fresh PreKey exchange.`);
+            }
+            return cleared;
+        } catch (err) {
+            console.error(`Error clearing peer sessions for ${this.id}:`, err.message);
+            return 0;
         }
     }
 
@@ -375,6 +411,8 @@ app.post('/api/sessions/:id/auth/pairing-code', async (req, res) => {
         session.state = 'starting';
         session.pairingCode = null;
         session.qrDataUrl = null;
+        await session.cleanup();
+        session.clearAuth();
 
         await startSession(session, { mode: 'pairing', phoneNumber: cleanNumber });
 
@@ -407,6 +445,8 @@ app.post('/api/sessions/:id/auth/start-qr', async (req, res) => {
         session.state = 'starting';
         session.pairingCode = null;
         session.qrDataUrl = null;
+        await session.cleanup();
+        session.clearAuth();
 
         await startSession(session, { mode: 'qr' });
 
@@ -530,6 +570,23 @@ app.post('/api/sessions/clear-inactive', async (req, res) => {
     }
 });
 
+// Fix desynced / corrupted peer keys (Bad MAC repair) without logging out
+app.post('/api/sessions/:id/repair-keys', async (req, res) => {
+    const session = activeSessions.get(req.params.id);
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+
+    try {
+        console.log(`🔧 [${session.id}] Repairing session keys (clearing desynced peer ratchets)...`);
+        const cleared = session.clearPeerSessions();
+        if (session.sock) {
+            await startSession(session, { mode: 'restore' });
+        }
+        res.json({ success: true, message: `Repaired session: cleared ${cleared} desynced peer session file(s). WhatsApp will renegotiate fresh keys on next message.` });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ─── Backward Compatible Endpoints (Primary Session) ──────
 app.get('/api/status', (req, res) => {
     const primary = getPrimarySession();
@@ -552,6 +609,11 @@ app.post('/api/auth/cancel', (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
+    req.params.id = getPrimarySession().id;
+    return app._router.handle(req, res, () => {});
+});
+
+app.post('/api/repair-keys', (req, res) => {
     req.params.id = getPrimarySession().id;
     return app._router.handle(req, res, () => {});
 });
@@ -585,10 +647,35 @@ console.log = (...args) => {
     if (msg.trim()) addTerminalLog('info', msg);
 };
 
+let lastBadMacLog = 0;
 console.error = (...args) => {
+    const rawMsg = args.map(a => {
+        if (!a) return '';
+        if (a instanceof Error) return a.stack || a.message;
+        if (typeof a === 'object') {
+            try { return JSON.stringify(a); } catch (_) { return String(a); }
+        }
+        return String(a);
+    }).join(' ');
+
+    // Intercept noisy Bad MAC / Failed to decrypt whisper session errors from libsignal
+    if (
+        rawMsg.includes('Bad MAC') ||
+        rawMsg.includes('Failed to decrypt message with any known session') ||
+        rawMsg.includes('No matching sessions found for message')
+    ) {
+        const now = Date.now();
+        // Throttle and show a single informative warning instead of spamming stack traces
+        if (now - lastBadMacLog > 25000) {
+            lastBadMacLog = now;
+            origConsoleWarn('⚠️ [WhatsApp] Message decryption in progress (Bad MAC / session desync). WhatsApp is refreshing PreKeys...');
+            addTerminalLog('warn', '⚠️ [WhatsApp] Message key desync detected (Bad MAC). Auto-refreshing session keys...');
+        }
+        return;
+    }
+
     origConsoleError(...args);
-    const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-    if (msg.trim()) addTerminalLog('error', msg);
+    if (rawMsg.trim()) addTerminalLog('error', rawMsg);
 };
 
 console.warn = (...args) => {
@@ -897,6 +984,9 @@ async function startSession(session, options = {}) {
             creds: state.creds,
             keys: makeCacheableSignalKeyStore(state.keys, silentLogger),
         },
+        msgRetryCounterCache: session.msgRetryCounterCache,
+        retryRequestDelayMs: 350,
+        maxMsgRetryCount: 5,
         printQRInTerminal: false,
         logger: silentLogger,
         browser: Browsers.ubuntu('Chrome'),
@@ -910,7 +1000,9 @@ async function startSession(session, options = {}) {
             if (!key || !key.id) return undefined;
             const storeKey = `${key.remoteJid}_${key.id}`;
             const cached = global.messageCache.get(storeKey);
-            if (cached && cached.message) return cached.message;
+            if (cached) {
+                return cached.message || cached;
+            }
             return undefined;
         },
     });
@@ -1002,7 +1094,7 @@ async function startSession(session, options = {}) {
                     setTimeout(() => startSession(session, { mode: 'restore' }), 5000);
                 }
             } else if (statusCode === reason.restartRequired) {
-                startSession(session, { mode: session.mode, phoneNumber });
+                startSession(session, { mode: 'restore', phoneNumber });
             } else if (statusCode === 405) {
                 setTimeout(() => startSession(session, { mode: session.mode, phoneNumber }), 3000);
             } else {
@@ -1019,9 +1111,19 @@ async function startSession(session, options = {}) {
 
     // ─── Message Handler ──────────────────────────────────
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-
         for (const msg of messages) {
+            // Auto-heal on Bad MAC / decryption failure (CIPHERTEXT stub)
+            if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
+                const param = (msg.messageStubParameters && msg.messageStubParameters[0]) || '';
+                if (param.includes('Bad MAC') || param.includes('No matching sessions') || param.includes('SessionError')) {
+                    const sender = msg.key.participant || msg.key.remoteJid;
+                    session.clearPeerSessions(sender);
+                }
+                continue;
+            }
+
+            if (type !== 'notify') continue;
+
             try {
                 await handleMessage(sock, msg, session);
             } catch (err) {
@@ -1803,6 +1905,7 @@ async function initAllSessions() {
                 session.state = 'idle';
             });
         } else {
+            session.clearAuth();
             session.state = 'idle';
         }
     }
@@ -1814,10 +1917,18 @@ initAllSessions().catch(err => {
 
 // ─── Graceful Shutdown ───────────────────────────────────
 process.on('uncaughtException', (err) => {
+    const msg = err?.stack || err?.message || String(err || '');
+    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions')) {
+        return;
+    }
     console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (reason) => {
+    const msg = reason?.stack || reason?.message || String(reason || '');
+    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions')) {
+        return;
+    }
     console.error('Unhandled Rejection:', reason);
 });
 
