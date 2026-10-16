@@ -19,12 +19,16 @@ async function main() {
     console.log('🌱 Starting database seed...\n');
 
     // ── Restaurant ────────────────────────────────────────────
-    const restaurant = await prisma.restaurant.upsert({
-        where: { slug: 'store-admin' },
-        update: {},
-        create: {
-            name: 'Store Admin',
-            slug: 'store-admin',
+    let restaurant = await prisma.restaurant.findFirst({
+        where: { slug: 'cravey-crust' }
+    });
+    if (!restaurant) {
+        restaurant = await prisma.restaurant.upsert({
+            where: { slug: 'store-admin' },
+            update: {},
+            create: {
+                name: 'Store Admin',
+                slug: 'store-admin',
             phone: '+92-300-0000000',
             address: 'Main Boulevard',
             currency: 'PKR',

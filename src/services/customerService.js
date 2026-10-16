@@ -129,7 +129,13 @@ export async function listCustomers({ restaurantId, search, page = 1, limit = 50
         throw new Error('Database client not available');
     }
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const defaultId = await getDefaultRestaurantId();
+    let restId = restaurantId || defaultId;
+    const countForRest = await prisma.customer.count({ where: { restaurant_id: restId } });
+    if (countForRest === 0 && restId !== defaultId) {
+        restId = defaultId;
+    }
+
     const take = Math.max(1, Math.min(parseInt(limit, 10) || 50, 100));
     const skip = (Math.max(1, parseInt(page, 10) || 1) - 1) * take;
 
@@ -294,7 +300,7 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
 
     const restId = restaurantId || await getDefaultRestaurantId();
 
-    const customer = await prisma.customer.findFirst({
+    let customer = await prisma.customer.findFirst({
         where: {
             id: customerId,
             restaurant_id: restId,
@@ -302,9 +308,16 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
     });
 
     if (!customer) {
+        customer = await prisma.customer.findUnique({
+            where: { id: customerId },
+        });
+    }
+
+    if (!customer) {
         throw new Error('Customer not found');
     }
 
+    const targetRestId = customer.restaurant_id || restId;
     const cleanPhones = [customer.phone, customer.whatsapp_phone].filter(Boolean);
     let deletedOrdersCount = 0;
 
@@ -313,7 +326,7 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
         if (deleteOrders) {
             const customerOrders = await tx.order.findMany({
                 where: {
-                    restaurant_id: restId,
+                    restaurant_id: targetRestId,
                     OR: [
                         { customer_id: customerId },
                         ...(cleanPhones.length > 0 ? [{ phone: { in: cleanPhones } }] : []),
@@ -333,7 +346,7 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
             // Unlink customer from orders to keep accounting totals intact
             await tx.order.updateMany({
                 where: {
-                    restaurant_id: restId,
+                    restaurant_id: targetRestId,
                     customer_id: customerId,
                 },
                 data: {
@@ -345,7 +358,7 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
         // 2. Delete Carts associated with this customer
         const customerCarts = await tx.cart.findMany({
             where: {
-                restaurant_id: restId,
+                restaurant_id: targetRestId,
                 customer_id: customerId,
             },
             select: { id: true },
@@ -361,7 +374,7 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
         if (cleanPhones.length > 0) {
             const matchingSessions = await tx.conversationSession.findMany({
                 where: {
-                    restaurant_id: restId,
+                    restaurant_id: targetRestId,
                     OR: [
                         { verified_phone: { in: cleanPhones } },
                         ...cleanPhones.map(p => ({ chat_id: { contains: p } })),
@@ -391,6 +404,12 @@ export async function deleteCustomer({ restaurantId, customerId, deleteOrders = 
         });
     });
 
+    // 5. Clean up associated customer chat history
+    try {
+        const { deleteCustomerChatHistory } = await import('./chatService.js');
+        await deleteCustomerChatHistory(cleanPhones);
+    } catch (_) {}
+
     return {
         deleted: true,
         customerId,
@@ -415,7 +434,7 @@ export async function deleteCustomerByPhone({ restaurantId, phone, deleteOrders 
         throw new Error('Valid phone number is required');
     }
 
-    const customer = await prisma.customer.findFirst({
+    let customer = await prisma.customer.findFirst({
         where: {
             restaurant_id: restId,
             OR: [
@@ -425,9 +444,20 @@ export async function deleteCustomerByPhone({ restaurantId, phone, deleteOrders 
         },
     });
 
+    if (!customer) {
+        customer = await prisma.customer.findFirst({
+            where: {
+                OR: [
+                    { phone: clean },
+                    { whatsapp_phone: clean },
+                ],
+            },
+        });
+    }
+
     if (customer) {
         return deleteCustomer({
-            restaurantId: restId,
+            restaurantId: customer.restaurant_id || restId,
             customerId: customer.id,
             deleteOrders,
         });
@@ -477,11 +507,11 @@ export async function bulkDeleteCustomers({ restaurantId, customerIds = [], olde
     }
 
     const restId = restaurantId || await getDefaultRestaurantId();
-    const where = { restaurant_id: restId };
-
+    let where = {};
     if (Array.isArray(customerIds) && customerIds.length > 0) {
-        where.id = { in: customerIds };
+        where = { id: { in: customerIds } };
     } else if (olderThanDays !== null && olderThanDays !== undefined && olderThanDays !== '') {
+        where.restaurant_id = restId;
         const days = parseInt(olderThanDays, 10);
         if (days > 0) {
             const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);

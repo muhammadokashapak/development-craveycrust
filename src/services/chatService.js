@@ -443,3 +443,33 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
     messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return messages.slice(-limit);
 }
+
+/**
+ * Delete chat history for specific customer phones or chat IDs
+ */
+export async function deleteCustomerChatHistory(identifiers = []) {
+    if (!Array.isArray(identifiers) || identifiers.length === 0) return 0;
+    const targets = new Set(identifiers.filter(Boolean).map(x => String(x).toLowerCase().replace(/\D/g, '')).filter(Boolean));
+    const targetChatIds = new Set(identifiers.filter(Boolean).map(x => String(x).toLowerCase()));
+
+    const prevLength = _localChatStore.length;
+    _localChatStore = _localChatStore.filter(msg => {
+        const msgPhone = sanitizePhone(msg.phone, msg.chatId);
+        const msgChat = (msg.chatId || msg.chat_id || '').toLowerCase();
+        if (msgPhone && targets.has(msgPhone)) return false;
+        if (msgChat && targetChatIds.has(msgChat)) return false;
+        for (const t of targets) {
+            if (msgChat.includes(t)) return false;
+        }
+        return true;
+    });
+
+    const deletedCount = prevLength - _localChatStore.length;
+    if (deletedCount > 0) {
+        try {
+            fs.writeFileSync(CHAT_BACKUP_FILE, JSON.stringify(_localChatStore, null, 2), 'utf8');
+        } catch (_) {}
+    }
+    return deletedCount;
+}
+
