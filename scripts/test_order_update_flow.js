@@ -96,6 +96,16 @@ async function runTest() {
         }
     }
 
+    // Ensure no other conflicting active orders for clean single-order test
+    await prisma.order.updateMany({
+        where: {
+            order_number: { not: 'CC-000012' },
+            phone: cleanPhone,
+            order_status: { in: ['CONFIRMED', 'PENDING', 'PREPARING'] },
+        },
+        data: { order_status: 'CANCELLED' },
+    });
+
     clearPendingOrderUpdate(sessionKey, cleanPhone);
 
     // Turn 1: "Address change krna ha"
@@ -183,7 +193,63 @@ async function runTest() {
         throw new Error('Turn 5 failed! Expected current status with updated address and name.');
     }
 
-    console.log('\n✅ ALL TEST STEPS PASSED SUCCESSFULLY!');
+    // ─── Multi-Order Tests ───────────────────────────────────────────────
+    console.log('\n--- MULTI-ORDER FLOW TESTS ---');
+    // Reactivate CC-000011 so customer now has 2 active orders
+    await prisma.order.update({
+        where: { order_number: 'CC-000011' },
+        data: {
+            order_status: 'CONFIRMED',
+            phone: cleanPhone,
+            whatsapp_phone: cleanPhone,
+            source_chat_id: chatId,
+            source_session_id: sessionKey,
+        },
+    });
+
+    clearPendingOrderUpdate(sessionKey, cleanPhone);
+
+    // Turn 6: Generic change request with 2 active orders
+    console.log('\n[Turn 6] Customer: "Address change krna ha" (with 2 active orders)');
+    const res6 = await checkFastRoute({
+        text: 'Address change krna ha',
+        whatsappPhone: testPhone,
+        sessionKey,
+        chatId,
+    });
+    console.log('Bot:', res6.reply);
+    if (!res6.handled || !res6.reply.includes('active orders chal rahe hain')) {
+        throw new Error('Turn 6 failed! Expected multiple orders prompt.');
+    }
+
+    // Turn 7: Customer specifies "11"
+    console.log('\n[Turn 7] Customer selects: "11"');
+    const res7 = await checkFastRoute({
+        text: '11',
+        whatsappPhone: testPhone,
+        sessionKey,
+        chatId,
+    });
+    console.log('Bot:', res7.reply);
+    if (!res7.handled || !res7.reply.includes('CC-000011') || !res7.reply.includes('select ho gaya hai')) {
+        throw new Error('Turn 7 failed! Expected CC-000011 selection confirmation.');
+    }
+
+    // Turn 8: Direct order number in message
+    clearPendingOrderUpdate(sessionKey, cleanPhone);
+    console.log('\n[Turn 8] Customer: "CC-000011 ka address Tarlai Kalan kr do"');
+    const res8 = await checkFastRoute({
+        text: 'CC-000011 ka address Tarlai Kalan kr do',
+        whatsappPhone: testPhone,
+        sessionKey,
+        chatId,
+    });
+    console.log('Bot:', res8.reply);
+    if (!res8.handled || !res8.reply.includes('CC-000011') || !res8.reply.includes('Tarlai')) {
+        throw new Error('Turn 8 failed! Expected direct staging for CC-000011.');
+    }
+
+    console.log('\n✅ ALL SINGLE & MULTI-ORDER TEST STEPS PASSED SUCCESSFULLY!');
     process.exit(0);
 }
 
