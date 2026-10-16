@@ -525,46 +525,100 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
     const prisma = getDbClient();
     let messages = [];
 
-    // First find any associated phone from local store or DB messages
+    // First find any associated phone from local store, DB messages, or conversation session
     let associatedPhone = null;
     const localSample = _localChatStore.findLast(m => (m.chat_id === cleanChatId || m.chatId === cleanChatId) && m.phone);
     if (localSample?.phone) {
         associatedPhone = String(localSample.phone).replace(/\D/g, '');
     }
+    if (!associatedPhone && prisma && prisma.chatMessage) {
+        try {
+            const dbSample = await prisma.chatMessage.findFirst({
+                where: { chat_id: cleanChatId, phone: { not: null } },
+                orderBy: { created_at: 'desc' },
+                select: { phone: true },
+            });
+            if (dbSample?.phone) associatedPhone = String(dbSample.phone).replace(/\D/g, '');
+        } catch (_) {}
+    }
+    if (!associatedPhone && prisma && prisma.conversationSession) {
+        try {
+            const sess = await prisma.conversationSession.findFirst({
+                where: { OR: [{ chat_id: cleanChatId }, { session_key: cleanChatId }] },
+                select: { verified_phone: true },
+            });
+            if (sess?.verified_phone) associatedPhone = String(sess.verified_phone).replace(/\D/g, '');
+        } catch (_) {}
+    }
+    if (!associatedPhone && cleanChatId.includes('@s.whatsapp.net')) {
+        const rawDigits = cleanChatId.split('@')[0].split(':')[0].replace(/\D/g, '');
+        if (rawDigits.length >= 10 && rawDigits.length <= 13) associatedPhone = rawDigits;
+    }
+
+    // Build all phone format variations for accurate lookup
+    const phoneVariants = new Set();
+    if (associatedPhone) {
+        phoneVariants.add(associatedPhone);
+        if (associatedPhone.startsWith('92') && associatedPhone.length === 12) {
+            phoneVariants.add('0' + associatedPhone.slice(2));
+            phoneVariants.add(associatedPhone.slice(2));
+        } else if (associatedPhone.startsWith('03') && associatedPhone.length === 11) {
+            phoneVariants.add('92' + associatedPhone.slice(1));
+            phoneVariants.add(associatedPhone.slice(1));
+        } else if (associatedPhone.startsWith('3') && associatedPhone.length === 10) {
+            phoneVariants.add('92' + associatedPhone);
+            phoneVariants.add('0' + associatedPhone);
+        }
+    }
 
     // Resolve most authoritative confirmed customer name
-    let resolvedCustomerName = _confirmedNamesByChat.get(cleanChatId) ||
-                               (associatedPhone ? _confirmedNamesByPhone.get(associatedPhone) : null) ||
-                               (associatedPhone && associatedPhone.startsWith('92') && associatedPhone.length === 12 ? _confirmedNamesByPhone.get('0' + associatedPhone.slice(2)) : null) ||
-                               null;
+    let resolvedCustomerName = _confirmedNamesByChat.get(cleanChatId);
+    if (!resolvedCustomerName && phoneVariants.size > 0) {
+        for (const pv of phoneVariants) {
+            if (_confirmedNamesByPhone.has(pv)) {
+                resolvedCustomerName = _confirmedNamesByPhone.get(pv);
+                break;
+            }
+        }
+    }
 
-    if (!resolvedCustomerName && prisma) {
+    if (!resolvedCustomerName && prisma && prisma.order) {
         try {
-            if (prisma.order) {
-                const orConditions = [
-                    { source_chat_id: cleanChatId },
-                    { phone: cleanChatId.split('@')[0] },
-                    { whatsapp_phone: cleanChatId.split('@')[0] },
-                ];
-                if (associatedPhone) {
-                    orConditions.push({ phone: associatedPhone });
-                    orConditions.push({ whatsapp_phone: associatedPhone });
-                    if (associatedPhone.startsWith('92') && associatedPhone.length === 12) {
-                        const local03 = '0' + associatedPhone.slice(2);
-                        orConditions.push({ phone: local03 });
-                        orConditions.push({ whatsapp_phone: local03 });
-                    }
-                }
-                const ord = await prisma.order.findFirst({
-                    where: { OR: orConditions },
-                    orderBy: { created_at: 'desc' },
-                    select: { customer_name: true },
-                });
-                if (ord?.customer_name && ord.customer_name.trim()) {
-                    resolvedCustomerName = ord.customer_name.trim();
-                    _confirmedNamesByChat.set(cleanChatId, resolvedCustomerName);
-                    if (associatedPhone) _confirmedNamesByPhone.set(associatedPhone, resolvedCustomerName);
-                }
+            const orConditions = [
+                { source_chat_id: cleanChatId },
+                { phone: cleanChatId.split('@')[0] },
+                { whatsapp_phone: cleanChatId.split('@')[0] },
+            ];
+            for (const pv of phoneVariants) {
+                orConditions.push({ phone: pv });
+                orConditions.push({ whatsapp_phone: pv });
+            }
+            const ord = await prisma.order.findFirst({
+                where: { OR: orConditions },
+                orderBy: { created_at: 'desc' },
+                select: { customer_name: true },
+            });
+            if (ord?.customer_name && ord.customer_name.trim() && ord.customer_name.toLowerCase() !== 'customer') {
+                resolvedCustomerName = ord.customer_name.trim();
+                _confirmedNamesByChat.set(cleanChatId, resolvedCustomerName);
+                if (associatedPhone) _confirmedNamesByPhone.set(associatedPhone, resolvedCustomerName);
+            }
+        } catch (_) {}
+    }
+
+    if (!resolvedCustomerName && prisma && prisma.customer && phoneVariants.size > 0) {
+        try {
+            const cust = await prisma.customer.findFirst({
+                where: {
+                    OR: [
+                        ...Array.from(phoneVariants).map(p => ({ phone: p })),
+                        ...Array.from(phoneVariants).map(p => ({ whatsapp_phone: p })),
+                    ],
+                },
+                select: { name: true },
+            });
+            if (cust?.name && cust.name.trim() && cust.name.toLowerCase() !== 'customer') {
+                resolvedCustomerName = cust.name.trim();
             }
         } catch (_) {}
     }
@@ -590,8 +644,8 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
                 messages = dbList.map(m => ({
                     id: m.id,
                     chatId: m.chat_id,
-                    phone: m.phone,
-                    customerName: (m.sender === 'user' && resolvedCustomerName) ? resolvedCustomerName : (m.customer_name || resolvedCustomerName),
+                    phone: m.phone || associatedPhone,
+                    customerName: (m.sender === 'user') ? (resolvedCustomerName || m.customer_name || 'Customer') : 'Burger Raja',
                     sender: m.sender,
                     message: m.message,
                     messageType: m.message_type,
@@ -607,8 +661,8 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
         .map(m => ({
             id: m.id,
             chatId: m.chat_id,
-            phone: m.phone,
-            customerName: (m.sender === 'user' && resolvedCustomerName) ? resolvedCustomerName : (m.customer_name || resolvedCustomerName),
+            phone: m.phone || associatedPhone,
+            customerName: (m.sender === 'user') ? (resolvedCustomerName || m.customer_name || 'Customer') : 'Burger Raja',
             sender: m.sender,
             message: m.message,
             messageType: m.message_type,
