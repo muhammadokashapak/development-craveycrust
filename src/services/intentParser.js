@@ -101,7 +101,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     }
 
     // 2. Phone
-    if (/\b(?:same\s*(?:number|numbr|no|whatsapp)?|yahi\s*(?:number|numbr|no|hai)?|yehi\s*(?:number|numbr|no|hai)?|isi\s*(?:number|pe)?|wahi\s*(?:number|numbr|no)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?)\b/i.test(lower)) {
+    const isExplicitSamePhone = /\b(?:same\s*(?:number|numbr|no|whatsapp)|yahi\s*(?:number|numbr|no)|yehi\s*(?:number|numbr|no)|isi\s*number|wahi\s*(?:number|numbr|no)|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?)\b/i.test(lower);
+    const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed && !knownDetails.phone;
+    const isContextualSamePhone = isAwaitingPhone && /^(?:same|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number)[\s.!?]*$/i.test(lower.trim());
+
+    if (isExplicitSamePhone || isContextualSamePhone) {
         phone = 'SAME_WHATSAPP';
     } else {
         const phMatch = raw.match(/(?:03\d{9}|\+?923\d{9})/);
@@ -163,7 +167,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         // Customer is actively at Step 3 (awaiting delivery address).
         // If not a cancellation or menu command, clean and accept this text as candidate address.
         const candidateAddr = cleanExtractedAddress(textForAddr);
-        const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
+        const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|nahin|nhi|na|no|nope|theek|ok|done|hi|hello|hey|suno|bhai)\b/i.test(lower.trim());
         if (candidateAddr && candidateAddr.length >= 3 && candidateAddr.length <= 120 && !isNotAddress) {
             address = candidateAddr;
         }
@@ -1156,8 +1160,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── Check Fast Route: Extra Items Response ("Nhi", "Nahi", "kch nhi", "Nahi aur kch nahi") ──
-    const isNoExtraItems = /^(?:nahi|nahin|nhi|nh|nai|nhe|nhn|na|no|nope|kuch\s*nahi|kch\s*nahi|kuch\s*nhi|kch\s*nhi|aur\s*kuch\s*nahi|aur\s*kch\s*nahi|aur\s*kuch\s*nhi|aur\s*kch\s*nhi|nahi\s*aur\s*k(?:u)?ch\s*na?h?i?|nhi\s*aur\s*k(?:u)?ch\s*na?h?i?|kuch\s*aur\s*na?h?i?|kch\s*aur\s*na?h?i?|bas|bas\s*yahi|bas\s*yehi|nothing|nothing\s*else|na?h?i?\s*bhai|no\s*thanks|na?h?i?\s*shukriya|rehne\s*do|rehn\s*do|aur\s*na?h?i?|na?h?i?\s*aur\s*na?h?i?|na?h?i?\s*sirf\s*yehi|sirf\s*yehi|sirf\s*yahi|itna\s*hi)[\s.!?]*$/i.test(lower.trim());
+    // ── Check Fast Route: Extra Items Response ("Nhi", "Nahi bss yehi kr do", "kch nhi", etc.) ──
+    const isNoExtraItems = /^(?:(?:na?h?i?n?|no|nope)\s+)?(?:(?:aur\s+)?k(?:u)?ch\s*(?:aur\s*)?na?h?i?n?|nothing(?:\s+else)?|no\s+thanks|rehn(?:e)?\s*do|itna\s*hi|(?:bs+|bas|sirf)\s*(?:y[ae]hi|itna\s*hi)?)(?:\s*(?:chahi?ye|kr?\s*do|kar\s*do|kardo|karo|bhai|shukriya|thanks|h|hai))?[\s.!?]*$|^(?:na?h?i?n?|no|nope|k(?:u)?ch\s*na?h?i?n?|bs+|bas|rehn(?:e)?\s*do)[\s.!?]*$/i.test(lower.trim());
     if (isNoExtraItems && userSessionId) {
         try {
             const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
@@ -1187,9 +1191,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    const hasCartModification = /\b(add|extra|aur|kuch|change|badal|hatao?|nikal|kam|zyada|\d+\s*x|\d+\s*bar|\d+\s*martaba|fries|drink|pepsi|7up|burger|pizza|deal|deals)\b/i.test(lower);
-    const isOrderFinalConfirmation = !hasCartModification &&
-        /^(?:(?:haan|han|hn|jee|ji|yes|yep|ok|theek\s*hai?)\s+)?(?:confirm|book|order|final|kar\s*do|kr\s*do|done|bhej\s*do)(?:\s+(?:book|confirm|kar\s*do|kr\s*do|kr\s*du|kar\s*du|hai|h|please|bhai))?$|^(?:haan|han|hn|jee|ji|yes|yep|ok|ok\s*done|theek\s*hai?|done|confirm|bhej\s*do|order\s*(?:book\s*)?(?:kar\s*do|kr\s*do)|book\s*(?:kar\s*do|kr\s*do)|final\s*(?:kar\s*do|kr\s*do))$/i.test(lower.trim()) && wordCount <= 6;
+    const hasCartModification = /\b(add|extra|change|badal|hatao?|nikal|kam|zyada|\d+\s*x|\d+\s*bar|\d+\s*martaba|fries|drink|pepsi|7up|coke|deal|deals)\b/i.test(lower);
+    const hasNegation = /\b(nahi|nahin|na|no|mat|cancel|rok|ruko|galat|wrong|hatao|nhi)\b/i.test(lower);
+    // NOTE: 'aur', 'kuch', 'pizza', 'burger' removed from cart-modification list above because they appear in confirmation phrases
+    //       like 'nahi aur kch nahi' — hasCartModification must only fire on true add/modify signals.
+    const isOrderFinalConfirmation = !hasCartModification && !hasNegation &&
+        /^(?:(?:jee?|ji|g)\s+)?(?:haan|han|hn|yes|yep|theek\s*hai?|thk\s*hai?|ok|okay|bilkul|zaroor|zarur|done)?(?:\s*(?:order|book)?\s*(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|book|final|done|bhej\s*do|theek\s*hai|ok|yes|haan|han|jee|ji|bilkul))(?:\s+(?:book|co?n?f[iy]?r[mn]+|kar\s*do|kr\s*do|kardo|krdo|karo|kro|kar\s*du|kr\s*du|karein|kar\s*dein|kr\s*dein|hai|h|please|bhai|do))*$/i.test(lower.trim()) && wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
             const { getSessionOrderDetails, clearSessionOrderDetails } = await import('./sessionService.js');
@@ -1444,13 +1451,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
-                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) &&
+                // Guard: if phone already confirmed or extraItemsAnswered — skip re-triggering those steps
+                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed && !currDetails.phone) &&
                     /^(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
 
                 const extracted = extractCustomerDetails(raw, currDetails);
                 const updatePayload = {};
                 if (extracted.name && !currDetails.name) updatePayload.name = extracted.name;
-                if (extracted.address && !currDetails.address) {
+                if (extracted.address && !currDetails.address && !currDetails.location) {
                     const { extractLocationFromText } = await import('../../utils/location.js');
                     const loc = extractLocationFromText(raw);
                     if (loc?.latitude != null && loc?.longitude != null) {
@@ -1465,12 +1473,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     }
                 }
                 if (extracted.paymentMethod && !currDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-                if (extracted.phone) {
-                    updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
-                    updatePayload.phoneConfirmed = true;
-                } else if (isPhoneConfirmation) {
-                    updatePayload.phone = cleanPhone;
-                    updatePayload.phoneConfirmed = true;
+                // Only update phone if it is not already confirmed/saved
+                if (!currDetails.phoneConfirmed && !currDetails.phone) {
+                    if (extracted.phone) {
+                        updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
+                        updatePayload.phoneConfirmed = true;
+                    } else if (isPhoneConfirmation) {
+                        updatePayload.phone = cleanPhone;
+                        updatePayload.phoneConfirmed = true;
+                    }
                 }
 
                 // Only proceed if at least one detail was actually updated to prevent repeat loops

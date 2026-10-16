@@ -54,10 +54,11 @@ export function detectConfirmIntent(text) {
     const NEGATIONS = /\b(nahi|nahin|na|no|mat|cancel|rok|ruko|galat|wrong|hatao|nhi)\b/i;
     if (NEGATIONS.test(t)) return false;
 
-    // Check: confirmation words
-    const CONFIRM = /\b(confirm|haan|han|ji|jee|yes|ok|okay|theek|done|kardo|kar do|bhej do|book kar do|book kr do|order kar do|order kr do|order kardo|order kr du|kr du|kar du)\b/i;
+    // Check: confirmation words (including common misspellings like 'comfirm', 'konfirm')
+    const CONFIRM = /\b(co?n?f[iy]?r[mn]+|comfirm|konfirm|haan|han|ji|jee|yes|ok|okay|theek|bilkul|done|zaroor|zarur|kardo|kar do|bhej do|book kar do|book kr do|order kar do|order kr do|order kardo|order kr du|kr du|kar du|krdo)\b/i;
     return CONFIRM.test(t);
 }
+
 
 // ─── 18 Direct Local Tools Schema (Prompt Context) ─────────────────────────
 const TOOLS_SCHEMA = `
@@ -853,7 +854,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     if (extracted.name && !sessionDetails.name) updatePayload.name = extracted.name;
     if (extracted.address && !sessionDetails.address) updatePayload.address = extracted.address;
     if (extracted.paymentMethod && !sessionDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-    if (extracted.phone) {
+    if (extracted.phone && !sessionDetails.phoneConfirmed && !sessionDetails.phone) {
         updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? (whatsappPhone || '').replace(/\D/g, '') : extracted.phone;
         updatePayload.phoneConfirmed = true;
     }
