@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
+import { matchVariant } from './cartService.js';
 
 const Decimal = Prisma.Decimal;
 
@@ -86,7 +87,7 @@ export async function calculatePricing(params) {
         let selectedVariant = null;
 
         if (itemReq.variantId) {
-            selectedVariant = item.variants.find(v => v.id === itemReq.variantId);
+            selectedVariant = matchVariant(item.variants, itemReq.variantId);
             if (!selectedVariant) {
                 const err = new Error(`Variant not found for item '${item.name}'`);
                 err.code = 'VARIANT_NOT_FOUND';

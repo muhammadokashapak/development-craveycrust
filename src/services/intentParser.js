@@ -23,6 +23,35 @@ export function clearLastDiscussedDeal(sessionKey) {
     }
 }
 
+// Session memory for pizza/item size follow-ups (e.g. customer saying "medium", "party krdo")
+const _lastDiscussedItemBySession = new Map();
+
+export function setLastDiscussedItem(sessionKey, item, variant = null) {
+    if (!sessionKey || !item) return;
+    _lastDiscussedItemBySession.set(sessionKey, {
+        item,
+        variant,
+        timestamp: Date.now(),
+    });
+}
+
+export function getLastDiscussedItem(sessionKey) {
+    if (!sessionKey || !_lastDiscussedItemBySession.has(sessionKey)) return null;
+    const entry = _lastDiscussedItemBySession.get(sessionKey);
+    // Expire after 3 minutes
+    if (Date.now() - entry.timestamp > 3 * 60 * 1000) {
+        _lastDiscussedItemBySession.delete(sessionKey);
+        return null;
+    }
+    return entry;
+}
+
+export function clearLastDiscussedItem(sessionKey) {
+    if (sessionKey) {
+        _lastDiscussedItemBySession.delete(sessionKey);
+    }
+}
+
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
     let cleaned = text;
@@ -947,6 +976,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 await clearCart({ sessionKey: userSessionId });
                 clearSessionOrderDetails(userSessionId, cleanPhone);
                 _lastDiscussedDealBySession.delete(userSessionId);
+                _lastDiscussedItemBySession.delete(userSessionId);
                 return {
                     handled: true,
                     routeName: 'fast_cancel_order',
@@ -1104,6 +1134,52 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
             } catch (err) {
                 console.error('[FAST_ROUTE] Error adding confirmed deal:', err.message);
+            }
+        }
+    }
+
+    // ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
+    const isSizeFollowup = /^(?:small|medium|med|large|lrg|party(?:\s*size)?|regular|reg|chota|chhota|bara|bada)(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
+    if (isSizeFollowup && userSessionId && _lastDiscussedItemBySession.has(userSessionId)) {
+        const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId);
+        if (lastItemEntry && (Date.now() - lastItemEntry.timestamp < 180 * 1000)) {
+            try {
+                const { getActiveCart, addItemToCart, matchVariant } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const item = lastItemEntry.item;
+                const matchedVariant = matchVariant(item.variants, lower);
+
+                if (matchedVariant) {
+                    await addItemToCart({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        chatId,
+                        verifiedPhone: whatsappPhone,
+                        menuItemId: item.id,
+                        variantId: matchedVariant.id,
+                        quantity: 1,
+                    });
+                    _lastDiscussedItemBySession.delete(userSessionId);
+
+                    const itemName = item.name;
+                    const variantName = matchedVariant.name;
+                    const price = Number(matchedVariant.price);
+
+                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart: cartNow,
+                        cache,
+                        introMessage: `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (Rs. ${price})`,
+                    });
+                }
+            } catch (err) {
+                console.error('[FAST_ROUTE] Error adding size-selected item:', err.message);
             }
         }
     }

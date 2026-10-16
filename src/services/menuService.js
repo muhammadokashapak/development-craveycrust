@@ -13,6 +13,7 @@
 
 import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
+import { matchVariant } from './cartService.js';
 
 /**
  * Get all active categories with their active & available items
@@ -182,6 +183,37 @@ export async function getActiveDeals(restaurantId) {
 }
 
 /**
+ * Extract pizza / drink size and cleaned product name from user query
+ */
+export function extractSizeFromQuery(query) {
+    if (!query || typeof query !== 'string') return { size: null, cleanQuery: '' };
+    const q = query.trim().toLowerCase();
+
+    // Check size regex with word boundaries
+    const isParty = /\b(?:party\s*size|partysize|party|family)\b/i.test(q);
+    const isLarge = !isParty && /\b(?:large|lrg|bada|bara)\b/i.test(q);
+    const isMedium = /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
+    const isSmall = /\b(?:small|chota|chhota)\b/i.test(q);
+    const isRegular = /\b(?:regular|reg)\b/i.test(q);
+
+    let size = null;
+    if (isParty) size = 'Party Size';
+    else if (isLarge) size = 'Large';
+    else if (isMedium) size = 'Medium';
+    else if (isSmall) size = 'Small';
+    else if (isRegular) size = 'Regular';
+
+    // Strip size keywords and common ordering verbs to extract item name
+    const clean = q
+        .replace(/\b(?:party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
+        .replace(/\b(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return { size, cleanQuery: clean };
+}
+
+/**
  * Find menu item or deal matching user query
  * Avoids silent guessing: returns multiple candidates if ambiguous.
  *
@@ -199,14 +231,25 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
 
     const restId = restaurantId || await getDefaultRestaurantId();
     const cleanQ = query.trim().toLowerCase();
+    const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
 
-    // 1. Check if user typed "deal 1", "deal #1", "family feast", etc.
+    // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small")
+    if (extractedSize && !strippedQ) {
+        return {
+            status: 'SIZE_SPECIFIED',
+            size: extractedSize,
+            rawQuery: query,
+        };
+    }
+
+    // 2. Check if user typed "deal 1", "deal #1", "family feast", etc.
     const activeDeals = await getActiveDeals(restId);
     
     // Exact deal name or slug match first (e.g. "Deal 1", "Burger Meal For 1")
     const exactDeal = activeDeals.find(d => 
         d.slug.toLowerCase() === cleanQ || 
-        d.name.toLowerCase() === cleanQ
+        d.name.toLowerCase() === cleanQ ||
+        (strippedQ && (d.slug.toLowerCase() === strippedQ || d.name.toLowerCase() === strippedQ))
     );
     if (exactDeal) {
         return {
@@ -217,7 +260,8 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     }
 
     // Check numbered deal (e.g. "deal 5", "deal #1")
-    const dealNumMatch = cleanQ.match(/^(?:deal\s*(?:#|no\.?)?\s*)(\d+)$/i);
+    const dealNumMatch = cleanQ.match(/^(?:deal\s*(?:#|no\.?)?\s*)(\d+)$/i) ||
+        (strippedQ && strippedQ.match(/^(?:deal\s*(?:#|no\.?)?\s*)(\d+)$/i));
     if (dealNumMatch) {
         const dNum = dealNumMatch[1];
         const numMatchedDeal = activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
@@ -230,7 +274,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         }
     }
 
-    // 2. Fetch all active & available items
+    // 3. Fetch all active & available items
     const allItems = await prisma.menuItem.findMany({
         where: {
             restaurant_id: restId,
@@ -247,30 +291,54 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         },
     });
 
-    // Exact item name or slug match
+    // Handle "Chicken Lover" specifically -> suggests Cheese Lover (nearest item) + available chicken pizzas
+    if (cleanQ.includes('chicken lover') || (strippedQ && strippedQ.includes('chicken lover'))) {
+        const cheeseLover = allItems.find(i => i.name.toLowerCase().includes('cheese lover'));
+        const chickenPizzas = allItems.filter(i => i.name.toLowerCase().includes('chicken') && i.id !== cheeseLover?.id);
+        const candidates = [
+            ...(cheeseLover ? [{ type: 'ITEM', name: cheeseLover.name, basePrice: Number(cheeseLover.base_price) }] : []),
+            ...chickenPizzas.map(i => ({ type: 'ITEM', name: i.name, basePrice: Number(i.base_price) }))
+        ];
+        return {
+            status: 'AMBIGUOUS',
+            candidates,
+            extractedSize,
+            message: "Cravey Crust ke menu mein 'Chicken Lover' ke naam se koi direct item nahi hai, lekin hamare paas Cheese Lover aur Chicken Pizzas (Chicken Extreme, Chicken Tikka, Chicken Fajita, Chicken Supreme) mojood hain!",
+        };
+    }
+
+    // 4. Exact item name or slug match (checking both cleanQ and strippedQ without size)
     const exactItem = allItems.find(i => 
         i.slug.toLowerCase() === cleanQ || 
-        i.name.toLowerCase() === cleanQ
+        i.name.toLowerCase() === cleanQ ||
+        (strippedQ && strippedQ.length >= 3 && (i.slug.toLowerCase() === strippedQ || i.name.toLowerCase() === strippedQ))
     );
     if (exactItem) {
+        const matchedVariant = (extractedSize && exactItem.variants.length > 0)
+            ? matchVariant(exactItem.variants, extractedSize)
+            : null;
         return {
             status: 'EXACT_MATCH',
             type: 'ITEM',
             item: exactItem,
             hasVariants: exactItem.variants.length > 0,
             variants: exactItem.variants,
+            matchedVariant,
+            extractedSize,
         };
     }
 
-    // Substring or token match across items and deals
+    // 5. Substring match across items and deals (checking cleanQ and strippedQ)
     const matchedItems = allItems.filter(i => {
         const name = i.name.toLowerCase();
-        return name.includes(cleanQ) || cleanQ.includes(name);
+        return name.includes(cleanQ) || cleanQ.includes(name) ||
+            (strippedQ && strippedQ.length >= 3 && (name.includes(strippedQ) || strippedQ.includes(name)));
     });
 
     const matchedDeals = activeDeals.filter(d => {
         const name = d.name.toLowerCase();
-        return name.includes(cleanQ) || cleanQ.includes(name);
+        return name.includes(cleanQ) || cleanQ.includes(name) ||
+            (strippedQ && strippedQ.length >= 3 && (name.includes(strippedQ) || strippedQ.includes(name)));
     });
 
     const totalMatches = matchedItems.length + matchedDeals.length;
@@ -278,12 +346,17 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     if (totalMatches === 1) {
         if (matchedItems.length === 1) {
             const item = matchedItems[0];
+            const matchedVariant = (extractedSize && item.variants.length > 0)
+                ? matchVariant(item.variants, extractedSize)
+                : null;
             return {
                 status: 'EXACT_MATCH',
                 type: 'ITEM',
                 item,
                 hasVariants: item.variants.length > 0,
                 variants: item.variants,
+                matchedVariant,
+                extractedSize,
             };
         } else {
             return {
@@ -301,11 +374,13 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
                 ...matchedItems.map(i => ({ type: 'ITEM', name: i.name, basePrice: Number(i.base_price) })),
                 ...matchedDeals.map(d => ({ type: 'DEAL', name: d.name, price: Number(d.deal_price) })),
             ],
+            extractedSize,
         };
     }
 
-    // Partial word token overlap (e.g. "zinger" matches "Zinger Burger")
-    const words = cleanQ.split(/\s+/).filter(w => w.length > 2);
+    // 6. Partial word token overlap (e.g. "zinger" matches "Zinger Burger", "behari" matches "Behari Kebab Pizza")
+    const searchTarget = (strippedQ && strippedQ.length >= 3) ? strippedQ : cleanQ;
+    const words = searchTarget.split(/\s+/).filter(w => w.length > 2);
     if (words.length > 0) {
         const tokenItems = allItems.filter(i => {
             const name = i.name.toLowerCase();
@@ -314,20 +389,26 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
 
         if (tokenItems.length === 1) {
             const item = tokenItems[0];
+            const matchedVariant = (extractedSize && item.variants.length > 0)
+                ? matchVariant(item.variants, extractedSize)
+                : null;
             return {
                 status: 'EXACT_MATCH',
                 type: 'ITEM',
                 item,
                 hasVariants: item.variants.length > 0,
                 variants: item.variants,
+                matchedVariant,
+                extractedSize,
             };
         } else if (tokenItems.length > 1) {
             return {
                 status: 'AMBIGUOUS',
                 candidates: tokenItems.map(i => ({ type: 'ITEM', name: i.name, basePrice: Number(i.base_price) })),
+                extractedSize,
             };
         }
     }
 
-    return { status: 'NOT_FOUND', match: null };
+    return { status: 'NOT_FOUND', match: null, extractedSize };
 }

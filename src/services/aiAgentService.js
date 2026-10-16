@@ -19,7 +19,7 @@ import { routeLLM } from './llmRouter.js';
 import { getCatalogCache, getSyncEpoch } from './catalogCacheService.js';
 import { env } from '../config/env.js';
 import { logZeroTokenReply, logAiTokenReply } from '../utils/logger.js';
-import { checkFastRoute, extractCustomerDetails } from './intentParser.js';
+import { checkFastRoute, extractCustomerDetails, setLastDiscussedItem, getLastDiscussedItem, clearLastDiscussedItem, clearLastDiscussedDeal } from './intentParser.js';
 import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
 import { extractLocationFromText } from '../../utils/location.js';
 import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails } from './sessionService.js';
@@ -29,7 +29,7 @@ import { getDefaultRestaurantId } from './restaurantService.js';
 import { searchKnowledge } from './knowledgeService.js';
 import { getActiveCategories, resolveMenuItemOrDeal, getActiveDeals } from './menuService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
-import { getActiveCart, addToCart, updateCartItem, removeCartItem, clearCart as clearCartService } from './cartService.js';
+import { getActiveCart, addToCart, updateCartItem, removeCartItem, clearCart as clearCartService, matchVariant } from './cartService.js';
 import { calculatePricing } from './pricingService.js';
 import { muteChatForHandover, isChatMuted } from './handoverService.js';
 import { getDbClient } from '../db/client.js';
@@ -71,7 +71,7 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 6. check_delivery_availability(address?: string, areaName?: string, latitude?: number, longitude?: number) — Delivery coverage & fee check.
 7. get_order_status(orderNumber: string) — Track order status for CC-XXXXXX.
 8. get_cart() — View current session cart items.
-9. add_to_cart(itemName?: string, menuItemId?: string, variantId?: string, dealId?: string, quantity?: number, notes?: string, allDeals?: boolean) — Add item or deal to cart. (Use allDeals: true or itemName: 'all deals' if customer wants all active deals).
+9. add_to_cart(itemName?: string, menuItemId?: string, variantId?: string, size?: string, variantName?: string, dealId?: string, quantity?: number, notes?: string, allDeals?: boolean) — Add item or deal to cart. For pizzas/items with sizes, specify size or variantId (e.g. size: "Medium" or "Party Size" or "Large" or "Small"). (Use allDeals: true or itemName: 'all deals' if customer wants all active deals).
 10. update_cart_item(cartItemId: string, quantity: number, notes?: string) — Update quantity or notes.
 11. remove_cart_item(cartItemId: string) — Remove item from cart.
 12. clear_cart() — Clear all items from cart.
@@ -122,6 +122,9 @@ async function executeTool(toolName, args, context) {
             // 3. search_menu_item
             case 'search_menu_item': {
                 const result = await resolveMenuItemOrDeal(args.query || '', restId);
+                if (result.status === 'EXACT_MATCH' && result.type === 'ITEM' && result.item) {
+                    setLastDiscussedItem(sessionKey, result.item, result.matchedVariant);
+                }
                 return result;
             }
 
@@ -195,6 +198,7 @@ async function executeTool(toolName, args, context) {
             // 9. add_to_cart
             case 'add_to_cart': {
                 let menuItemId = args.menuItemId;
+                let rawVariant = args.variantId || args.variantName || args.size || args.variant || null;
                 let variantId  = args.variantId;
                 let dealId     = args.dealId;
                 const quantity = parseInt(args.quantity || 1, 10);
@@ -225,8 +229,8 @@ async function executeTool(toolName, args, context) {
                         } catch (_) {}
                     }
                     try {
-                        const { clearLastDiscussedDeal } = await import('./intentParser.js');
                         clearLastDiscussedDeal(sessionKey);
+                        clearLastDiscussedItem(sessionKey);
                     } catch (_) {}
                     const subtotal = added.reduce((s, d) => s + d.price, 0);
                     return {
@@ -239,43 +243,85 @@ async function executeTool(toolName, args, context) {
                     };
                 }
 
-                if (!menuItemId && !dealId && args.itemName) {
-                    const resolved = await resolveMenuItemOrDeal(args.itemName, restId);
-                    if (resolved.status === 'EXACT_MATCH') {
-                        if (resolved.type === 'DEAL') {
-                            dealId = resolved.deal.id;
-                        } else {
-                            menuItemId = resolved.item.id;
-                            if (resolved.hasVariants && resolved.variants?.length === 1) {
-                                variantId = resolved.variants[0].id;
-                            } else if (resolved.hasVariants && resolved.variants?.length > 1 && !variantId) {
-                                const sizeQuery = `${args.itemName} ${args.variantName || args.size || ''}`.toLowerCase();
-                                const matchedVariant = resolved.variants.find(v => {
-                                    const vName = v.name.toLowerCase();
-                                    return sizeQuery.includes(vName) ||
-                                           (vName.includes('small') && /\b(?:small|s)\b/i.test(sizeQuery)) ||
-                                           (vName.includes('medium') && /\b(?:medium|med|m)\b/i.test(sizeQuery)) ||
-                                           (vName.includes('large') && /\b(?:large|lrg|l)\b/i.test(sizeQuery)) ||
-                                           (vName.includes('party') && /\b(?:party|p)\b/i.test(sizeQuery));
-                                });
-                                if (matchedVariant) {
-                                    variantId = matchedVariant.id;
-                                } else {
-                                    const variantOptions = resolved.variants.map(v => `${v.name} (Rs. ${Number(v.price)})`).join(', ');
-                                    return {
-                                        requiresVariant: true,
-                                        itemName: resolved.item.name,
-                                        variants: resolved.variants.map(v => ({ name: v.name, price: Number(v.price) })),
-                                        message: `"${resolved.item.name}" ke mukhtalif sizes mojood hain (${variantOptions}). Pehle customer se poochein ke kaunsa size add karna hai aur size milne ke baad cart mein add karein.`
-                                    };
+                // If no menuItemId or dealId, check itemName or fallback to last discussed item in session
+                if (!menuItemId && !dealId) {
+                    const lastEntry = getLastDiscussedItem(sessionKey);
+
+                    if (!args.itemName && lastEntry) {
+                        // Caller passed only a size or nothing, use last discussed item
+                        menuItemId = lastEntry.item.id;
+                        const matched = matchVariant(lastEntry.item.variants, rawVariant);
+                        if (matched) variantId = matched.id;
+                    } else if (args.itemName) {
+                        const resolved = await resolveMenuItemOrDeal(args.itemName, restId);
+
+                        if (resolved.status === 'SIZE_SPECIFIED') {
+                            if (lastEntry) {
+                                menuItemId = lastEntry.item.id;
+                                const matched = matchVariant(lastEntry.item.variants, resolved.size || rawVariant);
+                                if (matched) variantId = matched.id;
+                            } else {
+                                return { error: 'ITEM_NOT_FOUND', query: args.itemName, message: `Pehle item ka naam batayein ke aap ko kis item ka ${resolved.size} size chahiye.` };
+                            }
+                        } else if (resolved.status === 'EXACT_MATCH') {
+                            if (resolved.type === 'DEAL') {
+                                dealId = resolved.deal.id;
+                            } else {
+                                menuItemId = resolved.item.id;
+                                if (resolved.matchedVariant) {
+                                    variantId = resolved.matchedVariant.id;
+                                } else if (resolved.hasVariants) {
+                                    if (resolved.variants?.length === 1) {
+                                        variantId = resolved.variants[0].id;
+                                    } else {
+                                        const matchedVariant = matchVariant(resolved.variants, rawVariant || args.itemName);
+                                        if (matchedVariant) {
+                                            variantId = matchedVariant.id;
+                                        } else {
+                                            setLastDiscussedItem(sessionKey, resolved.item);
+                                            const variantOptions = resolved.variants.map(v => `${v.name} (Rs. ${Number(v.price)})`).join(', ');
+                                            return {
+                                                requiresVariant: true,
+                                                itemName: resolved.item.name,
+                                                variants: resolved.variants.map(v => ({ name: v.name, price: Number(v.price) })),
+                                                message: `"${resolved.item.name}" ke mukhtalif sizes mojood hain (${variantOptions}). Pehle customer se poochein ke kaunsa size add karna hai aur size milne ke baad cart mein add karein.`
+                                            };
+                                        }
+                                    }
                                 }
                             }
+                        } else if (resolved.status === 'AMBIGUOUS') {
+                            return { ambiguous: true, candidates: resolved.candidates, message: resolved.message || 'Multiple items found — please specify variant or exact item.' };
+                        } else {
+                            // Check if itemName is an alias or variant of last discussed item
+                            if (lastEntry) {
+                                const matched = matchVariant(lastEntry.item.variants, args.itemName || rawVariant);
+                                if (matched) {
+                                    menuItemId = lastEntry.item.id;
+                                    variantId = matched.id;
+                                } else {
+                                    return { error: 'ITEM_NOT_FOUND', query: args.itemName, message: `"${args.itemName}" menu mein nahi mila.` };
+                                }
+                            } else {
+                                return { error: 'ITEM_NOT_FOUND', query: args.itemName, message: `"${args.itemName}" menu mein nahi mila.` };
+                            }
                         }
-                    } else if (resolved.status === 'AMBIGUOUS') {
-                        return { ambiguous: true, candidates: resolved.candidates, message: 'Multiple items found — please specify variant or exact item.' };
-                    } else {
-                        return { error: 'ITEM_NOT_FOUND', query: args.itemName, message: `"${args.itemName}" menu mein nahi mila.` };
                     }
+                }
+
+                // If menuItemId was passed directly with rawVariant, ensure variantId is resolved
+                if (menuItemId && rawVariant) {
+                    try {
+                        const prisma = getDbClient();
+                        const item = await prisma.menuItem.findUnique({
+                            where: { id: menuItemId },
+                            include: { variants: true },
+                        });
+                        if (item?.variants?.length > 0) {
+                            const matched = matchVariant(item.variants, rawVariant);
+                            if (matched) variantId = matched.id;
+                        }
+                    } catch (_) {}
                 }
 
                 const added = await addToCart({
@@ -290,8 +336,8 @@ async function executeTool(toolName, args, context) {
                     notes,
                 });
                 try {
-                    const { clearLastDiscussedDeal } = await import('./intentParser.js');
                     clearLastDiscussedDeal(sessionKey);
+                    clearLastDiscussedItem(sessionKey);
                 } catch (_) {}
                 return { success: true, cartItemId: added.id, quantity: added.quantity };
             }

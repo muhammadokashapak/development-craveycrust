@@ -72,6 +72,65 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
 }
 
 /**
+ * Robust variant matcher: matches by database CUID, exact name, or common size aliases.
+ */
+export function matchVariant(variants, query) {
+    if (!variants || !Array.isArray(variants) || variants.length === 0 || !query) return null;
+    const raw = String(query).trim();
+    const q = raw.toLowerCase();
+
+    // 1. Exact ID match (CUID)
+    const byId = variants.find(v => v.id === raw || v.id === q);
+    if (byId) return byId;
+
+    // 2. Exact name match (case-insensitive)
+    const byName = variants.find(v => v.name.toLowerCase() === q);
+    if (byName) return byName;
+
+    // 3. Name slug match (ignore spaces and punctuation)
+    const qSlug = q.replace(/[^a-z0-9]/g, '');
+    const bySlug = variants.find(v => v.name.toLowerCase().replace(/[^a-z0-9]/g, '') === qSlug);
+    if (bySlug) return bySlug;
+
+    // 4. Normalized alias match
+    const isParty = /\b(?:party|family)\b/i.test(q) || qSlug.includes('partysize') || qSlug.startsWith('party');
+    const isLarge = !isParty && (/\b(?:large|lrg|bada|bara)\b/i.test(q) || /^(?:l|large)$/i.test(q.trim()));
+    const isMedium = /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q) || /^(?:m|med|medium)$/i.test(q.trim());
+    const isSmall = /\b(?:small|chota|chhota)\b/i.test(q) || /^(?:s|sm|small)$/i.test(q.trim());
+    const isRegular = /\b(?:regular|reg)\b/i.test(q);
+
+    if (isParty) {
+        const found = variants.find(v => /party/i.test(v.name));
+        if (found) return found;
+    }
+    if (isLarge) {
+        const found = variants.find(v => /large/i.test(v.name));
+        if (found) return found;
+    }
+    if (isMedium) {
+        const found = variants.find(v => /medium/i.test(v.name));
+        if (found) return found;
+    }
+    if (isSmall) {
+        const found = variants.find(v => /small/i.test(v.name));
+        if (found) return found;
+    }
+    if (isRegular) {
+        const found = variants.find(v => /regular/i.test(v.name));
+        if (found) return found;
+    }
+
+    // 5. Word boundary / substring
+    const foundSub = variants.find(v => {
+        const vn = v.name.toLowerCase();
+        return q.includes(vn) || vn.includes(q);
+    });
+    if (foundSub) return foundSub;
+
+    return null;
+}
+
+/**
  * Validate item or deal before adding to cart
  */
 export async function validateCartItemInput({ restaurantId, menuItemId, variantId, dealId, quantity }) {
@@ -129,20 +188,27 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
             throw err;
         }
 
-        if (variantId) {
-            const variant = item.variants.find(v => v.id === variantId);
-            if (!variant) {
-                const err = new Error(`Variant not found for item '${item.name}'`);
-                err.code = 'VARIANT_NOT_FOUND';
-                throw err;
-            }
-            if (!variant.is_available) {
-                const err = new Error(`Variant '${variant.name}' for '${item.name}' is unavailable`);
-                err.code = 'VARIANT_UNAVAILABLE';
-                throw err;
+        let matchedVariant = null;
+        if (item.variants && item.variants.length > 0) {
+            if (variantId) {
+                matchedVariant = matchVariant(item.variants, variantId);
+                if (!matchedVariant) {
+                    const err = new Error(`Variant '${variantId}' not found for item '${item.name}'`);
+                    err.code = 'VARIANT_NOT_FOUND';
+                    throw err;
+                }
+                if (!matchedVariant.is_available) {
+                    const err = new Error(`Variant '${matchedVariant.name}' for '${item.name}' is unavailable`);
+                    err.code = 'VARIANT_UNAVAILABLE';
+                    throw err;
+                }
+            } else if (item.variants.length === 1 && item.variants[0].is_available) {
+                // Auto-select single variant if only 1 exists
+                matchedVariant = item.variants[0];
             }
         }
-        return { type: 'item', item, quantity: qty };
+
+        return { type: 'item', item, variant: matchedVariant, quantity: qty };
     }
 
     // Validate Deal
@@ -212,7 +278,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
     if (!prisma) throw new Error('Database client not available');
 
     const restId = restaurantId || await getDefaultRestaurantId();
-    await validateCartItemInput({
+    const validated = await validateCartItemInput({
         restaurantId: restId,
         menuItemId,
         variantId,
@@ -220,12 +286,13 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         quantity,
     });
 
+    const finalVariantId = validated?.type === 'item' ? (validated.variant?.id || null) : null;
     const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId, verifiedPhone });
 
     // Check if duplicate item already exists in cart -> increment quantity
     let existingItem = null;
     if (menuItemId) {
-        existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === (variantId || null));
+        existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === finalVariantId);
     } else if (dealId) {
         existingItem = cart.items.find(i => i.deal_id === dealId);
     }
@@ -246,7 +313,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         data: {
             cart_id: cart.id,
             menu_item_id: menuItemId || null,
-            menu_variant_id: variantId || null,
+            menu_variant_id: finalVariantId,
             deal_id: dealId || null,
             quantity: quantity,
             notes: notes || null,
