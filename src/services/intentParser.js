@@ -88,8 +88,8 @@ export function cleanExtractedAddress(text) {
 // Comprehensive delivery location indicator regex covering all official delivery areas
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
-// Words strictly excluded from customer name extraction (location indicators, greetings, action words)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+// Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations)
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
 /**
  * Extracts customer checkout details (name, delivery address, payment method, phone) from conversational text.
@@ -112,9 +112,13 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // 2. Phone (including phone updates and validation)
     let invalidPhone = null;
     const phoneUpdateMatch = raw.match(/(?:number|numbr|numebr|no|phone|rabta|contact)\s*(?:mera\s+|apna\s+)?(?:badal\s*(?:k\s*|ke\s*)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|rakh\s*(?:do|dein|lo|du)|likh\s*(?:do|dein|lo|du)|(?:\b(?:hai|he|hy|h)\b)|:|=|-|\s+)\s*([+\d\s-]{7,18})/i);
-    const isExplicitSamePhone = /\b(?:same\s*(?:number|numbr|no|whatsapp)|yahi\s*(?:number|numbr|no)|yehi\s*(?:number|numbr|no)|isi\s*number|wahi\s*(?:number|numbr|no)|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?)\b/i.test(lower);
+    const isExplicitSamePhone = /\b(?:(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|hi|bhi|theek|hai|he|hy|h)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega|rahy\s*ga|rahe\s*ga))?)\b/i.test(lower) ||
+        /\b(?:same|yahi|yehi|wahi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower);
     const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed && !knownDetails.phone;
-    const isContextualSamePhone = isAwaitingPhone && /^(?:same|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number)[\s.!?]*$/i.test(lower.trim());
+    const isContextualSamePhone = isAwaitingPhone && (
+        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower.trim())
+    );
 
     if (phoneUpdateMatch) {
         const rawDigits = phoneUpdateMatch[1].replace(/\D/g, '');
@@ -189,8 +193,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
     }
     // Bare-string direct name check (e.g. user replies "Ali", "Ali Khan", "same hatim", "asim bki sari details...")
+    // SAKHT RULE: ONLY run bare string name check if customer name is NOT yet known!
+    // If name is already set (e.g. "Kashif"), never overwrite it with a bare string, affirmation or address fragment!
     const isMenuOrQueryWord = /\b(?:menu|menue|meny|mainu|mainue|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
-    if (!nameCandidate && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord) {
+    const nameExplicit = Boolean(nameUpdateMatch || nameBefore || nameAfter);
+    if (!nameCandidate && !knownDetails.name && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord) {
         const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
             let direct = raw.trim().replace(/^(?:same|wahi|yahi|yehi|isi)\s+/i, '').trim();
@@ -251,7 +258,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         }
     }
 
-    return { name, paymentMethod, phone, address, invalidPhone };
+    return { name, nameExplicit, paymentMethod, phone, address, invalidPhone };
 }
 
 export function formatPakistaniPhone(phone) {
@@ -1162,8 +1169,90 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Follow-up: Affirmative confirmation of pending Order Summary ──
     const userSessionId = sessionKey || chatId || whatsappPhone;
+    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
 
-    // ── Check Fast Route: Order Cancellation / Cart Clear (Zero Tokens) ──
+    // ── Check Fast Route: Pending Cancellation Confirmation (Zero Tokens) ──
+    try {
+        const { getPendingCancellation, clearPendingCancellation, rememberCustomerDetails } = await import('./sessionService.js');
+        const pendingCancel = getPendingCancellation(userSessionId, cleanPhone);
+
+        if (pendingCancel) {
+            const isAffirmativeCancel =
+                /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm)[\s!.?]*$/i.test(lower.trim()) ||
+                /\b(?:cancel\s*(?:kr|kar)?\s*d[ou]|cancel\s*karo|cancel\s*kar\s*dein|kardo|kr\s*do|order\s*cancel|haan\s*cancel|cancel\s*karna\s*hai)\b/i.test(lower);
+
+            const isNegativeCancel =
+                /^(?:nahi|na|no|nah|rehne\s*do|rehn\s*do|rehney\s*do|chhor\s*do|mat\s*karo|mat\s*krna|nhi)[\s!.?]*$/i.test(lower.trim()) ||
+                /\b(?:nahi\s*karna|rehne\s*do|rehn\s*do|rehney\s*do|mat\s*karo|cancel\s*mat\s*karo|chhor\s*do)\b/i.test(lower);
+
+            if (isNegativeCancel) {
+                clearPendingCancellation(userSessionId, cleanPhone);
+                const ordText = pendingCancel.orderNumber ? ` *#${pendingCancel.orderNumber}*` : '';
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_aborted',
+                    reply: `Theek hai Ji! Aap ka order${ordText} cancel nahi kiya gaya aur bilkul active hai. Khana jald aap tak pohnch jayega! 😊`,
+                };
+            }
+
+            if (isAffirmativeCancel) {
+                if (pendingCancel.type === 'CART') {
+                    const { clearCart } = await import('./cartService.js');
+                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    await clearCart({ sessionKey: userSessionId });
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    clearPendingCancellation(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_cart_confirmed',
+                        reply: `Theek hai Ji! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
+                    };
+                }
+
+                // Placed Order cancellation
+                const { cancelOrder } = await import('./orderService.js');
+                const cache = await getCatalogCache();
+                const cancelRes = await cancelOrder({
+                    restaurantId: cache.restId,
+                    orderNumber: pendingCancel.orderNumber,
+                    reason: 'Customer confirmed cancellation via WhatsApp',
+                });
+
+                if (cancelRes?.success) {
+                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    if (pendingCancel.targetOrder) {
+                        rememberCustomerDetails(userSessionId, {
+                            name: pendingCancel.targetOrder.customer_name,
+                            phone: pendingCancel.targetOrder.phone,
+                            address: pendingCancel.targetOrder.delivery_address,
+                            areaName: pendingCancel.targetOrder.delivery_area_name,
+                            googleMapsUrl: pendingCancel.targetOrder.google_maps_url,
+                            paymentMethod: pendingCancel.targetOrder.payment_method,
+                        }, cleanPhone);
+                    }
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    clearPendingCancellation(userSessionId, cleanPhone);
+                    const custName = pendingCancel.customerName ? `Ji ${pendingCancel.customerName}!` : 'Ji!';
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_placed_order_confirmed',
+                        reply: `${custName} Aap ka order *#${pendingCancel.orderNumber}* kamiyabi ke sath cancel kar diya gaya hai! ❌\n\nAap ki pichli delivery details hamare pas mehfooz hain. Jab bhi aap dobara order karna chahein, bas menu mein se apna pasandeeda item choose karein, hum aap ke usi address par foran order confirm kar dein ge! 😊`,
+                    };
+                } else {
+                    clearPendingCancellation(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_placed_order_failed',
+                        reply: `Order *#${pendingCancel.orderNumber}* cancel nahi ho saka: ${cancelRes?.message || 'Kitchen mein packing complete ho chuki hai.'} Baraye meherbani support agent se rabta karein.`,
+                    };
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[FAST_ROUTE] Error checking pending cancellation:', err.message);
+    }
+
+    // ── Check Fast Route: Order Cancellation Request (Always Take Confirmation First) ──
     const isCancellationIntent =
         /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
         /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
@@ -1174,27 +1263,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     if (isCancellationIntent && !isPolicyQuestion && userSessionId) {
         try {
-            const { getActiveCart, clearCart } = await import('./cartService.js');
-            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            const { getActiveCart } = await import('./cartService.js');
+            const { setPendingCancellation } = await import('./sessionService.js');
             const cache = await getCatalogCache();
-            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-
-            // 1. If active cart has items, clear cart & session
-            if (cart?.items && cart.items.length > 0) {
-                await clearCart({ sessionKey: userSessionId });
-                clearSessionOrderDetails(userSessionId, cleanPhone);
-                _lastDiscussedDealBySession.delete(userSessionId);
-                _lastDiscussedItemBySession.delete(userSessionId);
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_cart',
-                    reply: `Theek hai Ji! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
-                };
-            }
-
-            // 2. Active cart is empty: resolve placed order to cancel
-            const { cancelOrder } = await import('./orderService.js');
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
 
@@ -1236,76 +1307,120 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
             }
 
-            if (!targetOrder) {
+            if (targetOrder) {
+                const custName = targetOrder.customer_name ? `Ji ${targetOrder.customer_name}!` : 'Ji!';
+
+                // Case A: Already Cancelled (Idempotent response)
+                if (targetOrder.order_status === 'CANCELLED') {
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_already_cancelled',
+                        reply: `${custName} Aap ka order *#${targetOrder.order_number}* pehle hi cancel ho chuka hai! 👍\n\nAgar aap dobara kuch naya mangwana chahein ya koi aur madad chahiye ho, toh zaroor bataiyega. Main hamesha aap ki khidmat ke liye hazir hoon! 😊`,
+                    };
+                }
+
+                // Case B: Delivered / Completed
+                if (targetOrder.order_status === 'DELIVERED' || targetOrder.order_status === 'COMPLETED') {
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_already_delivered',
+                        reply: `Aap ka order *#${targetOrder.order_number}* pehle hi deliver ho chuka hai, is liye ab cancel nahi kiya ja sakta. Agar koi masla ya shikayat ho to baraye meherbani hamare support agent se rabta karein.`,
+                    };
+                }
+
+                // Case C: Out for Delivery (Rider has departed)
+                if (targetOrder.order_status === 'OUT_FOR_DELIVERY') {
+                    try {
+                        await muteChatForHandover({
+                            chatId,
+                            sessionKey: userSessionId,
+                            reason: `Customer requested cancellation for Order #${targetOrder.order_number} which is already Out for Delivery`,
+                            customerPhone: cleanPhone,
+                            customerName: targetOrder.customer_name,
+                            sock,
+                        });
+                    } catch (_) {}
+                    return {
+                        handled: true,
+                        routeName: 'fast_cancel_out_for_delivery',
+                        reply: `Aap ka order *#${targetOrder.order_number}* rider ke sath deliver karne ke liye nikal chuka hai (Out for Delivery), is liye direct cancel nahi kiya ja sakta. Hum ne aap ki request foran support team ko bhej di hai, woh jald aapse rabta karenge.`,
+                    };
+                }
+
+                // Case D: Cancellable (PENDING, CONFIRMED, PREPARING, READY) -> Require Confirmation First!
+                setPendingCancellation(userSessionId, {
+                    type: 'ORDER',
+                    orderNumber: targetOrder.order_number,
+                    customerName: targetOrder.customer_name,
+                    targetOrder: {
+                        customer_name: targetOrder.customer_name,
+                        phone: targetOrder.phone,
+                        delivery_address: targetOrder.delivery_address,
+                        delivery_area_name: targetOrder.delivery_area_name,
+                        google_maps_url: targetOrder.google_maps_url,
+                        payment_method: targetOrder.payment_method,
+                    },
+                    timestamp: Date.now(),
+                }, cleanPhone);
+
                 return {
                     handled: true,
-                    routeName: 'fast_cancel_not_found',
-                    reply: `Aap ka koi active order ya cart mein koi item nahi mila jise cancel kiya ja sake. Agar aap ne kisi aur number se order kiya tha to baraye meherbani apna Order Number (jaise #CC-123456) likh kar bhej dein. 😊`,
+                    routeName: 'fast_cancel_confirm_prompt',
+                    reply: `${custName} Kya aap waqai apna order *#${targetOrder.order_number}* cancel karna chahte hain?\n\nBaraye meherbani tasdeeq ke liye *'Haan cancel kardo'* ya *'Nahi'* likh kar bhej dein. 👍`,
                 };
             }
 
-            const custName = targetOrder.customer_name ? `${targetOrder.customer_name} bhai` : 'Ji';
-
-            // Case A: Already Cancelled (Idempotent response)
-            if (targetOrder.order_status === 'CANCELLED') {
+            // Case E: If no placed order found, check if cart has items -> Require Confirmation First!
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (cart?.items && cart.items.length > 0) {
+                setPendingCancellation(userSessionId, {
+                    type: 'CART',
+                    timestamp: Date.now(),
+                }, cleanPhone);
                 return {
                     handled: true,
-                    routeName: 'fast_cancel_already_cancelled',
-                    reply: `Ji ${custName}, aap ka order *#${targetOrder.order_number}* pehle hi cancel ho chuka hai! 👍\n\nAgar aap dobara kuch naya mangwana chahein ya koi aur madad chahiye ho, toh zaroor bataiyega. Main hamesha aap ki khidmat ke liye hazir hoon! 😊`,
+                    routeName: 'fast_cancel_cart_confirm_prompt',
+                    reply: `Ji! Kya aap waqai apna cart aur order cancel karna chahte hain?\n\nBaraye meherbani tasdeeq ke liye *'Haan cancel kardo'* ya *'Nahi'* likh kar bhej dein. 👍`,
                 };
             }
 
-            // Case B: Delivered / Completed
-            if (targetOrder.order_status === 'DELIVERED' || targetOrder.order_status === 'COMPLETED') {
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_already_delivered',
-                    reply: `Aap ka order *#${targetOrder.order_number}* pehle hi deliver ho chuka hai, is liye ab cancel nahi kiya ja sakta. Agar koi masla ya shikayat ho to baraye meherbani hamare support agent se rabta karein.`,
-                };
-            }
-
-            // Case C: Out for Delivery (Rider has departed)
-            if (targetOrder.order_status === 'OUT_FOR_DELIVERY') {
-                try {
-                    await muteChatForHandover({
-                        chatId,
-                        sessionKey: userSessionId,
-                        reason: `Customer requested cancellation for Order #${targetOrder.order_number} which is already Out for Delivery`,
-                        customerPhone: cleanPhone,
-                        customerName: targetOrder.customer_name,
-                        sock,
-                    });
-                } catch (_) {}
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_out_for_delivery',
-                    reply: `Aap ka order *#${targetOrder.order_number}* rider ke sath deliver karne ke liye nikal chuka hai (Out for Delivery), is liye direct cancel nahi kiya ja sakta. Hum ne aap ki request foran support team ko bhej di hai, woh jald aapse rabta karenge.`,
-                };
-            }
-
-            // Case D: Cancellable (PENDING, CONFIRMED, PREPARING, READY)
-            const cancelRes = await cancelOrder({
-                restaurantId: cache.restId,
-                orderNumber: targetOrder.order_number,
-                reason: 'Customer requested cancellation via WhatsApp',
-            });
-
-            if (cancelRes?.success) {
-                clearSessionOrderDetails(userSessionId, cleanPhone);
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_placed_order_success',
-                    reply: `Ji ${custName}, aap ka order *#${targetOrder.order_number}* kamiyabi ke sath cancel kar diya gaya hai! ❌\n\nAgar aap dobara kuch mangwana chahein ya koi aur madad chahiye ho, toh zaroor bataiyega. Main hamesha aap ki khidmat ke liye hazir hoon! 😊`,
-                };
-            } else {
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_placed_order_failed',
-                    reply: `Order *#${targetOrder.order_number}* cancel nahi ho saka: ${cancelRes?.message || 'Kitchen mein packing complete ho chuki hai.'} Baraye meherbani support agent se rabta karein.`,
-                };
-            }
+            return {
+                handled: true,
+                routeName: 'fast_cancel_not_found',
+                reply: `Aap ka koi active order ya cart mein koi item nahi mila jise cancel kiya ja sake. Agar aap ne kisi aur number se order kiya tha to baraye meherbani apna Order Number (jaise #CC-123456) likh kar bhej dein. 😊`,
+            };
         } catch (err) {
             console.error('[FAST_ROUTE] Error processing cancellation:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Re-order Request (Guide to Menu & Reassure Saved Details) ──
+    const isReorderIntent =
+        /\b(?:dobara|dubara|phir\s*se|phr\s*se|naye\s*siray\s*se|naya\s*order|naye\s*order)\b/i.test(lower) ||
+        /\b(?:dobara|dubara|phir\s*se)\s*(?:se\s*)?(?:order|mangwana|karna|karwana|khana)\b/i.test(lower) ||
+        /\b(?:reorder|re-order|order\s*again)\b/i.test(lower) ||
+        /^(?:dobara\s*order|naya\s*order|phir\s*se\s*order|ek\s*aur\s*order|aur\s*order)[\s!.?]*$/i.test(lower.trim());
+
+    const hasFoodItemInText = /\b(?:pizza|burger|deal|zinger|roll|fries|sandwich|wings)\b/i.test(lower);
+
+    if (isReorderIntent && !hasFoodItemInText && !hasCartOrOrderAction) {
+        try {
+            const { getRememberedCustomerDetails } = await import('./sessionService.js');
+            const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
+            if (remembered?.name) {
+                return {
+                    handled: true,
+                    routeName: 'fast_reorder_guidance',
+                    reply: `Ji ${remembered.name}! Hamare menu mein se apna pasandeeda item choose karein. 🍕🍔\n\nAap ki pichli delivery details hamare pas mehfooz hain, item choose karne ke baad hum aap se confirm kar ke foran order place kar dein ge!\n\nHamara menu dekhne ke liye *'menu'* ya deals ke liye *'deals'* likhein. 😊`,
+                };
+            }
+            return {
+                handled: true,
+                routeName: 'fast_reorder_guidance',
+                reply: `Ji zaroor! Hamare menu mein se apna pasandeeda item choose karein. 🍕🍔\n\nHamara menu dekhne ke liye *'menu'* ya deals ke liye *'deals'* likhein! 😊`,
+            };
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing reorder guidance:', err.message);
         }
     }
 
@@ -1926,7 +2041,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         whatsappPhone,
                         cart: cartNow,
                         cache,
-                        introMessage: `Zabardast Jigri! *${dealName}* cart mein add ho gayi hai! 🎉\n• 1x ${dealName}${dealDesc} — Rs. ${dealPrice}`,
+                        introMessage: `Zabardast! *${dealName}* cart mein add ho gayi hai! 🎉\n• 1x ${dealName}${dealDesc} — Rs. ${dealPrice}`,
                     });
                 }
             } catch (err) {
@@ -2054,7 +2169,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     whatsappPhone,
                     cart,
                     cache,
-                    introMessage: `Jigri, aap ke cart ka subtotal *Rs. ${subtotal}* bana hai.\n\n📋 *Items:*\n${itemsList}`,
+                    introMessage: `Ji, aap ke cart ka subtotal *Rs. ${subtotal}* bana hai.\n\n📋 *Items:*\n${itemsList}`,
                 });
             }
         } catch (err) {
@@ -2281,8 +2396,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Customer Phone Input / "Same Number" (Zero Tokens) ──
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
-    const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) &&
-        /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
+    const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
+        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower.trim())
+    );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
     const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp)$/i.test(lower.trim()) || !!rawPhoneMatch;
 

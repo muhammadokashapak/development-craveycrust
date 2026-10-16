@@ -290,14 +290,16 @@ function applyRolePermissions(user) {
     }
   }
 
-  // 3. Toggle Add buttons in Menu & Deals
+  // 3. Add buttons in Menu & Deals are visible for all admins
   const addMenuBtn = document.getElementById('openAddMenuItemBtn');
   if (addMenuBtn) {
-    addMenuBtn.style.display = isSuper ? '' : 'none';
+    addMenuBtn.style.display = '';
+    addMenuBtn.classList.remove('hidden');
   }
   const addDealBtn = document.getElementById('openAddDealBtn');
   if (addDealBtn) {
-    addDealBtn.style.display = isSuper ? '' : 'none';
+    addDealBtn.style.display = '';
+    addDealBtn.classList.remove('hidden');
   }
 }
 window.applyRolePermissions = applyRolePermissions;
@@ -1316,13 +1318,13 @@ function switchView(viewName) {
     if (window._ordersInterval) clearInterval(window._ordersInterval);
     window._ordersInterval = setInterval(() => {
       if (currentActiveView === 'orders') {
-        // Polling fallback to keep orders strictly updated even if SSE drops
+        // Silent background fallback to ensure fresh data
         loadOrders(false);
       } else {
         clearInterval(window._ordersInterval);
         window._ordersInterval = null;
       }
-    }, 4000);
+    }, 15000);
     if (typeof initRealtimeOrdersFeed === 'function') {
       if (!realtimeEventSource || realtimeEventSource.readyState === 2) {
         initRealtimeOrdersFeed();
@@ -1464,34 +1466,38 @@ async function loadDashboardStats() {
         }
       }
 
-      // Render recent live orders table on dashboard
+      // Render recent live orders table on dashboard (flicker-free signature check)
       const dashOrdersBody = document.getElementById('dashboardRecentOrdersBody');
       const recentOrders = data.data?.recent_orders || [];
       if (dashOrdersBody) {
-        if (recentOrders.length === 0) {
-          dashOrdersBody.innerHTML = '<tr><td colspan="8" class="table-empty">No orders recorded yet.</td></tr>';
-        } else {
-          dashOrdersBody.innerHTML = '';
-          recentOrders.forEach(ord => {
-            const tr = document.createElement('tr');
-            const timeStr = new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const dateStr = new Date(ord.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
-            tr.innerHTML = `
-              <td><strong style="color: var(--accent); font-family: var(--f-mono);">${escapeHtml(ord.orderNumber)}</strong></td>
-              <td><strong>${escapeHtml(ord.customerName)}</strong></td>
-              <td><span class="subtext">${escapeHtml(ord.phone)}</span></td>
-              <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ord.itemsSummary || '')}">
-                <span>${ord.itemCount} items (${escapeHtml(ord.itemsSummary || '')})</span>
-              </td>
-              <td><strong>Rs. ${Number(ord.total).toLocaleString()}</strong></td>
-              <td><span class="badge-order-status ${ord.orderStatus}">${ord.orderStatus}</span></td>
-              <td><span class="subtext">${dateStr} ${timeStr}</span></td>
-              <td style="text-align: right;">
-                <button class="btn btn-secondary btn-xs" onclick="window.openOrderDetailModal('${ord.orderNumber}')">View</button>
-              </td>
-            `;
-            dashOrdersBody.appendChild(tr);
-          });
+        const recentSig = recentOrders.map(o => `${o.orderNumber}:${o.orderStatus}:${o.total}`).join('|');
+        if (recentSig !== window._lastDashboardRecentSig || dashOrdersBody.children.length === 0) {
+          window._lastDashboardRecentSig = recentSig;
+          if (recentOrders.length === 0) {
+            dashOrdersBody.innerHTML = '<tr><td colspan="8" class="table-empty">No orders recorded yet.</td></tr>';
+          } else {
+            dashOrdersBody.innerHTML = '';
+            recentOrders.forEach(ord => {
+              const tr = document.createElement('tr');
+              const timeStr = new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const dateStr = new Date(ord.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
+              tr.innerHTML = `
+                <td><strong style="color: var(--accent); font-family: var(--f-mono);">${escapeHtml(ord.orderNumber)}</strong></td>
+                <td><strong>${escapeHtml(ord.customerName)}</strong></td>
+                <td><span class="subtext">${escapeHtml(ord.phone)}</span></td>
+                <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ord.itemsSummary || '')}">
+                  <span>${ord.itemCount} items (${escapeHtml(ord.itemsSummary || '')})</span>
+                </td>
+                <td><strong>Rs. ${Number(ord.total).toLocaleString()}</strong></td>
+                <td><span class="badge-order-status ${ord.orderStatus}">${ord.orderStatus}</span></td>
+                <td><span class="subtext">${dateStr} ${timeStr}</span></td>
+                <td style="text-align: right;">
+                  <button class="btn btn-secondary btn-xs" onclick="window.openOrderDetailModal('${ord.orderNumber}')">View</button>
+                </td>
+              `;
+              dashOrdersBody.appendChild(tr);
+            });
+          }
         }
       }
     }
@@ -1850,7 +1856,6 @@ function renderMenuItemsTable() {
               <line x1="3" y1="18" x2="3.01" y2="18"></line>
             </svg>
           </button>
-          ${currentUserRole === 'SUPER_ADMIN' ? `
           <button class="btn-table-icon" title="Edit" onclick="window.openEditMenuItem('${item.id}')">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1863,7 +1868,6 @@ function renderMenuItemsTable() {
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
           </button>
-          ` : ''}
         </div>
       </td>
     `;
@@ -2834,9 +2838,9 @@ function renderDealsTable() {
         <td><small>${validStr}</small></td>
         <td>${statusBadge}</td>
         <td style="text-align: right; white-space: nowrap;">
-          ${currentUserRole === 'SUPER_ADMIN' ? `<button class="btn btn-secondary btn-xs" onclick="window.openEditDealModal('${d.id}')">Edit</button>` : ''}
+          <button class="btn btn-secondary btn-xs" onclick="window.openEditDealModal('${d.id}')">Edit</button>
           <button class="btn btn-secondary btn-xs" onclick="window.toggleDealStatus('${d.id}', ${d.is_active})">${d.is_active ? 'Disable' : 'Enable'}</button>
-          ${currentUserRole === 'SUPER_ADMIN' ? `<button class="btn btn-danger btn-xs" onclick="window.deleteDeal('${d.id}')">Delete</button>` : ''}
+          <button class="btn btn-danger btn-xs" onclick="window.deleteDeal('${d.id}')">Delete</button>
         </td>
       </tr>
     `;
@@ -3670,12 +3674,21 @@ const VALID_STATUS_TRANSITIONS_MAP = {
 
 // ─── Orders Loader ──────────────────────────────────────────
 let ordersPageState = { page: 1, pageSize: 10 };
+let _lastRenderedOrdersSignature = '';
 
-function renderOrdersTable() {
+function renderOrdersTable(force = false) {
   const tbody = document.getElementById('ordersTableBody');
   if (!tbody) return;
 
   const orders = activeOrdersList || [];
+  const signature = `${ordersPageState.page}:${ordersPageState.pageSize}:${orders.map(o => `${o.orderNumber}:${o.orderStatus}:${o.paymentStatus}:${o.total}`).join('|')}`;
+  
+  // Skip DOM re-render if data and pagination have not changed (prevents flickering)
+  if (!force && signature === _lastRenderedOrdersSignature && tbody.children.length > 0) {
+    return;
+  }
+  _lastRenderedOrdersSignature = signature;
+
   if (orders.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" class="table-empty">No orders found matching criteria.</td></tr>';
     renderPaginationControl({
@@ -3686,7 +3699,7 @@ function renderOrdersTable() {
       onPageSizeChange: (s) => {
         ordersPageState.pageSize = s;
         ordersPageState.page = 1;
-        renderOrdersTable();
+        renderOrdersTable(true);
       }
     });
     return;
@@ -3730,12 +3743,12 @@ function renderOrdersTable() {
     pageSize: ordersPageState.pageSize,
     onPageChange: (p) => {
       ordersPageState.page = p;
-      renderOrdersTable();
+      renderOrdersTable(true);
     },
     onPageSizeChange: (s) => {
       ordersPageState.pageSize = s;
       ordersPageState.page = 1;
-      renderOrdersTable();
+      renderOrdersTable(true);
     }
   });
 }
@@ -3749,16 +3762,8 @@ async function loadOrders(resetPage = false) {
   const searchVal = document.getElementById('ordersSearchInput')?.value?.trim() || '';
   const dateVal = document.getElementById('ordersDateFilter')?.value || '';
 
-  // 1. Cache-First Strategy: Instant 0ms render from LocalDB if no active filters
-  if (!searchVal && !dateVal && (!currentOrderStatusFilter || currentOrderStatusFilter === 'ALL')) {
-    const localCached = await LocalDB.getAll('orders');
-    if (localCached && localCached.length > 0) {
-      activeOrdersList = localCached;
-      renderOrdersTable();
-    } else {
-      tbody.innerHTML = '<tr><td colspan="9" class="table-empty">Loading orders...</td></tr>';
-    }
-  } else {
+  // Only show "Loading orders..." on absolute initial load when tbody has no rows
+  if ((!activeOrdersList || activeOrdersList.length === 0) && (!tbody.children || tbody.children.length === 0)) {
     tbody.innerHTML = '<tr><td colspan="9" class="table-empty">Loading orders...</td></tr>';
   }
 
@@ -3782,7 +3787,7 @@ async function loadOrders(resetPage = false) {
     const orders = data.data?.orders || [];
     activeOrdersList = orders;
 
-    // Render immediately so UI never blocks on cache writes
+    // Render cleanly without blank flashes
     renderOrdersTable();
 
     // Cache orders locally in background if no filter active
@@ -5538,44 +5543,32 @@ async function loadConversations(searchQuery = '') {
     container.innerHTML = '';
     conversations.forEach(c => {
       const item = document.createElement('div');
-      item.className = 'chat-conv-item';
       const isSelected = activeChatCustomer && activeChatCustomer.chatId === c.chatId;
-
-      item.style.cssText = `
-        padding: 10px 12px;
-        border-radius: var(--r-md);
-        margin-bottom: 6px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        transition: all 0.15s ease;
-        background: ${isSelected ? 'var(--bg-surface-3, rgba(255, 255, 255, 0.08))' : 'transparent'};
-        border: 1px solid ${isSelected ? 'var(--accent)' : 'transparent'};
-      `;
+      item.className = 'chat-conv-item' + (isSelected ? ' selected' : '');
+      item.setAttribute('data-selected', isSelected ? 'true' : 'false');
 
       const displayName = c.customerName && c.customerName !== 'Customer' ? c.customerName : (c.phone ? `Customer (+${c.phone})` : 'Customer');
       const displayPhone = c.phone || c.chatId.split('@')[0];
-      const initial = (c.customerName && c.customerName !== 'Customer' ? c.customerName : displayPhone).charAt(0).toUpperCase();
+      const initial = (c.customerName && c.customerName !== 'Customer' ? c.customerName : displayPhone).replace(/[^A-Za-z0-9]/g, '').charAt(0).toUpperCase() || 'C';
       const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
       item.innerHTML = `
-        <div class="user-avatar" style="width: 38px; height: 38px; min-width: 38px; font-size: 14px; font-weight: 700; background: var(--bg-surface); border: 1px solid var(--border);">
+        <div class="conv-avatar">
           ${escapeHtml(initial)}
         </div>
-        <div style="flex: 1; min-width: 0;">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
-            <strong style="font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-primary);">${escapeHtml(displayName)}</strong>
-            <span style="font-size: 10px; color: var(--fg-muted);">${escapeHtml(timeStr)}</span>
+        <div class="conv-content">
+          <div class="conv-top-row">
+            <strong class="conv-name">${escapeHtml(displayName)}</strong>
+            <span class="conv-time">${escapeHtml(timeStr)}</span>
           </div>
-          <div style="font-size: 11px; color: var(--accent); margin-bottom: 3px; font-family: var(--f-mono);">
-            📞 +${escapeHtml(displayPhone)}
+          <div class="conv-phone">
+            +${escapeHtml(displayPhone)}
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
-            <span style="font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
-              ${c.lastMessageSender === 'bot' ? '🤖 ' : ''}${escapeHtml(c.lastMessage || '')}
+          <div class="conv-bottom-row">
+            <span class="conv-snippet">
+              ${escapeHtml(c.lastMessage || '')}
             </span>
-            <span class="badge-tag" style="font-size: 10px; padding: 1px 5px;">${c.totalMessages}</span>
+            <span class="chat-conv-badge">${c.totalMessages}</span>
           </div>
         </div>
       `;
@@ -5604,13 +5597,16 @@ async function openCustomerChatThread(customer) {
   const headerAvatar = document.getElementById('chatActiveAvatar');
   const badge = document.getElementById('chatActiveStatusBadge');
 
-  const resolvedName = customer.customerName && customer.customerName !== 'Customer' ? customer.customerName : (customer.phone ? `Customer (+${customer.phone})` : 'Customer');
+  const resolvedName = customer.customerName && customer.customerName !== 'Customer' ? customer.customerName : (customer.phone ? `Customer (${customer.phone})` : 'Customer');
   const resolvedPhone = customer.phone || customer.chatId.split('@')[0];
 
   if (headerName) headerName.textContent = resolvedName;
-  if (headerPhone) headerPhone.textContent = `📞 +${resolvedPhone}`;
-  if (headerAvatar) headerAvatar.textContent = resolvedName.charAt(0).toUpperCase();
-  if (badge) badge.style.display = 'inline-block';
+  if (headerPhone) headerPhone.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>+${resolvedPhone}`;
+  if (headerAvatar) headerAvatar.textContent = resolvedName.replace(/[^A-Za-z0-9]/g, '').charAt(0).toUpperCase() || 'C';
+  if (badge) {
+    badge.style.display = 'inline-flex';
+    badge.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> <span>VERIFIED WHATSAPP</span>`;
+  }
 
   await fetchAndRenderChatMessages(customer.chatId);
 }
@@ -5657,7 +5653,7 @@ async function fetchAndRenderChatMessages(chatId) {
         <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-bot'}">
           <div class="chat-meta">
             <span class="chat-name">${isUser ? `👤 ${escapeHtml(bubbleCustomerName)}` : '🍔 Burger Raja'}</span>
-            <span class="chat-time">${escapeHtml(timeStr)}</span>
+            <span class="chat-time">${escapeHtml(timeStr)}${!isUser ? ' <span class="chat-checkmarks">✔✔</span>' : ''}</span>
           </div>
           <div class="chat-body">${escapeHtml(m.message)}</div>
         </div>
@@ -5672,6 +5668,47 @@ async function fetchAndRenderChatMessages(chatId) {
   }
 }
 window.fetchAndRenderChatMessages = fetchAndRenderChatMessages;
+
+// Send manual reply from chat input bar
+async function sendManualChatMessage() {
+  const input = document.getElementById('chatInputMessage');
+  if (!input || !activeChatCustomer) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  try {
+    const res = await fetch(`/api/admin/chats/conversations/${encodeURIComponent(activeChatCustomer.chatId)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      await fetchAndRenderChatMessages(activeChatCustomer.chatId);
+      loadConversations();
+    } else {
+      if (typeof showToast === 'function') showToast(data.error || 'Failed to send message', 'error');
+    }
+  } catch (err) {
+    console.error('Error sending chat message:', err);
+    if (typeof showToast === 'function') showToast('Failed to send message', 'error');
+  }
+}
+
+const chatSendButton = document.getElementById('chatSendButton');
+if (chatSendButton) {
+  chatSendButton.addEventListener('click', sendManualChatMessage);
+}
+const chatInputMessage = document.getElementById('chatInputMessage');
+if (chatInputMessage) {
+  chatInputMessage.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendManualChatMessage();
+    }
+  });
+}
 
 // Event listeners for chats toolbar
 const chatsRefreshBtn = document.getElementById('chatsRefreshBtn');

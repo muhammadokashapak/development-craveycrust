@@ -267,4 +267,108 @@ export function clearPendingOrderUpdate(sessionKey, altKey) {
     if (altKey) _pendingOrderUpdate.delete(altKey);
 }
 
+// ─── Pending Cancellation Confirmation Tracker ──────────────────────────
+const _pendingCancellation = new Map();
+
+export function setPendingCancellation(key, data, altKey) {
+    if (!key && !altKey) return;
+    const primary = key || altKey;
+    _pendingCancellation.set(primary, data);
+    if (altKey) _pendingCancellation.set(altKey, data);
+    if (key) _pendingCancellation.set(key, data);
+}
+
+export function getPendingCancellation(key, altKey) {
+    if (!key && !altKey) return null;
+    const primary = key || altKey;
+    let entry = _pendingCancellation.get(primary);
+    if (!entry && altKey) entry = _pendingCancellation.get(altKey);
+    if (!entry) return null;
+    if (entry.timestamp && Date.now() - entry.timestamp > 10 * 60 * 1000) {
+        clearPendingCancellation(key, altKey);
+        return null;
+    }
+    return entry;
+}
+
+export function clearPendingCancellation(key, altKey) {
+    if (key) _pendingCancellation.delete(key);
+    if (altKey) _pendingCancellation.delete(altKey);
+}
+
+// ─── Remembered Customer Details (Persisted Across Cancels & Orders) ────
+const _rememberedCustomerDetails = new Map();
+
+export function rememberCustomerDetails(key, details, altKey) {
+    if ((!key && !altKey) || !details) return;
+    const primary = key || altKey;
+    const existing = _rememberedCustomerDetails.get(primary) || (altKey ? _rememberedCustomerDetails.get(altKey) : null) || {};
+    const updated = {
+        name: details.name || details.customerName || existing.name,
+        phone: details.phone || existing.phone,
+        whatsappPhone: details.whatsappPhone || existing.whatsappPhone,
+        address: details.address || details.deliveryAddress || existing.address,
+        areaName: details.areaName || details.deliveryAreaName || existing.areaName,
+        location: details.location || existing.location,
+        googleMapsUrl: details.googleMapsUrl || existing.googleMapsUrl,
+        paymentMethod: details.paymentMethod || existing.paymentMethod || 'COD',
+        timestamp: Date.now()
+    };
+    if (primary) _rememberedCustomerDetails.set(primary, updated);
+    if (altKey) _rememberedCustomerDetails.set(altKey, updated);
+    if (key) _rememberedCustomerDetails.set(key, updated);
+}
+
+export async function getRememberedCustomerDetails(key, altKey) {
+    if (!key && !altKey) return null;
+    const primary = key || altKey;
+    let details = _rememberedCustomerDetails.get(primary);
+    if (!details && altKey) details = _rememberedCustomerDetails.get(altKey);
+
+    // If not in-memory (e.g. after fresh boot), fetch from DB (last customer order)
+    if (!details || !details.name || !details.address) {
+        try {
+            const { getDbClient } = await import('../db/client.js');
+            const prisma = getDbClient();
+            if (prisma) {
+                const cleanPhone = (altKey || key || '').replace(/\D/g, '');
+                const orConds = [];
+                if (key) {
+                    orConds.push({ source_session_id: key });
+                    orConds.push({ source_chat_id: key });
+                }
+                if (cleanPhone) {
+                    orConds.push({ phone: cleanPhone });
+                    orConds.push({ whatsapp_phone: cleanPhone });
+                    if (cleanPhone.length >= 9) {
+                        const last9 = cleanPhone.slice(-9);
+                        orConds.push({ phone: { contains: last9 } });
+                    }
+                }
+                if (orConds.length > 0) {
+                    const lastOrder = await prisma.order.findFirst({
+                        where: { OR: orConds },
+                        orderBy: { created_at: 'desc' },
+                        include: { customer: true }
+                    });
+                    if (lastOrder) {
+                        details = {
+                            name: lastOrder.customer_name || lastOrder.customer?.name,
+                            phone: lastOrder.phone || lastOrder.customer?.phone,
+                            whatsappPhone: lastOrder.whatsapp_phone || lastOrder.customer?.whatsapp_phone,
+                            address: lastOrder.delivery_address,
+                            areaName: lastOrder.delivery_area_name,
+                            googleMapsUrl: lastOrder.google_maps_url,
+                            paymentMethod: lastOrder.payment_method || 'COD',
+                            timestamp: Date.now()
+                        };
+                        rememberCustomerDetails(key, details, altKey);
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+    return details;
+}
+
 

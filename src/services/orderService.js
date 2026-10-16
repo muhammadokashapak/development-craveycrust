@@ -1083,13 +1083,13 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
             restId = null;
         }
     }
-    const where = {};
+    const conditions = [];
     if (restId) {
-        where.restaurant_id = restId;
+        conditions.push({ restaurant_id: restId });
     }
 
     if (status && status !== 'ALL') {
-        where.order_status = status;
+        conditions.push({ order_status: status });
     }
 
     if (date) {
@@ -1097,17 +1097,21 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
         start.setHours(0, 0, 0, 0);
         const end = new Date(date);
         end.setHours(23, 59, 59, 999);
-        where.created_at = { gte: start, lte: end };
+        conditions.push({ created_at: { gte: start, lte: end } });
     }
 
     if (search && search.trim()) {
         const s = search.trim();
-        where.OR = [
-            { order_number: { contains: s, mode: 'insensitive' } },
-            { customer_name: { contains: s, mode: 'insensitive' } },
-            { phone: { contains: s } },
-        ];
+        conditions.push({
+            OR: [
+                { order_number: { contains: s, mode: 'insensitive' } },
+                { customer_name: { contains: s, mode: 'insensitive' } },
+                { phone: { contains: s } },
+            ]
+        });
     }
+
+    const where = conditions.length > 0 ? { AND: conditions } : {};
 
     const skip = (Math.max(1, page) - 1) * limit;
 

@@ -212,6 +212,7 @@ class WhatsAppSession {
 }
 
 const activeSessions = new Map();
+global.activeSessions = activeSessions;
 // Inject into n8n route so /api/n8n/send-message can resolve the correct socket
 injectSessions(activeSessions);
 registerSocketResolver(activeSessions);

@@ -19,9 +19,17 @@ export async function getDefaultRestaurantId() {
     }
 
     let restaurant = await prisma.restaurant.findFirst({
-        where: { is_active: true },
+        where: { slug: 'cravey-crust', is_active: true },
         select: { id: true },
     });
+
+    if (!restaurant) {
+        restaurant = await prisma.restaurant.findFirst({
+            where: { is_active: true },
+            orderBy: { created_at: 'asc' },
+            select: { id: true },
+        });
+    }
 
     if (!restaurant) {
         restaurant = await prisma.restaurant.findFirst({

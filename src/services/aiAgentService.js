@@ -502,7 +502,13 @@ async function executeTool(toolName, args, context) {
                 }
 
                 try {
-                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    const { clearSessionOrderDetails, rememberCustomerDetails } = await import('./sessionService.js');
+                    rememberCustomerDetails(sessionKey, {
+                        name: trimmedName,
+                        phone: cleanPhoneDigits,
+                        address: finalAddress,
+                        paymentMethod: chosenPaymentMethod,
+                    }, cleanPhoneDigitsForDetails);
                     clearSessionOrderDetails(sessionKey, cleanPhoneDigitsForDetails);
                 } catch (_) {}
 
@@ -609,6 +615,29 @@ async function executeTool(toolName, args, context) {
                     orderNumber: orderNum,
                     reason: 'Customer requested order cancellation',
                 });
+                if (result?.success) {
+                    try {
+                        const { rememberCustomerDetails, clearSessionOrderDetails } = await import('./sessionService.js');
+                        const prisma = getDbClient();
+                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                        if (prisma) {
+                            const ord = await prisma.order.findFirst({
+                                where: { restaurant_id: restId, order_number: orderNum },
+                            });
+                            if (ord) {
+                                rememberCustomerDetails(sessionKey, {
+                                    name: ord.customer_name,
+                                    phone: ord.phone,
+                                    address: ord.delivery_address,
+                                    areaName: ord.delivery_area_name,
+                                    googleMapsUrl: ord.google_maps_url,
+                                    paymentMethod: ord.payment_method,
+                                }, cleanPhone);
+                            }
+                        }
+                        clearSessionOrderDetails(sessionKey, cleanPhone);
+                    } catch (_) {}
+                }
                 return result;
             }
 
@@ -722,9 +751,11 @@ export function sanitizeOutput(text) {
     clean = clean.replace(EMOJI_REGEX, '');
     // 4. Remove leftover backtick markdown
     clean = clean.replace(/`+/g, '');
-    // 5. Clean up duplicate spaces
+    // 5. Remove informal slangs (jigri, jigar)
+    clean = clean.replace(/\b(?:jigri|jigar)\b/gi, '');
+    // 6. Clean up duplicate spaces
     clean = clean.replace(/[ \t]{2,}/g, ' ');
-    // 6. Collapse multiple blank lines
+    // 7. Collapse multiple blank lines
     clean = clean.replace(/\n{3,}/g, '\n\n');
     return clean.trim();
 }
@@ -951,6 +982,9 @@ export async function processMessage({ sock, msg, session, text, identity, locat
 
     // ── 5b. Update Session Order Details from incoming message ──
     const sessionDetails = getSessionOrderDetails(sessionKey, whatsappPhone);
+    const { getRememberedCustomerDetails, rememberCustomerDetails } = await import('./sessionService.js');
+    const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
+
     if (activeLocation) {
         updateSessionOrderDetails(sessionKey, {
             address: activeLocation.formattedAddress || activeLocation.address || 'Google Maps Location Pin',
@@ -959,7 +993,25 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     }
     const extracted = extractCustomerDetails(effectiveText, sessionDetails);
     const updatePayload = {};
-    if (extracted.name && (!sessionDetails.name || extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase())) {
+
+    // Check if customer affirms previous/remembered order details (Re-order Confirmation)
+    const isAffirmativeForRemembered =
+        /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm|bilkul|same|yehi|yahi|wahi)[\s!.?]*$/i.test(effectiveText.trim()) ||
+        /\b(?:same|yehi|yahi|wahi)\s*(?:details?|rakho|rahygi|rahegi|hogi|hoga|pe|par|kardo|kar\s*do)?\b/i.test(effectiveText.toLowerCase()) ||
+        /\b(?:pichli|purani)\s*(?:details?|address|number)?\s*(?:pe|par|hi|theek|sahi)\b/i.test(effectiveText.toLowerCase()) ||
+        /\b(?:confirm\s*(?:kr|kar)?\s*d[ou]|order\s*confirm|order\s*book\s*kar\s*do|order\s*kardo)\b/i.test(effectiveText.toLowerCase());
+
+    if (isAffirmativeForRemembered && rememberedDetails?.name && rememberedDetails?.address && (!sessionDetails.name || !sessionDetails.address)) {
+        updatePayload.name = rememberedDetails.name;
+        updatePayload.phone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
+        updatePayload.phoneConfirmed = true;
+        updatePayload.address = rememberedDetails.address;
+        updatePayload.paymentMethod = rememberedDetails.paymentMethod || 'COD';
+        updatePayload.previousDetailsConfirmed = true;
+        context.confirmIntent = true;
+    }
+
+    if (extracted.name && (!sessionDetails.name || extracted.nameExplicit || (extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase() && !sessionDetails.name))) {
         updatePayload.name = extracted.name;
     }
     if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase())) {
@@ -974,11 +1026,16 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     }
     // If name is already known and phone is awaiting confirmation, check if affirmative reply
     if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
-        const isAffirmativePhone = /^(?:same|same\s*number|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(effectiveText.trim());
+        const isAffirmativePhone = /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(effectiveText.trim());
         if (isAffirmativePhone) {
             updatePayload.phone = (whatsappPhone || '').replace(/\D/g, '');
             updatePayload.phoneConfirmed = true;
         }
+    }
+    // Lock in phoneConfirmed so that phone confirmation is never asked twice
+    if (sessionDetails.phoneConfirmed || sessionDetails.phone) {
+        updatePayload.phoneConfirmed = true;
     }
     // If name & phone are confirmed and awaiting address (Step 3) or explicit address update provided
     if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
@@ -1038,7 +1095,32 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     let checkoutStepGuidance = '';
     const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
-        if (!updatedDetails.name) {
+        if (rememberedDetails?.name && rememberedDetails?.address && !updatedDetails.previousDetailsConfirmed && (!updatedDetails.name || !updatedDetails.address)) {
+            const remName = rememberedDetails.name;
+            const remPhone = rememberedDetails.phone || displayPhone;
+            const remAddress = rememberedDetails.address;
+            const remPayment = rememberedDetails.paymentMethod === 'EASYPAISA' ? 'EasyPaisa' : 'Cash on Delivery (COD)';
+
+            checkoutStepGuidance = `\n\n🚨 RE-ORDER CHECKOUT PROTOCOL (PICHLI DETAILS CONFIRMATION):
+- Customer ka cart active hai aur pichli order details hamare pas pehle se mojood hain:
+  👤 Naam: ${remName}
+  📞 Contact Phone: ${remPhone}
+  📍 Delivery Address: ${remAddress}
+  💵 Payment Method: ${remPayment}
+- 🚨 SAKHT HIDAYAT: Customer se dobaara naye siray se Naam, Phone ya Address ALAG ALAG MAT POOCHEIN!
+- Is turn mein customer ko cart items aur total batayein, aur pichli details confirm karne ka poochein:
+  "Aap ka item cart mein add ho gaya hai! 🎉
+
+  📋 *Pichli Delivery Details:*
+  👤 Naam: ${remName}
+  📞 Phone: ${remPhone}
+  📍 Address: ${remAddress}
+  💵 Payment: ${remPayment}
+
+  Kya aap ka yeh order inhi pichli details par confirm kar dein? (Haan / Nahi)"
+- Agar customer "Haan", "Yes", "Same", "Yehi rahyga", "Confirm" kahe, to FORAN 'create_confirmed_order' tool call karke order book karein (customerName: "${remName}", phone: "${remPhone}", deliveryAddress: "${remAddress}", paymentMethod: "${rememberedDetails.paymentMethod || 'COD'}").
+- Agar customer koi detail badalna chahe (maslan "address yeh hai" ya "naam badal do"), to naye address/naam ke sath update karein.`;
+        } else if (!updatedDetails.name) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 1 (CUSTOMER NAME).
 - Customer ka cart active hai lekin Naam missing hai.
