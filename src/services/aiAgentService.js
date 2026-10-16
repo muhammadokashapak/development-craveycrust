@@ -790,7 +790,18 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     if (extracted.name && !sessionDetails.name) updatePayload.name = extracted.name;
     if (extracted.address && !sessionDetails.address) updatePayload.address = extracted.address;
     if (extracted.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-    if (extracted.phone) updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? (whatsappPhone || '').replace(/\D/g, '') : extracted.phone;
+    if (extracted.phone) {
+        updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? (whatsappPhone || '').replace(/\D/g, '') : extracted.phone;
+        updatePayload.phoneConfirmed = true;
+    }
+    // If name is already known and phone is awaiting confirmation, check if affirmative reply
+    if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
+        const isAffirmativePhone = /^(?:same|same\s*number|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(effectiveText.trim());
+        if (isAffirmativePhone) {
+            updatePayload.phone = (whatsappPhone || '').replace(/\D/g, '');
+            updatePayload.phoneConfirmed = true;
+        }
+    }
     if (Object.keys(updatePayload).length > 0) {
         updateSessionOrderDetails(sessionKey, updatePayload, whatsappPhone);
     }
@@ -813,7 +824,54 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     } catch (_) {}
 
     const updatedDetails = getSessionOrderDetails(sessionKey, whatsappPhone);
-    const customerDetailsSummary = `Naam: ${updatedDetails.name || 'Not provided'}\nPhone: ${whatsappPhone || updatedDetails.phone || '03XXXXXXXXX'}\nDelivery Address: ${updatedDetails.address || (activeLocation?.formattedAddress || 'Not provided')}\nPayment Method: ${updatedDetails.paymentMethod || 'Not selected'}`;
+    const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+    const displayPhone = updatedDetails.phone || (rawCleanPhone.startsWith('923') ? '03' + rawCleanPhone.slice(2) : (rawCleanPhone || '03XXXXXXXXX'));
+
+    let checkoutStepGuidance = '';
+    const hasCartItems = activeCart?.items && activeCart.items.length > 0;
+    if (hasCartItems) {
+        if (!updatedDetails.name) {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 1 (CUSTOMER NAME).
+- Customer ka cart active hai lekin Naam missing hai.
+- Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
+- SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+        } else if (!updatedDetails.phoneConfirmed && !updatedDetails.phone) {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 2 (CONTACT PHONE).
+- Customer ka Naam (${updatedDetails.name}) mil chuka hai.
+- Aap ko is turn mein SIRF rabta phone number confirm karna hai: "Shukriya ${updatedDetails.name}! Rabtay ke liye rider ko yahi WhatsApp number (${displayPhone}) dein ya koi doosra contact number likhna hai?".
+- SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+        } else if (!updatedDetails.address && !activeLocation?.formattedAddress) {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 3 (DELIVERY ADDRESS).
+- Customer ka Naam aur Contact Phone dono mojood hain.
+- Aap ko is turn mein SIRF Delivery Address ya Location Pin poochna hai: "Delivery kahan karni hai ${updatedDetails.name}? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍".
+- SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+        } else if (!updatedDetails.paymentMethod) {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 4 (PAYMENT METHOD).
+- Customer ka Naam, Phone aur Delivery Address sab mil chuka hai.
+- Aap ko is turn mein SIRF Payment Method poochna hai: "Payment method kaunsa pasand karenge ${updatedDetails.name} — Cash on Delivery (COD) ya EasyPaisa? 💵".
+- SAKHT MANA: Payment method khud se COD assume mat karein! Customer ki selection ka intezar karein.`;
+        } else {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 5 (ORDER SUMMARY & CONFIRMATION).
+- Chaaron (4) zaroori details (Naam, Phone, Address, Payment Method) mil chuki hain!
+- Ab mukammal Order Summary dikhao aur confirmation poochein:
+  📋 *ORDER SUMMARY:*
+  ${activeCartSummary}
+  👤 Customer Name: ${updatedDetails.name}
+  📍 Delivery Address: ${updatedDetails.address || activeLocation?.formattedAddress}
+  📞 Contact Phone: ${displayPhone}
+  💵 Payment Method: ${updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}
+  
+  "Ji ${updatedDetails.name}, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?"
+- SAKHT MANA: Jab tak customer explicitly "Haan" ya "Confirm" na kahe, 'create_confirmed_order' call MAT karein! Jab customer "Haan" kahe to foran create_confirmed_order call karein.`;
+        }
+    }
+
+    const customerDetailsSummary = `Naam: ${updatedDetails.name || 'Not provided'}\nPhone: ${updatedDetails.phoneConfirmed || updatedDetails.phone ? displayPhone : 'Not confirmed'}\nDelivery Address: ${updatedDetails.address || (activeLocation?.formattedAddress || 'Not provided')}\nPayment Method: ${updatedDetails.paymentMethod || 'Not selected'}${checkoutStepGuidance}`;
 
     // Build grounded System Prompt (Hissa 6)
     const systemPromptText = buildSystemPrompt({

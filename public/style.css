@@ -4216,17 +4216,12 @@ body.is-superadmin #viewWhatsapp #waSplitContainer {
   margin: 0 !important;
 }
 
-/* Customer Chats Role Isolation - STRICTLY HIDDEN FOR ADMIN, VISIBLE ONLY FOR SUPER ADMIN */
-#navChats,
-#viewChats {
-  display: none !important;
-}
-
-body.is-superadmin #navChats {
+/* Customer Chats View */
+#navChats {
   display: flex !important;
 }
 
-body.is-superadmin #viewChats:not(.hidden) {
+#viewChats:not(.hidden) {
   display: flex !important;
 }
 

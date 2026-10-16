@@ -256,17 +256,12 @@ function applyRolePermissions(user) {
     }
   });
 
-  // Customer Chats: strictly visible ONLY for Super Admin, strictly HIDDEN for Admin
+  // Customer Chats: visible for both Admin and Super Admin
   const navChats = document.getElementById('navChats');
   if (navChats) {
-    if (isSuper) {
-      navChats.classList.remove('hidden');
-      navChats.style.removeProperty('display');
-      navChats.style.display = 'flex';
-    } else {
-      navChats.classList.add('hidden');
-      navChats.style.setProperty('display', 'none', 'important');
-    }
+    navChats.classList.remove('hidden');
+    navChats.style.removeProperty('display');
+    navChats.style.display = 'flex';
   }
 
   // 2. Toggle WhatsApp terminal vs centered connection view (Super Admin Only)
@@ -1260,16 +1255,6 @@ window.showToast = showToast;
 
 // ─── View Switcher ─────────────────────────────────────────────────────
 function switchView(viewName) {
-  // Role-based view protection: block customer chats for admin
-  if (currentUserRole !== 'SUPER_ADMIN') {
-    if (viewName === 'chats') {
-      viewName = 'dashboard';
-    }
-  }
-
-  if (viewName === 'chats') {
-    viewName = 'dashboard';
-  }
   currentActiveView = viewName;
   const views = {
     dashboard:  { el: document.getElementById('viewDashboard'),  title: 'Dashboard Overview', sub: 'Real-time restaurant metrics & operations' },
@@ -1294,8 +1279,27 @@ function switchView(viewName) {
   const target = views[viewName] || views.dashboard;
   if (target.el) target.el.classList.remove('hidden');
 
-  if (viewName === 'chats' && typeof window.loadConversations === 'function') {
-    window.loadConversations();
+  if (viewName === 'chats') {
+    if (typeof window.loadConversations === 'function') {
+      window.loadConversations();
+    }
+    if (window._chatsInterval) clearInterval(window._chatsInterval);
+    window._chatsInterval = setInterval(() => {
+      if (currentActiveView === 'chats') {
+        window.loadConversations();
+        if (activeChatCustomer && typeof window.fetchAndRenderChatMessages === 'function') {
+          window.fetchAndRenderChatMessages(activeChatCustomer.chatId);
+        }
+      } else {
+        clearInterval(window._chatsInterval);
+        window._chatsInterval = null;
+      }
+    }, 4000);
+  } else {
+    if (window._chatsInterval) {
+      clearInterval(window._chatsInterval);
+      window._chatsInterval = null;
+    }
   }
 
   const pageTitle = document.getElementById('pageTitle');
@@ -5450,17 +5454,22 @@ async function loadConversations(searchQuery = '') {
         border: 1px solid ${isSelected ? 'var(--accent)' : 'transparent'};
       `;
 
-      const initial = (c.customerName || c.phone || 'C').charAt(0).toUpperCase();
+      const displayName = c.customerName && c.customerName !== 'Customer' ? c.customerName : (c.phone ? `Customer (+${c.phone})` : 'Customer');
+      const displayPhone = c.phone || c.chatId.split('@')[0];
+      const initial = (c.customerName && c.customerName !== 'Customer' ? c.customerName : displayPhone).charAt(0).toUpperCase();
       const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
 
       item.innerHTML = `
-        <div class="user-avatar" style="width: 36px; height: 36px; min-width: 36px; font-size: 14px; font-weight: 700; background: var(--bg-surface); border: 1px solid var(--border);">
+        <div class="user-avatar" style="width: 38px; height: 38px; min-width: 38px; font-size: 14px; font-weight: 700; background: var(--bg-surface); border: 1px solid var(--border);">
           ${escapeHtml(initial)}
         </div>
         <div style="flex: 1; min-width: 0;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
-            <strong style="font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-primary);">${escapeHtml(c.customerName || c.phone)}</strong>
+            <strong style="font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg-primary);">${escapeHtml(displayName)}</strong>
             <span style="font-size: 10px; color: var(--fg-muted);">${escapeHtml(timeStr)}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--accent); margin-bottom: 3px; font-family: var(--f-mono);">
+            📞 +${escapeHtml(displayPhone)}
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
             <span style="font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">
@@ -5495,9 +5504,12 @@ async function openCustomerChatThread(customer) {
   const headerAvatar = document.getElementById('chatActiveAvatar');
   const badge = document.getElementById('chatActiveStatusBadge');
 
-  if (headerName) headerName.textContent = customer.customerName || customer.phone;
-  if (headerPhone) headerPhone.textContent = `+${customer.phone || customer.chatId.split('@')[0]}`;
-  if (headerAvatar) headerAvatar.textContent = (customer.customerName || customer.phone || 'C').charAt(0).toUpperCase();
+  const resolvedName = customer.customerName && customer.customerName !== 'Customer' ? customer.customerName : (customer.phone ? `Customer (+${customer.phone})` : 'Customer');
+  const resolvedPhone = customer.phone || customer.chatId.split('@')[0];
+
+  if (headerName) headerName.textContent = resolvedName;
+  if (headerPhone) headerPhone.textContent = `📞 +${resolvedPhone}`;
+  if (headerAvatar) headerAvatar.textContent = resolvedName.charAt(0).toUpperCase();
   if (badge) badge.style.display = 'inline-block';
 
   await fetchAndRenderChatMessages(customer.chatId);

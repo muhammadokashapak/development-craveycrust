@@ -1143,6 +1143,17 @@ async function handleMessage(sock, msg, session) {
     const sender = msg.key.participant || msg.key.remoteJid;
     const isGroup = jid.endsWith('@g.us');
 
+    // ── Record messages sent directly by human staff from the WhatsApp device ──
+    if (isFromMe && !isGroup && text && text.trim()) {
+        const targetPhone = jid.split(':')[0].replace('@s.whatsapp.net', '').replace('@lid', '');
+        recordChatMessage({
+            chatId: jid,
+            phone: targetPhone,
+            sender: 'bot',
+            message: text.trim(),
+        }).catch(() => {});
+    }
+
     // ── Check Human Handover Unmute Triggers (Restart/resume bot on human agent or customer command) ──
     const cleanText = (typeof text === 'string' ? text.trim().toLowerCase() : '');
     const isUnmuteCmd = !isGroup && (
@@ -1308,15 +1319,17 @@ async function handleMessage(sock, msg, session) {
         if (!isOwnerCmd) {
             // ── Route to Standalone AI Agent (Fast routes + AI + Token logging) ──
             const identity = resolveSenderIdentity(sock, msg, session);
-            console.log(`[AI] Processing message from ${senderNum} (${jid})`);
+            const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
+            const customerName = msg.pushName || identity?.name || null;
+            console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
 
             // Record incoming customer chat
             recordChatMessage({
                 chatId: jid,
-                phone: senderNum,
-                customerName: identity?.name || null,
+                phone: customerPhone,
+                customerName: customerName,
                 sender: 'user',
-                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : 'Message'),
+                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : 'Message')),
             }).catch(() => {});
 
             try {
@@ -1336,8 +1349,8 @@ async function handleMessage(sock, msg, session) {
                     // Record outgoing bot chat reply
                     recordChatMessage({
                         chatId: jid,
-                        phone: senderNum,
-                        customerName: identity?.name || null,
+                        phone: customerPhone,
+                        customerName: customerName,
                         sender: 'bot',
                         message: aiReply,
                     }).catch(() => {});
@@ -1386,6 +1399,18 @@ async function handleMessage(sock, msg, session) {
         }
         try {
             const identity = resolveSenderIdentity(sock, msg, session);
+            const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
+            const customerName = msg.pushName || identity?.name || null;
+
+            // Record incoming customer chat
+            recordChatMessage({
+                chatId: jid,
+                phone: customerPhone,
+                customerName: customerName,
+                sender: 'user',
+                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : 'Message')),
+            }).catch(() => {});
+
             const normalized = {
                 sessionId: session.id,
                 chatId: jid,
@@ -1408,6 +1433,14 @@ async function handleMessage(sock, msg, session) {
 
             if (orderResponse && orderResponse.text) {
                 await sock.sendMessage(jid, { text: orderResponse.text }, { quoted: msg });
+                // Record outgoing bot order reply
+                recordChatMessage({
+                    chatId: jid,
+                    phone: customerPhone,
+                    customerName: customerName,
+                    sender: 'bot',
+                    message: orderResponse.text,
+                }).catch(() => {});
                 return; // Stop — handled by ordering orchestrator
             }
         } catch (orderErr) {

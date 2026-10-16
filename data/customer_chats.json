@@ -1054,5 +1054,49 @@
     "message": "Order receive ho gaya hai! Shukriya.",
     "message_type": "text",
     "created_at": "2026-10-15T20:44:28.714Z"
+  },
+  {
+    "id": "chat_1792118459431_grxi0",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "86634523582505@lid",
+    "phone": "03278497923",
+    "customer_name": "Customer (03278497923)",
+    "sender": "user",
+    "message": "Message",
+    "message_type": "text",
+    "created_at": "2026-10-16T02:40:59.431Z"
+  },
+  {
+    "id": "chat_1792118459439_ddljq",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "86634523582505@lid",
+    "phone": "03278497923",
+    "customer_name": "Customer (03278497923)",
+    "sender": "user",
+    "message": "Message",
+    "message_type": "text",
+    "created_at": "2026-10-16T02:40:59.439Z"
+  },
+  {
+    "id": "chat_1792118486715_bv8bk",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "240071710126199@lid",
+    "phone": "923495696659",
+    "customer_name": "Smilekashii",
+    "sender": "user",
+    "message": "hello",
+    "message_type": "text",
+    "created_at": "2026-10-16T02:41:26.715Z"
+  },
+  {
+    "id": "chat_1792118487738_05vpm",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "240071710126199@lid",
+    "phone": "923495696659",
+    "customer_name": "Smilekashii",
+    "sender": "bot",
+    "message": "Walaikum Assalam! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
+    "message_type": "text",
+    "created_at": "2026-10-16T02:41:27.738Z"
   }
 ]

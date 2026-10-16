@@ -57,7 +57,7 @@ export function extractCustomerDetails(raw) {
     }
 
     // 2. Phone
-    if (/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|isi\s*num(?:br|ber)?|wahi\s*num(?:br|ber)?|yehi\s*num(?:br|ber)?)\b/i.test(lower)) {
+    if (/\b(?:same\s*(?:number|numbr|no|whatsapp)?|yahi\s*(?:number|numbr|no|hai)?|yehi\s*(?:number|numbr|no|hai)?|isi\s*(?:number|pe)?|wahi\s*(?:number|numbr|no)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?)\b/i.test(lower)) {
         phone = 'SAME_WHATSAPP';
     } else {
         const phMatch = raw.match(/(?:03\d{9}|\+?923\d{9})/);
@@ -65,13 +65,22 @@ export function extractCustomerDetails(raw) {
     }
 
     // 3. Name
-    const nameBefore = raw.match(/\b([A-Za-z]{2,20})\s+(?:meara|mera)\s+(?:name|naam)\b/i) ||
-                       raw.match(/^([A-Za-z]{2,20})\s+(?:name|naam|nam)(?:\s+(?:is|hai|h|ja))?\b/i);
-    const nameAfter = raw.match(/\b(?:meara|mera|apna)?\s*(?:naam|name|nam)\s*(?:is|hai|h)?\s*[:=-]?\s*([A-Za-z]{2,20})\b/i);
+    const NOT_NAME_REGEX = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|food|water|drink|hi|hello|hey|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num)\b/i;
 
-    const NOT_NAME_REGEX = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|khan|bro|food|water|drink|hi|hello|hey|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori)\b/i;
+    const nameBefore = raw.match(/\b([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\s+(?:meara|mera)\s+(?:name|naam)\b/i);
+    const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:is|hai|h|:|=|-)?\s+([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
+                      raw.match(/\b(?:naam|name|nam)\s*[:=-]\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i);
 
-    const nameCandidate = (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null))?.trim();
+    let nameCandidate = (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null))?.trim();
+    if (nameCandidate) {
+        nameCandidate = nameCandidate.replace(/\s+(?:hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
+    }
+    if (!nameCandidate && !paymentMethod && !phone) {
+        const directMatch = raw.trim().match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})$/);
+        if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
+            nameCandidate = directMatch[1].trim();
+        }
+    }
     if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate)) {
         name = nameCandidate;
     }
@@ -111,6 +120,121 @@ export function extractCustomerDetails(raw) {
     }
 
     return { name, paymentMethod, phone, address };
+}
+
+export function formatPakistaniPhone(phone) {
+    if (!phone) return '';
+    const digits = String(phone).replace(/\D/g, '');
+    if (digits.startsWith('923') && digits.length >= 12) {
+        return '0' + digits.slice(2, 12);
+    }
+    if (digits.startsWith('03') && digits.length >= 11) {
+        return digits.slice(0, 11);
+    }
+    if (digits.startsWith('3') && digits.length === 10) {
+        return '0' + digits;
+    }
+    return phone;
+}
+
+/**
+ * Step-by-Step Checkout Protocol Helper.
+ * Evaluates session order details and returns a deterministic, single-step prompt.
+ */
+export async function getNextCheckoutStepResponse({
+    details,
+    whatsappPhone = '',
+    cart = null,
+    cache = null,
+    introMessage = '',
+}) {
+    const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+    const displayPhone = formatPakistaniPhone(details.phone || rawCleanPhone);
+    const customerName = details.name ? details.name.trim() : '';
+
+    // STEP 1: Customer Name
+    if (!details.name) {
+        return {
+            handled: true,
+            routeName: 'step_name_needed',
+            step: 'NAME',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Order book karne ke liye baraye meherbani pehle apna *Naam* bata dein? 😊`,
+        };
+    }
+
+    // STEP 2: Phone Confirmation
+    if (!details.phoneConfirmed && !details.phone) {
+        return {
+            handled: true,
+            routeName: 'step_phone_needed',
+            step: 'PHONE',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Shukriya ${customerName}! Rabtay ke liye rider ko yahi WhatsApp number (*${displayPhone}*) dein ya koi doosra contact number likhna hai?`,
+        };
+    }
+
+    // STEP 3: Delivery Address or Location Pin
+    if (!details.address && !details.location) {
+        return {
+            handled: true,
+            routeName: 'step_address_needed',
+            step: 'ADDRESS',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
+        };
+    }
+
+    // STEP 4: Payment Method
+    if (!details.paymentMethod) {
+        return {
+            handled: true,
+            routeName: 'step_payment_needed',
+            step: 'PAYMENT',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Payment method kaunsa pasand karenge ${customerName} — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`,
+        };
+    }
+
+    // STEP 5: All 4 details are present! Show Order Summary and ask confirmation
+    details.readyForConfirmation = true;
+
+    const itemsList = (cart?.items || []).map(i => {
+        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+        const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
+        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
+    }).join('\n');
+
+    const subtotal = (cart?.items || []).reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+
+    let deliveryFee = 0;
+    let deliveryFeeKnown = false;
+    if (cache?.restId && (details.address || details.location)) {
+        try {
+            const { checkDeliveryAvailability } = await import('./deliveryService.js');
+            const dCheck = await checkDeliveryAvailability({
+                restaurantId: cache.restId,
+                address: details.address || details.location?.address,
+                subtotal,
+            });
+            if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
+                deliveryFee = dCheck.deliveryFee;
+                deliveryFeeKnown = true;
+            }
+        } catch (_) {}
+    }
+    const total = subtotal + deliveryFee;
+    const feeBreakdown = deliveryFeeKnown ? (deliveryFee === 0 ? '(Free Delivery!)' : `(Items: Rs. ${subtotal} + Delivery: Rs. ${deliveryFee})`) : '(Delivery fee area ke mutabiq)';
+
+    const summaryIntro = introMessage ? `${introMessage}\n\n` : `Theek hai ${customerName}! Aap ki tamam details mil gayi hain.\n\n`;
+
+    return {
+        handled: true,
+        routeName: 'order_summary_ready',
+        step: 'CONFIRMATION',
+        reply: `${summaryIntro}📋 *ORDER SUMMARY:*\n${itemsList}\n\n👤 Customer Name: *${details.name}*\n📍 Delivery Address: *${(details.address || details.location?.address || 'Google Maps Location').slice(0, 80)}*\n📞 Contact Phone: *${details.phone || displayPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+    };
 }
 
 // ─── Regular Expressions & Pattern Dictionaries ───────────────────────────
@@ -867,7 +991,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     const hasCartModification = /\b(add|extra|aur|kuch|change|badal|hatao?|nikal|kam|zyada|\d+\s*x|\d+\s*bar|\d+\s*martaba|fries|drink|pepsi|7up|burger|pizza|deal|deals)\b/i.test(lower);
     const isOrderFinalConfirmation = !hasCartModification &&
-        /^(?:haan|han|hn|jee|ji|yes|yep|ok|ok\s*done|theek\s*hai?|done|confirm|confirm\s*(?:hai|h|kr\s*do|kar\s*do)?|book\s*(?:kar\s*do|kr\s*do)|order\s*(?:kar\s*do|kr\s*do|book\s*kar\s*do)|final\s*(?:kar\s*do|kr\s*do)|bhej\s*do|haan\s*kar\s*do|haan\s*kr\s*do|order\s*final)$/i.test(lower.trim()) && wordCount <= 5;
+        /^(?:(?:haan|han|hn|jee|ji|yes|yep|ok|theek\s*hai?)\s+)?(?:confirm|book|order|final|kar\s*do|kr\s*do|done|bhej\s*do)(?:\s+(?:book|confirm|kar\s*do|kr\s*do|kr\s*du|kar\s*du|hai|h|please|bhai))?$|^(?:haan|han|hn|jee|ji|yes|yep|ok|ok\s*done|theek\s*hai?|done|confirm|bhej\s*do|order\s*(?:book\s*)?(?:kar\s*do|kr\s*do)|book\s*(?:kar\s*do|kr\s*do)|final\s*(?:kar\s*do|kr\s*do))$/i.test(lower.trim()) && wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
             const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
@@ -909,6 +1033,34 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Checkout Request (Zero Tokens) ──
+    const isCheckoutRequest = /^(?:checkout|check\s*out|order\s*(?:karna\s*hai|karwana\s*hai|krna\s*hai|krwana\s*hai|book\s*karna\s*hai|book\s*krna\s*hai|please|karein|kar\s*dein|karo)|place\s*order|done\s*ordering|proceed)$/i.test(lower.trim());
+    if (isCheckoutRequest && userSessionId) {
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (!cart?.items || cart.items.length === 0) {
+                return {
+                    handled: true,
+                    routeName: 'fast_checkout_empty_cart',
+                    reply: 'Aap ka cart abhi khali hai. Pehle menu ya deals dekh kar item add karein!',
+                };
+            }
+            const { getSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart,
+                cache,
+            });
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing checkout request:', err.message);
+        }
+    }
+
     // ── Check Fast Follow-up: Affirmative confirmation to order last discussed deal (Zero Tokens) ──
     const hasOrderConfirmWord = /\b(?:confirm|final|done|book|oder|order\s*final|bana\s*ha|bill|bil)\b/i.test(lower);
     const isAffirmative = !hasOrderConfirmWord && /^(?:haan|han|jee|ji|yes|kar do|kardo|kr do|kr du|order|oder|order kar do|order kr do|order kr du|order kr di|oder kr di|oder kr do|oder kardo|haan kr du|haan kardo|haan kr do bhai|han order kr du|yeh kr du)\b/i.test(lower) && wordCount <= 6;
@@ -936,15 +1088,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const dealName = d.name;
                     const dealDesc = d.description ? ` (${d.description})` : '';
                     const dealPrice = Number(d.deal_price);
-                    const displayPhone = whatsappPhone || 'WhatsApp number';
 
-                    const confirmReply = `Zabardast Jigri! *${dealName}* cart mein add ho gayi hai! 🎉\n\n📋 *Order Summary:*\n• 1x ${dealName}${dealDesc} — Rs. ${dealPrice}\n*Total Bill:* Rs. ${dealPrice}\n\nAap ka order final karne ke liye meharbani karke yeh details bata dein:\n1. Aap ka Naam (Name)\n2. Mukammal Delivery Address (ya WhatsApp Location Pin)\n3. Contact Phone (kya yahi ${displayPhone} theek hai ya koi doosra number hai?)\n4. Payment Method (Cash on Delivery ya EasyPaisa)`;
+                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 
-                    return {
-                        handled: true,
-                        routeName: 'deal_confirm_add',
-                        reply: confirmReply,
-                    };
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart: cartNow,
+                        cache,
+                        introMessage: `Zabardast Jigri! *${dealName}* cart mein add ho gayi hai! 🎉\n• 1x ${dealName}${dealDesc} — Rs. ${dealPrice}`,
+                    });
                 }
             } catch (err) {
                 console.error('[FAST_ROUTE] Error adding confirmed deal:', err.message);
@@ -1013,44 +1169,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }).join('\n');
                 const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
 
-                const missing = [];
-                if (!details.name) missing.push('• Aap ka Naam (Name)');
-                if (!details.address && !details.location) missing.push('• Mukammal Delivery Address (ya WhatsApp Location Pin)');
-                if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
-
-                let deliveryFee = 0;
-                let deliveryFeeKnown = false;
-                if (details.address || details.location) {
-                    try {
-                        const { checkDeliveryAvailability } = await import('./deliveryService.js');
-                        const dCheck = await checkDeliveryAvailability({
-                            restaurantId: cache.restId,
-                            address: details.address || details.location?.address,
-                            subtotal,
-                        });
-                        if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
-                            deliveryFee = dCheck.deliveryFee;
-                            deliveryFeeKnown = true;
-                        }
-                    } catch (_) {}
-                }
-                const total = subtotal + deliveryFee;
-                const feeText = deliveryFeeKnown ? (deliveryFee === 0 ? '(Free Delivery!)' : `(Items: Rs. ${subtotal} + Delivery: Rs. ${deliveryFee})`) : '(Delivery fee area ke mutabiq)';
-
-                if (missing.length === 0) {
-                    details.readyForConfirmation = true;
-                    return {
-                        handled: true,
-                        routeName: 'order_status_check',
-                        reply: `Jigri, aap ke cart ka total bill *Rs. ${total}* bana hai ${feeText}.\n\n📋 *Items:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 50)}*\n📞 Phone: *${details.phone || cleanPhone}*\n💵 Payment: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n\nOrder confirm karne ke liye bas *'Haan'* ya *'Confirm'* likhein!`,
-                    };
-                } else {
-                    return {
-                        handled: true,
-                        routeName: 'order_status_check',
-                        reply: `Jigri, aap ke cart ka subtotal *Rs. ${subtotal}* bana hai.\n\n📋 *Items:*\n${itemsList}\n\nBas jaldi se yeh details bata do taake order foran book kar dein:\n${missing.join('\n')}`,
-                    };
-                }
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart,
+                    cache,
+                    introMessage: `Jigri, aap ke cart ka subtotal *Rs. ${subtotal}* bana hai.\n\n📋 *Items:*\n${itemsList}`,
+                });
             }
         } catch (err) {
             console.error('[FAST_ROUTE] Error checking order status:', err.message);
@@ -1064,64 +1189,36 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
+                const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+
+                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) &&
+                    /^(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
+
                 const extracted = extractCustomerDetails(raw);
-                if (extracted.name || extracted.address || extracted.paymentMethod || extracted.phone) {
-                    const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
-                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                if (extracted.name || extracted.address || extracted.paymentMethod || extracted.phone || isPhoneConfirmation) {
                     const updatePayload = {};
-                    if (extracted.name) updatePayload.name = extracted.name;
-                    if (extracted.address) updatePayload.address = extracted.address;
+                    if (extracted.name && !currDetails.name) updatePayload.name = extracted.name;
+                    if (extracted.address && !currDetails.address) updatePayload.address = extracted.address;
                     if (extracted.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-                    if (extracted.phone) updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
+                    if (extracted.phone) {
+                        updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
+                        updatePayload.phoneConfirmed = true;
+                    } else if (isPhoneConfirmation) {
+                        updatePayload.phone = cleanPhone;
+                        updatePayload.phoneConfirmed = true;
+                    }
 
                     const details = updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
 
-                    // Check if all 3 required fields are now present:
-                    if (details.name && (details.address || details.location) && details.paymentMethod) {
-                        const itemsList = cart.items.map(i => {
-                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                            const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                            return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
-                        }).join('\n');
-                        const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-                        let deliveryFee = 0;
-                        let deliveryFeeKnown = false;
-                        try {
-                            const { checkDeliveryAvailability } = await import('./deliveryService.js');
-                            const dCheck = await checkDeliveryAvailability({
-                                restaurantId: cache.restId,
-                                address: details.address || details.location?.address,
-                                subtotal,
-                            });
-                            if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
-                                deliveryFee = dCheck.deliveryFee;
-                                deliveryFeeKnown = true;
-                            }
-                        } catch (_) {}
-                        const total = subtotal + deliveryFee;
-                        const feeBreakdown = deliveryFeeKnown ? (deliveryFee === 0 ? '(Free Delivery!)' : `(Items: Rs. ${subtotal} + Delivery: Rs. ${deliveryFee})`) : '(Delivery fee area ke mutabiq)';
-                        details.readyForConfirmation = true;
-
-                        return {
-                            handled: true,
-                            routeName: 'order_summary_ready',
-                            reply: `${details.name} Ji, aap ki details mil gayin hain! Yeh raha aap ka mukammal order check kar lein:\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 70)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa (03434919319 - Muhammad Shoaib)'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
-                        };
-                    } else {
-                        // Some details still missing
-                        const missing = [];
-                        if (!details.name) missing.push('• Aap ka Naam (Name)');
-                        if (!details.address && !details.location) missing.push('• Mukammal Delivery Address (ya WhatsApp Location Pin)');
-                        if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
-
-                        const greetingName = details.name ? `${details.name} Ji! ` : 'Ji! ';
-                        return {
-                            handled: true,
-                            routeName: 'checkout_partial_details',
-                            reply: `Theek hai ${greetingName}Aap ki details note kar li hain.\n\nAb bas yeh bata dein taake order final karein:\n${missing.join('\n')}\n(Contact Phone: kya yahi ${whatsappPhone || cleanPhone} rider ko dein?)`,
-                        };
-                    }
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart,
+                        cache,
+                        introMessage: `Theek hai ${details.name ? details.name + ' Ji! ' : ''}Aap ki details note kar li hain.`,
+                    });
                 }
             }
         } catch (err) {
@@ -1147,79 +1244,46 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (!details.name) {
                     const customerName = nameMatch[1].trim();
                     updateSessionOrderDetails(userSessionId, { name: customerName }, cleanPhone);
+                    const updated = getSessionOrderDetails(userSessionId, cleanPhone);
 
-                    // If address and payment are already known, show ORDER SUMMARY and ask confirmation!
-                    if ((details.address || details.location) && details.paymentMethod) {
-                        const itemsList = cart.items.map(i => {
-                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                            const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                            return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
-                        }).join('\n');
-                        const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-                        let deliveryFee = 0;
-                        let deliveryFeeKnown = false;
-                        try {
-                            const { checkDeliveryAvailability } = await import('./deliveryService.js');
-                            const dCheck = await checkDeliveryAvailability({
-                                restaurantId: cache.restId,
-                                address: details.address || details.location?.address,
-                                subtotal,
-                            });
-                            if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
-                                deliveryFee = dCheck.deliveryFee;
-                                deliveryFeeKnown = true;
-                            }
-                        } catch (_) {}
-                        const total = subtotal + deliveryFee;
-                        const feeBreakdown = deliveryFeeKnown ? (deliveryFee === 0 ? '(Free Delivery!)' : `(Items: Rs. ${subtotal} + Delivery: Rs. ${deliveryFee})`) : '(Delivery fee area ke mutabiq)';
-                        details.readyForConfirmation = true;
-
-                        return {
-                            handled: true,
-                            routeName: 'order_summary_ready',
-                            reply: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || '').slice(0, 60)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
-                        };
-                    }
-
-                    const missing = [];
-                    if (!details.address && !details.location) missing.push('• Mukammal Delivery Address (ya WhatsApp Location Pin)');
-                    if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
-
-                    return {
-                        handled: true,
-                        routeName: 'name_recorded',
-                        reply: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.\n\nAb bas yeh bata dein:\n${missing.join('\n')}\n\nTaake hum aap ka order final karein!`,
-                    };
+                    return await getNextCheckoutStepResponse({
+                        details: updated,
+                        whatsappPhone,
+                        cart,
+                        cache,
+                        introMessage: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.`,
+                    });
                 }
             }
         } catch (_) {}
     }
 
     // ── Check Customer Phone Input / "Same Number" (Zero Tokens) ──
-    const isSameNumber = /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp)$/i.test(lower.trim()) ||
-        /^(?:\+?92|0)?3\d{9}$/.test(raw.replace(/[\s-]/g, ''));
+    const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
+    const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
+    const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) &&
+        /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
+    const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
+    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp)$/i.test(lower.trim()) || !!rawPhoneMatch;
+
     if (isSameNumber && userSessionId) {
         try {
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
-                const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                const { updateSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                const details = updateSessionOrderDetails(userSessionId, { phone: cleanPhone }, cleanPhone);
+                const targetPhone = rawPhoneMatch ? rawPhoneMatch[0].replace(/\D/g, '') : cleanPhone;
+                const details = updateSessionOrderDetails(userSessionId, { phone: targetPhone, phoneConfirmed: true }, cleanPhone);
 
-                const missing = [];
-                if (!details.name) missing.push('1. Aap ka Naam (Name)');
-                if (!details.address && !details.location) missing.push('2. Mukammal Delivery Address (ya WhatsApp Location Pin)');
-                if (!details.paymentMethod) missing.push('3. Payment Method (Cash on Delivery ya EasyPaisa)');
-
-                const greetingName = details.name ? `${details.name} bhai, ` : '';
-                return {
-                    handled: true,
-                    routeName: 'phone_recorded',
-                    reply: `${greetingName}Number note kar liya hai (${whatsappPhone || cleanPhone}).\n\nAb bas yeh bata dein:\n${missing.join('\n')}\n\nJaise hi batayenge, order final ho jayega!`,
-                };
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart,
+                    cache,
+                    introMessage: `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Contact number confirm ho gaya (${formatPakistaniPhone(targetPhone)}). 👍`,
+                });
             }
         } catch (_) {}
     }
@@ -1372,33 +1436,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             } catch (_) {}
 
             if (cart?.items && cart.items.length > 0) {
-                if (details.name && details.paymentMethod) {
-                    const itemsList = cart.items.map(i => {
-                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                        const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
-                    }).join('\n');
-                    const total = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-                    details.readyForConfirmation = true;
-
-                    return {
-                        handled: true,
-                        routeName: 'order_summary_ready',
-                        reply: `Wah ${details.name} bhai! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${addressStr.slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}**\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
-                    };
-                }
-
-                // If payment method or name is still needed:
-                const greetingName = details.name ? `${details.name} bhai! ` : 'Ji! ';
-                const missing = [];
-                if (!details.name) missing.push('• Aap ka Naam (Name)');
-                if (!details.paymentMethod) missing.push('• Payment Method (Cash on Delivery ya EasyPaisa)');
-                return {
-                    handled: true,
-                    routeName: 'location_received',
-                    reply: `Zabardast ${greetingName}Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\nAb aakhri cheez:\n${missing.join('\n')}\n(Contact number confirm karein: kya yehi WhatsApp number hai?)`,
-                };
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart,
+                    cache,
+                    introMessage: `Zabardast ${details.name ? details.name + ' bhai! ' : ''}Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*`,
+                });
             } else {
                 // Cart is empty — location saved, ask customer to order something
                 return {
@@ -1452,41 +1496,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             } catch (_) {}
 
             if (cart?.items && cart.items.length > 0) {
-                const cache = await getCatalogCache();
-                if (details.name && (details.address || details.location)) {
-                    const itemsList = cart.items.map(i => {
-                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                        const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
-                    }).join('\n');
-                    const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-                    let deliveryFee = 0;
-                    try {
-                        const { checkDeliveryAvailability } = await import('./deliveryService.js');
-                        const dCheck = await checkDeliveryAvailability({ restaurantId: cache.restId, address: details.address || details.location?.address, subtotal });
-                        if (dCheck?.available && typeof dCheck.deliveryFee === 'number') deliveryFee = dCheck.deliveryFee;
-                    } catch (_) {}
-                    const total = subtotal + deliveryFee;
-                    details.readyForConfirmation = true;
-
-                    return {
-                        handled: true,
-                        routeName: 'order_summary_ready',
-                        reply: `Theek hai ${details.name} bhai! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\n📋 *ORDER SUMMARY:*\n${itemsList}\n\n📍 Delivery Address: *${(details.address || details.location?.address || 'Google Maps Location').slice(0, 80)}*\n📞 Contact Phone: *${details.phone || cleanPhone}*\n💵 Payment Method: *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}*\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
-                    };
-                }
-
-                // If address or name is still missing:
-                const missing = [];
-                if (!details.name) missing.push('1. Aap ka Naam (Name)');
-                if (!details.address && !details.location) missing.push('2. Mukammal Delivery Address (ya WhatsApp Location Pin)');
-
-                return {
-                    handled: true,
-                    routeName: 'payment_selected',
-                    reply: `Theek hai Ji! Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.\n\nAb bas yeh details bata dein:\n${missing.join('\n')}\n\nJaise hi aap batayenge, order confirm ho jayega!`,
-                };
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart,
+                    cache,
+                    introMessage: `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Payment method *${paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}* note kar liya hai.`,
+                });
             } else {
                 // Cart is empty but we've saved the payment — acknowledge it
                 const missing = [];
