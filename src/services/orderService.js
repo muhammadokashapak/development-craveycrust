@@ -624,7 +624,8 @@ export async function confirmOrderCancellation({ restaurantId, orderNumber, sess
         reason: 'Customer cancelled',
     });
 
-    sendCancellationNotification({ order, reason: 'Customer cancelled' }).catch(() => {});
+    const fullOrder = await getOrderByNumber({ restaurantId: restId, orderNumber: order.order_number });
+    sendCancellationNotification({ order: fullOrder || order, reason: 'Customer cancelled' }).catch(() => {});
 
     return {
         status: 'ORDER_CANCELLED',
@@ -632,6 +633,36 @@ export async function confirmOrderCancellation({ restaurantId, orderNumber, sess
         orderStatus: 'CANCELLED',
         message: `Order ${order.order_number} has been cancelled successfully.`,
     };
+}
+
+/**
+ * Direct cancel order helper
+ */
+export async function cancelOrder({ restaurantId, orderNumber, reason = 'Customer cancelled', changedByType = 'CUSTOMER' }) {
+    try {
+        const res = await updateOrderStatus({
+            restaurantId,
+            orderNumber,
+            newStatus: 'CANCELLED',
+            changedByType,
+            reason,
+        });
+        return {
+            success: true,
+            status: 'ORDER_CANCELLED',
+            orderNumber,
+            message: `Order #${orderNumber} has been cancelled successfully.`,
+            order: res,
+        };
+    } catch (err) {
+        return {
+            success: false,
+            status: 'CANCEL_FAILED',
+            orderNumber,
+            message: err.message,
+            error: err.code || 'CANCEL_ERROR',
+        };
+    }
 }
 
 /**
@@ -703,7 +734,11 @@ export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, 
     });
 
     const fullUpdatedOrder = await getOrderByNumber({ restaurantId: restId, orderNumber });
-    sendCustomerOrderStatusNotification({ order: fullUpdatedOrder, newStatus, reason }).catch(() => {});
+    if (newStatus === 'CANCELLED') {
+        sendCancellationNotification({ order: fullUpdatedOrder || order, reason: reason || 'Cancelled' }).catch(() => {});
+    } else {
+        sendCustomerOrderStatusNotification({ order: fullUpdatedOrder || order, newStatus, reason }).catch(() => {});
+    }
 
     return fullUpdatedOrder;
 }
