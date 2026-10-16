@@ -19,13 +19,20 @@ router.get('/stream', (req, res) => {
     registerSseClient(req, res);
 });
 
+async function resolveRestaurantId(req) {
+    if (req.user?.role === 'SUPER_ADMIN') {
+        return null;
+    }
+    return req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+}
+
 /**
  * GET /api/admin/orders/metrics
  * Today's live order metrics strictly from PostgreSQL
  */
 router.get('/metrics', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const metrics = await getAdminOrderMetrics({ restaurantId });
 
         return res.json({
@@ -46,7 +53,7 @@ router.get('/metrics', async (req, res) => {
  */
 router.get('/', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const { status, date, search, page, limit } = req.query;
 
         const result = await getAdminOrders({
@@ -76,7 +83,7 @@ router.get('/', async (req, res) => {
  */
 router.get('/:orderNumber', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const { orderNumber } = req.params;
 
         const order = await getOrderByNumber({
@@ -109,7 +116,7 @@ router.get('/:orderNumber', async (req, res) => {
  */
 router.patch('/:orderNumber/status', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const { orderNumber } = req.params;
         const { status, reason } = req.body || {};
 
@@ -150,7 +157,7 @@ router.patch('/:orderNumber/status', async (req, res) => {
  */
 router.post('/:orderNumber/cancel', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const { orderNumber } = req.params;
         const { reason } = req.body || {};
 
@@ -184,7 +191,7 @@ router.post('/:orderNumber/cancel', async (req, res) => {
  */
 router.delete('/:orderNumber', async (req, res) => {
     try {
-        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const restaurantId = await resolveRestaurantId(req);
         const { orderNumber } = req.params;
 
         await deleteOrderByNumber({

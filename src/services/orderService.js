@@ -630,14 +630,17 @@ export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, 
     const prisma = getDbClient();
     if (!prisma) throw new Error('Database client not available');
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId === null ? null : (restaurantId || await getDefaultRestaurantId());
 
-    const order = await prisma.order.findFirst({
-        where: {
-            restaurant_id: restId,
-            order_number: orderNumber,
-        },
+    let order = await prisma.order.findFirst({
+        where: restId ? { restaurant_id: restId, order_number: orderNumber } : { order_number: orderNumber },
     });
+
+    if (!order && restId) {
+        order = await prisma.order.findFirst({
+            where: { order_number: orderNumber },
+        });
+    }
 
     if (!order) {
         const err = new Error(`Order not found: ${orderNumber}`);
@@ -702,10 +705,11 @@ export async function getOrderByNumber({ restaurantId, orderNumber, orderId }) {
     if (!prisma) return null;
 
     let restId = restaurantId;
-    if (!restId || restId === 'default-restaurant') {
-        restId = await getDefaultRestaurantId();
+    if (restId === 'default-restaurant' || restId === 'ALL') {
+        restId = null;
     }
-    const where = restId && restId !== 'default-restaurant' ? { restaurant_id: restId } : {};
+    const where = {};
+    if (restId) where.restaurant_id = restId;
     if (orderNumber) where.order_number = orderNumber;
     if (orderId) where.id = orderId;
 
@@ -727,6 +731,30 @@ export async function getOrderByNumber({ restaurantId, orderNumber, orderId }) {
             },
         },
     });
+
+    if (!order && (orderNumber || orderId)) {
+        const fallbackWhere = {};
+        if (orderNumber) fallbackWhere.order_number = orderNumber;
+        if (orderId) fallbackWhere.id = orderId;
+        order = await prisma.order.findFirst({
+            where: fallbackWhere,
+            include: {
+                customer: true,
+                delivery_area: true,
+                order_items: {
+                    include: {
+                        menu_item: true,
+                        menu_variant: true,
+                        deal: true,
+                    },
+                    orderBy: { created_at: 'asc' },
+                },
+                status_history: {
+                    orderBy: { created_at: 'asc' },
+                },
+            },
+        });
+    }
 
     if (!order) return null;
 
@@ -837,18 +865,21 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
     if (!prisma) throw new Error('Database client not available');
 
     let restId = restaurantId;
-    if (!restId || restId === 'default-restaurant') {
-        restId = await getDefaultRestaurantId();
-    } else {
+    if (restId === 'default-restaurant' || restId === 'ALL') {
+        restId = null;
+    } else if (restId) {
         const restExists = await prisma.restaurant.findUnique({
             where: { id: restId },
             select: { id: true },
         });
         if (!restExists) {
-            restId = await getDefaultRestaurantId();
+            restId = null;
         }
     }
-    const where = { restaurant_id: restId };
+    const where = {};
+    if (restId) {
+        where.restaurant_id = restId;
+    }
 
     if (status && status !== 'ALL') {
         where.order_status = status;
@@ -873,7 +904,7 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
 
     const skip = (Math.max(1, page) - 1) * limit;
 
-    const [totalCount, rawOrders] = await Promise.all([
+    let [totalCount, rawOrders] = await Promise.all([
         prisma.order.count({ where }),
         prisma.order.findMany({
             where,
@@ -885,6 +916,23 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
             },
         }),
     ]);
+
+    // Fallback: If scoped restaurant returned 0 orders, but there are global orders,
+    // and no date/search/status filters are restricting it, check if we should fall back to all orders
+    if (totalCount === 0 && restId && !status && !date && (!search || !search.trim())) {
+        const globalCount = await prisma.order.count();
+        if (globalCount > 0) {
+            totalCount = globalCount;
+            rawOrders = await prisma.order.findMany({
+                orderBy: { created_at: 'desc' },
+                skip,
+                take: limit,
+                include: {
+                    order_items: true,
+                },
+            });
+        }
+    }
 
     const orders = rawOrders.map(o => ({
         id: o.id,
@@ -918,27 +966,31 @@ export async function getAdminOrderMetrics({ restaurantId }) {
     if (!prisma) throw new Error('Database client not available');
 
     let restId = restaurantId;
-    if (!restId || restId === 'default-restaurant') {
-        restId = await getDefaultRestaurantId();
-    } else {
+    if (restId === 'default-restaurant' || restId === 'ALL') {
+        restId = null;
+    } else if (restId) {
         const restExists = await prisma.restaurant.findUnique({
             where: { id: restId },
             select: { id: true },
         });
         if (!restExists) {
-            restId = await getDefaultRestaurantId();
+            restId = null;
         }
     }
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
 
-    const [todayOrders, statusCounts] = await Promise.all([
+    const whereToday = { created_at: { gte: startOfToday } };
+    const whereAll = {};
+    if (restId) {
+        whereToday.restaurant_id = restId;
+        whereAll.restaurant_id = restId;
+    }
+
+    let [todayOrders, statusCounts] = await Promise.all([
         prisma.order.findMany({
-            where: {
-                restaurant_id: restId,
-                created_at: { gte: startOfToday },
-            },
+            where: whereToday,
             select: {
                 total: true,
                 order_status: true,
@@ -946,10 +998,31 @@ export async function getAdminOrderMetrics({ restaurantId }) {
         }),
         prisma.order.groupBy({
             by: ['order_status'],
-            where: { restaurant_id: restId },
+            where: whereAll,
             _count: { id: true },
         }),
     ]);
+
+    // If scoped query yielded 0 today orders and 0 status counts, fallback to global metrics
+    if (restId && todayOrders.length === 0 && statusCounts.length === 0) {
+        const [globalToday, globalStatus] = await Promise.all([
+            prisma.order.findMany({
+                where: { created_at: { gte: startOfToday } },
+                select: {
+                    total: true,
+                    order_status: true,
+                },
+            }),
+            prisma.order.groupBy({
+                by: ['order_status'],
+                _count: { id: true },
+            }),
+        ]);
+        if (globalToday.length > 0 || globalStatus.length > 0) {
+            todayOrders = globalToday;
+            statusCounts = globalStatus;
+        }
+    }
 
     let todayRevenue = new Decimal(0);
     for (const o of todayOrders) {
@@ -992,14 +1065,17 @@ export async function deleteOrderByNumber({ restaurantId, orderNumber }) {
     const prisma = getDbClient();
     if (!prisma) throw new Error('Database client not available');
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId === null ? null : (restaurantId || await getDefaultRestaurantId());
 
-    const order = await prisma.order.findFirst({
-        where: {
-            restaurant_id: restId,
-            order_number: orderNumber,
-        },
+    let order = await prisma.order.findFirst({
+        where: restId ? { restaurant_id: restId, order_number: orderNumber } : { order_number: orderNumber },
     });
+
+    if (!order && restId) {
+        order = await prisma.order.findFirst({
+            where: { order_number: orderNumber },
+        });
+    }
 
     if (!order) {
         const err = new Error(`Order ${orderNumber} not found`);

@@ -100,6 +100,7 @@ function showDashboard() {
   loadBrandDisplay();
   loadDashboardStats();
   if (typeof loadOrders === 'function') loadOrders();
+  if (typeof initRealtimeOrdersFeed === 'function') initRealtimeOrdersFeed();
 }
 
 function showAuthError(msg) {
@@ -1308,6 +1309,29 @@ function switchView(viewName) {
     if (window._chatsInterval) {
       clearInterval(window._chatsInterval);
       window._chatsInterval = null;
+    }
+  }
+
+  if (viewName === 'orders') {
+    if (window._ordersInterval) clearInterval(window._ordersInterval);
+    window._ordersInterval = setInterval(() => {
+      if (currentActiveView === 'orders') {
+        // Polling fallback to keep orders strictly updated even if SSE drops
+        loadOrders(false);
+      } else {
+        clearInterval(window._ordersInterval);
+        window._ordersInterval = null;
+      }
+    }, 4000);
+    if (typeof initRealtimeOrdersFeed === 'function') {
+      if (!realtimeEventSource || realtimeEventSource.readyState === 2) {
+        initRealtimeOrdersFeed();
+      }
+    }
+  } else {
+    if (window._ordersInterval) {
+      clearInterval(window._ordersInterval);
+      window._ordersInterval = null;
     }
   }
 
@@ -4840,7 +4864,7 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`🔔 New Order ${orderData.orderNumber || ''} received!`, 'success');
-        if (currentActiveView === 'orders') loadOrders();
+        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
         loadDashboardStats();
       } catch (err) {
         console.error('SSE order.created parse error:', err);
@@ -4852,7 +4876,7 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`Order ${orderData.orderNumber || ''} status updated to ${orderData.newStatus || ''}`, 'info');
-        if (currentActiveView === 'orders') loadOrders();
+        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
         loadDashboardStats();
       } catch (err) {
         console.error('SSE status_changed parse error:', err);
@@ -4864,19 +4888,30 @@ function initRealtimeOrdersFeed() {
         const payload = JSON.parse(e.data);
         const orderData = payload.data || {};
         showToast(`Order ${orderData.orderNumber || ''} was cancelled`, 'warning');
-        if (currentActiveView === 'orders') loadOrders();
+        if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
         loadDashboardStats();
       } catch (err) {
         console.error('SSE order.cancelled parse error:', err);
       }
     });
 
+    realtimeEventSource.onmessage = (e) => {
+      try {
+        if (!e.data || e.data.startsWith(':')) return;
+        const payload = JSON.parse(e.data);
+        if (payload.event === 'order.created' || payload.event === 'order.status_changed' || payload.event === 'order.cancelled' || payload.event === 'order.deleted') {
+          if (currentActiveView === 'orders' || !currentActiveView) loadOrders();
+          loadDashboardStats();
+        }
+      } catch (_) {}
+    };
+
     realtimeEventSource.onerror = () => {
       if (liveBadge) liveBadge.style.display = 'none';
-      // Auto-reconnect after 8 seconds
+      // Auto-reconnect after 5 seconds
       setTimeout(() => {
         if (isAuthenticated) initRealtimeOrdersFeed();
-      }, 8000);
+      }, 5000);
     };
   } catch (err) {
     console.warn('Realtime SSE feed not available:', err);

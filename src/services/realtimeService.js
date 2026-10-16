@@ -47,9 +47,7 @@ export function registerSseClient(req, res) {
  * @param {Object} data - Clean payload without secrets
  */
 export function broadcastOrderEvent(event, data) {
-    // If REALTIME_DASHBOARD_ENABLED is disabled, do not broadcast
-    const isEnabled = flags.REALTIME_DASHBOARD_ENABLED || process.env.REALTIME_DASHBOARD_ENABLED === 'true';
-    if (!isEnabled && sseClients.size === 0) {
+    if (sseClients.size === 0) {
         return;
     }
 
