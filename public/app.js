@@ -4457,33 +4457,42 @@ async function openCustomerDetailPage(id, phone, name) {
   const tbody = document.getElementById('cdOrdersTableBody');
   if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Loading customer profile & orders...</td></tr>';
 
-  let customer = cachedCustomersList.find(c => 
+  let customer = (cachedCustomersList || []).find(c => 
     (id && c.id === id) ||
-    (phone && c.phone === phone) || 
+    (phone && (c.phone === phone || c.whatsappPhone === phone)) || 
     (name && c.name && c.name.toLowerCase() === name.toLowerCase())
   );
 
   activeCustomerDetail = customer || { id, phone, name };
+  window.activeCustomerDetail = activeCustomerDetail;
+
+  const viewCd = document.getElementById('viewCustomerDetail');
+  if (viewCd) {
+    viewCd.dataset.customerId = id || customer?.id || '';
+    viewCd.dataset.customerPhone = phone || customer?.phone || customer?.whatsappPhone || '';
+    viewCd.dataset.customerName = name || customer?.name || '';
+  }
 
   if (id) {
     try {
-      const res = await fetch(`/api/admin/customers/${id}`);
+      const res = await fetch(`/api/admin/customers/${encodeURIComponent(id)}`);
       const data = await res.json();
       if (data.success && data.data) {
         customer = data.data;
         activeCustomerDetail = customer;
+        window.activeCustomerDetail = customer;
+        if (viewCd) {
+          viewCd.dataset.customerId = customer.id || '';
+          viewCd.dataset.customerPhone = customer.phone || customer.whatsappPhone || '';
+          viewCd.dataset.customerName = customer.name || '';
+        }
       }
     } catch (e) {
       console.warn('Failed to load full customer detail:', e);
     }
   }
 
-  if (!customer) {
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Customer record not found.</td></tr>';
-    return;
-  }
-
-  renderCustomerDetailPage(customer);
+  renderCustomerDetailPage(customer || activeCustomerDetail);
 }
 window.openCustomerDetailPage = openCustomerDetailPage;
 window.openCustomerDetailModal = openCustomerDetailPage; // Backward compatibility
@@ -4634,17 +4643,59 @@ function closeCustomerDetailModal() {
 window.closeCustomerDetailModal = closeCustomerDetailModal;
 
 async function confirmDeleteCustomerFromPage() {
-  if (!activeCustomerDetail) return;
-  const deleted = await confirmDeleteCustomer(activeCustomerDetail.id, activeCustomerDetail.name, activeCustomerDetail.phone);
+  let cust = activeCustomerDetail || window.activeCustomerDetail;
+  const viewCd = document.getElementById('viewCustomerDetail');
+  
+  const idFromDom = viewCd?.dataset?.customerId;
+  const phoneFromDom = viewCd?.dataset?.customerPhone || document.getElementById('cdProfilePhone')?.textContent?.trim();
+  const waFromDom = document.getElementById('cdProfileWa')?.textContent?.trim();
+  const nameFromDom = viewCd?.dataset?.customerName || document.getElementById('cdProfileName')?.textContent?.trim();
+
+  const id = cust?.id || (idFromDom && idFromDom !== 'undefined' ? idFromDom : null);
+  const rawPhone = cust?.phone || (phoneFromDom && phoneFromDom !== '-' ? phoneFromDom : null) || (waFromDom && waFromDom !== '-' ? waFromDom : null);
+  const name = cust?.name || nameFromDom;
+
+  let phone = rawPhone;
+  if (!id && !phone) {
+    const matched = (cachedCustomersList || []).find(c => 
+      (name && c.name && c.name.toLowerCase() === name.toLowerCase())
+    );
+    if (matched) {
+      cust = matched;
+      phone = matched.phone || matched.whatsappPhone;
+    }
+  }
+
+  const finalId = id || cust?.id;
+  const finalPhone = phone || cust?.phone || cust?.whatsappPhone;
+  const finalName = name || cust?.name;
+
+  if (!finalId && !finalPhone) {
+    showToast('Customer record details not found', 'error');
+    return;
+  }
+
+  const deleted = await confirmDeleteCustomer(finalId, finalName, finalPhone);
   if (deleted) {
+    activeCustomerDetail = null;
+    window.activeCustomerDetail = null;
+    if (viewCd) {
+      delete viewCd.dataset.customerId;
+      delete viewCd.dataset.customerPhone;
+      delete viewCd.dataset.customerName;
+    }
     switchView('customers');
   }
 }
 window.confirmDeleteCustomerFromPage = confirmDeleteCustomerFromPage;
 
 async function confirmDeleteCustomerFromModal() {
-  if (!activeCustomerDetail) return;
-  const deleted = await confirmDeleteCustomer(activeCustomerDetail.id, activeCustomerDetail.name, activeCustomerDetail.phone);
+  let cust = activeCustomerDetail || window.activeCustomerDetail;
+  if (!cust) {
+    showToast('Customer record details not found', 'error');
+    return;
+  }
+  const deleted = await confirmDeleteCustomer(cust.id, cust.name, cust.phone);
   if (deleted) {
     closeCustomerDetailModal();
   }

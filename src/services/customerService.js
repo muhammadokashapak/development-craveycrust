@@ -230,7 +230,7 @@ export async function getCustomerById({ restaurantId, customerId }) {
 
     const restId = restaurantId || await getDefaultRestaurantId();
 
-    const customer = await prisma.customer.findFirst({
+    let customer = await prisma.customer.findFirst({
         where: {
             id: customerId,
             restaurant_id: restId,
@@ -245,11 +245,26 @@ export async function getCustomerById({ restaurantId, customerId }) {
         },
     });
 
+    if (!customer) {
+        customer = await prisma.customer.findUnique({
+            where: { id: customerId },
+            include: {
+                orders: {
+                    orderBy: { created_at: 'desc' },
+                    include: {
+                        order_items: true,
+                    },
+                },
+            },
+        });
+    }
+
     if (!customer) return null;
 
+    const targetRestId = customer.restaurant_id || restId;
     const spendAgg = await prisma.order.aggregate({
         where: {
-            restaurant_id: restId,
+            restaurant_id: targetRestId,
             customer_id: customer.id,
         },
         _sum: { total: true },
