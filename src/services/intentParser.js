@@ -195,6 +195,32 @@ export function formatPakistaniPhone(phone) {
  * Step-by-Step Checkout Protocol Helper.
  * Evaluates session order details and returns a deterministic, single-step prompt.
  */
+export function formatLocationDisplay(details) {
+    if (details?.location?.latitude != null && details?.location?.longitude != null) {
+        return `[Google Maps par dekhein](https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude})`;
+    }
+    let addr = details?.address || details?.location?.address || 'Google Maps Location Pin';
+    addr = addr.replace(/^customer\s*ne\s*location\s*(?:share\s*ki|pin)?\s*[:=-]?\s*/i, '').trim();
+    if (/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl|maps\.app\.goo\.gl)[^\s)\]]*/i.test(addr)) {
+        const urlMatch = addr.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.google\.com|goo\.gl|maps\.app\.goo\.gl)[^\s)\]]*/i);
+        if (urlMatch) {
+            return `[Google Maps par dekhein](${urlMatch[0]})`;
+        }
+    }
+    if (/lat=\s*-?\d+/i.test(addr) && /lng=\s*-?\d+/i.test(addr)) {
+        const latM = addr.match(/lat=\s*(-?\d+(?:\.\d+)?)/i);
+        const lngM = addr.match(/lng=\s*(-?\d+(?:\.\d+)?)/i);
+        if (latM && lngM) {
+            return `[Google Maps par dekhein](https://www.google.com/maps?q=${latM[1]},${lngM[1]})`;
+        }
+    }
+    return addr;
+}
+
+/**
+ * Step-by-Step Checkout Protocol Helper.
+ * Evaluates session order details and returns a deterministic, single-step prompt.
+ */
 export async function getNextCheckoutStepResponse({
     details,
     whatsappPhone = '',
@@ -239,26 +265,56 @@ export async function getNextCheckoutStepResponse({
         };
     }
 
-    // STEP 4: Payment Method
+    // STEP 3b: Location Confirmation (If GPS location shared but not yet confirmed by customer)
+    if (details.location?.latitude != null && details.location?.longitude != null && !details.locationConfirmed) {
+        details.locationAwaitingConfirmation = true;
+        const lat = details.location.latitude;
+        const lng = details.location.longitude;
+        const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+        return {
+            handled: true,
+            routeName: 'step_location_confirm_needed',
+            step: 'LOCATION_CONFIRM',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `${customerName ? customerName + ' bhai, ' : ''}aap ki delivery location receive ho gayi hai.\n` +
+                `📍 Location: [Google Maps par apni location dekhein](${mapUrl})\n\n` +
+                `Kya delivery isi location par karwani hai? Baraye meherbani “Haan” ya “Nahi” mein confirm kar dein.`,
+        };
+    }
+
+    // STEP 4: Payment Method (Guard: Never re-ask if paymentMethod is already set in session)
     if (!details.paymentMethod) {
         return {
             handled: true,
             routeName: 'step_payment_needed',
             step: 'PAYMENT',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Payment method kaunsa pasand karenge ${customerName} — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`,
+                `Payment method kaunsa pasand karenge ${customerName} bhai — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`,
         };
     }
 
-    // STEP 5: All 4 details are present! Show Order Summary and ask confirmation
+    // STEP 5: Extra Items Inquiry (Upsell before final confirmation)
+    if (!details.extraItemsAnswered) {
+        details.extraItemsInquired = true;
+        return {
+            handled: true,
+            routeName: 'step_extra_items_needed',
+            step: 'EXTRA_ITEMS',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Ji ${customerName} bhai, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?`,
+        };
+    }
+
+    // STEP 6: Final Order Confirmation Summary (All details verified, waiting for explicit "Confirm" or "Haan")
+    details.awaitingFinalConfirmation = true;
     details.readyForConfirmation = true;
 
-    const itemsList = (cart?.items || []).map(i => {
+    const orderItems = (cart?.items || []).map(i => {
         const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
         const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
+        return `${i.quantity}x ${n}${v}`;
     }).join('\n');
+    const orderBlock = (cart?.items || []).length === 1 ? `Order: ${orderItems}` : `Order:\n${orderItems}`;
 
     const subtotal = (cart?.items || []).reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
 
@@ -270,6 +326,8 @@ export async function getNextCheckoutStepResponse({
             const dCheck = await checkDeliveryAvailability({
                 restaurantId: cache.restId,
                 address: details.address || details.location?.address,
+                latitude: details.location?.latitude,
+                longitude: details.location?.longitude,
                 subtotal,
             });
             if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
@@ -279,15 +337,23 @@ export async function getNextCheckoutStepResponse({
         } catch (_) {}
     }
     const total = subtotal + deliveryFee;
-    const feeBreakdown = deliveryFeeKnown ? (deliveryFee === 0 ? '(Free Delivery!)' : `(Items: Rs. ${subtotal} + Delivery: Rs. ${deliveryFee})`) : '(Delivery fee area ke mutabiq)';
-
-    const summaryIntro = introMessage ? `${introMessage}\n\n` : `Theek hai ${customerName}! Aap ki tamam details mil gayi hain.\n\n`;
+    const cleanLocation = formatLocationDisplay(details);
 
     return {
         handled: true,
-        routeName: 'order_summary_ready',
+        routeName: 'final_order_summary',
         step: 'CONFIRMATION',
-        reply: `${summaryIntro}📋 *ORDER SUMMARY:*\n${itemsList}\n\n👤 Customer Name: *${details.name}*\n📍 Delivery Address: *${(details.address || details.location?.address || 'Google Maps Location').slice(0, 80)}*\n📞 Contact Phone: *${details.phone || displayPhone}*\n💵 Payment Method: *${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n💰 Total Bill: *Rs. ${total}* ${feeBreakdown}\n\nJi, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein? (Order book karne ke liye *'Haan'* ya *'Confirm'* likhein)`,
+        reply: (introMessage ? `${introMessage}\n\n` : '') +
+`${customerName ? customerName + ' bhai, ' : ''}aap ke order ki final details ye hain:
+${orderBlock || 'Order: 1x Item'}
+Total: Rs. ${total.toLocaleString('en-PK')}
+Delivery Charges: ${deliveryFee === 0 ? 'Free' : 'Rs. ' + deliveryFee.toLocaleString('en-PK')}
+Payment: ${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}
+Contact: ${displayPhone}
+Delivery Location: ${cleanLocation}
+
+Kya aap tamam details check karke is order ko confirm karte hain?
+Order book karne ke liye “Confirm” ya “Haan” likhein. Agar koi detail change karni hai to bata dein.`,
     };
 }
 
@@ -1044,18 +1110,92 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Location Confirmation Response ("Haan" / "Nahi") ──
+    if (userSessionId) {
+        try {
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            if (currDetails?.locationAwaitingConfirmation) {
+                const isAffirmativeLocation = /^(?:haan|han|hn|jee|ji|yes|yep|theek\s*hai?|ok|done|confirm|yahi|yehi|isi\s*(?:location|jagah|par|pe)?|isi\s*pe)[\s.!?]*$/i.test(lower.trim());
+                const isNegativeLocation = /^(?:nahi|nahin|na|no|nope|wrong|galat|ghalat|ye\s*nahi|yahan\s*nahi)[\s.!?]*$/i.test(lower.trim());
+
+                if (isAffirmativeLocation) {
+                    currDetails.locationConfirmed = true;
+                    currDetails.locationAwaitingConfirmation = false;
+                    updateSessionOrderDetails(userSessionId, { locationConfirmed: true, locationAwaitingConfirmation: false }, cleanPhone);
+
+                    const { getActiveCart } = await import('./cartService.js');
+                    const cache = await getCatalogCache();
+                    const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                    if (cart?.items && cart.items.length > 0) {
+                        return await getNextCheckoutStepResponse({
+                            details: currDetails,
+                            whatsappPhone,
+                            cart,
+                            cache,
+                        });
+                    }
+                } else if (isNegativeLocation) {
+                    currDetails.location = null;
+                    currDetails.address = null;
+                    currDetails.locationConfirmed = false;
+                    currDetails.locationAwaitingConfirmation = false;
+                    updateSessionOrderDetails(userSessionId, { location: null, address: null, locationConfirmed: false, locationAwaitingConfirmation: false }, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'step_location_rejected',
+                        reply: `Koi masla nahi ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Baraye meherbani apna sahi delivery address ya WhatsApp location pin dobara bhej dein taake hum note kar sakein. 📍`,
+                    };
+                }
+            }
+        } catch (_) {}
+    }
+
+    // ── Check Fast Route: Extra Items Response ("Nahi aur kch nahi") ──
+    const isNoExtraItems = /^(?:nahi|nahin|na|no|nope|kuch\s*nahi|kch\s*nahi|aur\s*kuch\s*nahi|aur\s*kch\s*nahi|nahi\s*aur\s*k(?:u)?ch\s*nahi|kuch\s*aur\s*nahi|kch\s*aur\s*nahi|bas|bas\s*yahi|bas\s*yehi|nothing|nothing\s*else|nahi\s*bhai|no\s*thanks|nahi\s*shukriya|rehne\s*do|rehn\s*do|aur\s*nahi|nahi\s*aur\s*nahi|nahi\s*sirf\s*yehi|sirf\s*yehi|sirf\s*yahi)[\s.!?]*$/i.test(lower.trim());
+    if (isNoExtraItems && userSessionId) {
+        try {
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            // If customer has selected payment method and hasn't answered extra items inquiry yet
+            if (currDetails?.paymentMethod && !currDetails?.extraItemsAnswered) {
+                currDetails.extraItemsAnswered = true;
+                currDetails.extraItemsInquired = true;
+                updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true, extraItemsInquired: true }, cleanPhone);
+
+                const { getActiveCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                if (cart?.items && cart.items.length > 0) {
+                    return await getNextCheckoutStepResponse({
+                        details: currDetails,
+                        whatsappPhone,
+                        cart,
+                        cache,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing no extra items response:', err.message);
+        }
+    }
+
     const hasCartModification = /\b(add|extra|aur|kuch|change|badal|hatao?|nikal|kam|zyada|\d+\s*x|\d+\s*bar|\d+\s*martaba|fries|drink|pepsi|7up|burger|pizza|deal|deals)\b/i.test(lower);
     const isOrderFinalConfirmation = !hasCartModification &&
         /^(?:(?:haan|han|hn|jee|ji|yes|yep|ok|theek\s*hai?)\s+)?(?:confirm|book|order|final|kar\s*do|kr\s*do|done|bhej\s*do)(?:\s+(?:book|confirm|kar\s*do|kr\s*do|kr\s*du|kar\s*du|hai|h|please|bhai))?$|^(?:haan|han|hn|jee|ji|yes|yep|ok|ok\s*done|theek\s*hai?|done|confirm|bhej\s*do|order\s*(?:book\s*)?(?:kar\s*do|kr\s*do)|book\s*(?:kar\s*do|kr\s*do)|final\s*(?:kar\s*do|kr\s*do))$/i.test(lower.trim()) && wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
-            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const { getSessionOrderDetails, clearSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const details = getSessionOrderDetails(userSessionId, cleanPhone);
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-            if (cart?.items && cart.items.length > 0 && details.readyForConfirmation) {
+            if (cart?.items && cart.items.length > 0 && details.awaitingFinalConfirmation && !details.locationAwaitingConfirmation) {
                 if (details.name && (details.address || details.location) && details.paymentMethod) {
                     const { createOrder } = await import('./orderService.js');
                     const res = await createOrder({
@@ -1069,22 +1209,29 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             longitude: details.location?.longitude ?? null,
                         },
                         paymentMethod: details.paymentMethod,
+                        sock,
                     });
                     const orderNum = res.order?.orderNumber || res.order?.order_number;
                     const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
                     if (orderNum) {
-                        details.readyForConfirmation = false;
+                        clearSessionOrderDetails(userSessionId, cleanPhone);
                         _lastDiscussedDealBySession.delete(userSessionId);
+                        const customerName = details.name ? details.name.trim() : 'Customer';
                         return {
                             handled: true,
                             routeName: 'fast_order_confirm',
-                            reply: `Wah ${details.name} bhai! Maza aa gaya! 🎉\n\nAap ka order successful book ho gaya hai. Aap ka order number *${orderNum}* hai, aur total bill delivery fee mila kar *Rs. ${total}* ban raha hai (${details.paymentMethod === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'}).\n\nBas thori der wait karo, Cravey Crust ki taraf se garma-garam khana foran *${(details.address || '').slice(0, 50)}* aap ke paas puhanch raha hai! Koi aur masla ho ya kuch aur mangwana ho to Burger Raja ko yaad karna!`,
+                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
                         };
                     }
                 }
             }
         } catch (err) {
             console.error('[FAST_ROUTE] Error booking confirmed order:', err.message);
+            return {
+                handled: true,
+                routeName: 'fast_order_confirm_failed',
+                reply: `Maazrat! Aap ka order is waqt process nahi ho saka (${err.message || 'System error'}). Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.`,
+            };
         }
     }
 
@@ -1300,7 +1447,20 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const extracted = extractCustomerDetails(raw, currDetails);
                 const updatePayload = {};
                 if (extracted.name && !currDetails.name) updatePayload.name = extracted.name;
-                if (extracted.address && !currDetails.address) updatePayload.address = extracted.address;
+                if (extracted.address && !currDetails.address) {
+                    const { extractLocationFromText } = await import('../../utils/location.js');
+                    const loc = extractLocationFromText(raw);
+                    if (loc?.latitude != null && loc?.longitude != null) {
+                        updatePayload.location = loc;
+                        updatePayload.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+                        updatePayload.locationConfirmed = false;
+                        updatePayload.locationAwaitingConfirmation = true;
+                    } else {
+                        updatePayload.address = extracted.address;
+                        updatePayload.locationConfirmed = true;
+                        updatePayload.locationAwaitingConfirmation = false;
+                    }
+                }
                 if (extracted.paymentMethod && !currDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
                 if (extracted.phone) {
                     updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
@@ -1315,7 +1475,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const details = updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
 
                     let introMessage = '';
-                    if (updatePayload.address) {
+                    if (updatePayload.locationAwaitingConfirmation) {
+                        introMessage = '';
+                    } else if (updatePayload.address) {
                         introMessage = `Delivery address (*${updatePayload.address}*) note kar liya hai. 📍`;
                     } else if (updatePayload.paymentMethod) {
                         introMessage = `Payment method (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*) note kar liya hai. 💵`;
@@ -1414,19 +1576,27 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (currDetails?.name && (currDetails?.phoneConfirmed || currDetails?.phone) && !currDetails?.address && !currDetails?.location) {
                 const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
                 if (!isNotAddr && wordCount <= 25) {
-                    const cleanedAddr = cleanExtractedAddress(raw);
+                    const { extractLocationFromText } = await import('../../utils/location.js');
+                    const loc = extractLocationFromText(raw);
+                    const isPin = loc?.latitude != null && loc?.longitude != null;
+                    const cleanedAddr = isPin ? (loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`) : cleanExtractedAddress(raw);
                     if (cleanedAddr && cleanedAddr.length >= 3) {
                         const { getActiveCart } = await import('./cartService.js');
                         const cache = await getCatalogCache();
                         const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                         if (cart?.items && cart.items.length > 0) {
-                            const details = updateSessionOrderDetails(userSessionId, { address: cleanedAddr }, cleanPhone);
+                            const details = updateSessionOrderDetails(userSessionId, {
+                                address: cleanedAddr,
+                                location: loc,
+                                locationConfirmed: !isPin,
+                                locationAwaitingConfirmation: isPin,
+                            }, cleanPhone);
                             return await getNextCheckoutStepResponse({
                                 details,
                                 whatsappPhone,
                                 cart,
                                 cache,
-                                introMessage: `Delivery address (*${cleanedAddr}*) note kar liya hai. 📍`,
+                                introMessage: isPin ? '' : `Delivery address (*${cleanedAddr}*) note kar liya hai. 📍`,
                             });
                         }
                     } else if (raw.trim().length > 0 && raw.trim().length < 3) {
@@ -1614,10 +1784,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             // Prefer Google Maps URL (cleaner display), then formattedAddress, then stripped raw
             const addressStr = loc?.mapUrl || loc?.formattedAddress || strippedRaw || raw;
 
+            const isPin = loc?.latitude != null && loc?.longitude != null;
             // Always save location to session regardless of cart state
             const details = updateSessionOrderDetails(userSessionId, {
                 address: addressStr,
                 location: loc,
+                locationConfirmed: !isPin,
+                locationAwaitingConfirmation: isPin,
             }, cleanPhone);
 
             // Try to get cart
@@ -1632,7 +1805,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     whatsappPhone,
                     cart,
                     cache,
-                    introMessage: `Zabardast ${details.name ? details.name + ' bhai! ' : ''}Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*`,
+                    introMessage: isPin ? '' : `Zabardast ${details.name ? details.name + ' bhai! ' : ''}Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*`,
                 });
             } else {
                 // Cart is empty — location saved, ask customer to order something

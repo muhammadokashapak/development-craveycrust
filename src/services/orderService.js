@@ -45,6 +45,7 @@ export async function createOrder(params) {
         promoCode,
         notes,
         idempotencyKey,
+        sock,
     } = params;
 
     const restId = restaurantId || await getDefaultRestaurantId();
@@ -406,7 +407,7 @@ export async function createOrder(params) {
     const fullOrder = await getOrderByNumber({ restaurantId: restId, orderNumber: orderResult.order_number });
     
     // Asynchronously dispatch admin WhatsApp notification (never blocks or rolls back order)
-    sendAdminNewOrderNotification({ order: fullOrder, restaurantId: restId }).catch(() => {});
+    sendAdminNewOrderNotification({ order: fullOrder, restaurantId: restId, sock }).catch(() => {});
 
     return {
         status: 'ORDER_CREATED',

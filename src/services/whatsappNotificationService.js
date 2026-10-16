@@ -88,14 +88,27 @@ export async function sendAdminNewOrderNotification({ order, restaurantId, sock 
         if (!order) return { success: false, error: 'No order provided' };
 
         const prisma = getDbClient();
-        const restId = restaurantId || order.restaurant_id || await getDefaultRestaurantId();
+        const restId = restaurantId || order.restaurantId || order.restaurant_id || await getDefaultRestaurantId();
 
         const recipients = new Set();
 
-        // 1. Env candidates
+        // 1. Human Handoff configured phone number from Settings (Dashboard)
+        if (prisma && restId) {
+            try {
+                const handoffSetting = await prisma.restaurantSetting.findFirst({
+                    where: { restaurant_id: restId, key: 'human_handoff_phone' }
+                });
+                if (handoffSetting?.value) {
+                    const jid = formatPhoneToJid(handoffSetting.value);
+                    if (jid) recipients.add(jid);
+                }
+            } catch (_) {}
+        }
+
+        // 2. Env candidates
         const envCandidates = [
-            process.env.OWNER_NUMBER,
             process.env.ADMIN_NOTIFICATION_PHONE,
+            process.env.OWNER_NUMBER,
             process.env.ADMIN_PHONE,
             process.env.OWNER_PHONE,
         ];
@@ -104,8 +117,8 @@ export async function sendAdminNewOrderNotification({ order, restaurantId, sock 
             if (jid) recipients.add(jid);
         }
 
-        // 2. Database candidates
-        if (prisma) {
+        // 3. Database restaurant candidates
+        if (prisma && restId) {
             try {
                 const restaurant = await prisma.restaurant.findUnique({
                     where: { id: restId },
@@ -118,43 +131,89 @@ export async function sendAdminNewOrderNotification({ order, restaurantId, sock 
             } catch (_) {}
         }
 
+        const activeSock = resolveSocket(sock);
+
+        // 4. Automatically detect scanned WhatsApp account as fallback if no other recipient found
+        if (recipients.size === 0 && activeSock) {
+            const scannedRaw = activeSock.user?.id || activeSock.authState?.creds?.me?.id || '';
+            const scannedDigits = scannedRaw.split('@')[0]?.split(':')[0]?.replace(/\D/g, '');
+            const scannedJid = formatPhoneToJid(scannedDigits);
+            if (scannedJid) {
+                recipients.add(scannedJid);
+            }
+        }
+
         if (recipients.size === 0) {
-            logger.warn({ orderNumber: order.order_number }, '[NOTIFY] Admin notification skipped: No valid admin phone configured');
+            logger.warn({ orderNumber: order.order_number || order.orderNumber }, '[NOTIFY] Admin notification skipped: No valid admin/handoff phone configured');
             return { success: false, error: 'No valid admin phone configured' };
         }
 
-        const activeSock = resolveSocket(sock);
         if (!activeSock) {
-            logger.warn({ orderNumber: order.order_number }, '[NOTIFY] Admin notification skipped: WhatsApp socket not connected');
+            logger.warn({ orderNumber: order.order_number || order.orderNumber }, '[NOTIFY] Admin notification skipped: WhatsApp socket not connected');
             return { success: false, error: 'WhatsApp socket not connected' };
         }
 
+        const orderId = order.orderNumber || order.order_number;
         const customerName = order.customerName || order.customer_name || order.customer?.name || 'Customer';
-        const total = order.pricing?.total != null 
-            ? Number(order.pricing.total).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
-            : (order.final_total != null ? Number(order.final_total).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00');
-        const areaName = order.delivery?.areaName || order.delivery_area_name || order.delivery_address || 'Delivery Area';
-        const payment = order.payment?.method || order.payment_method || 'COD';
+        const customerPhone = order.phone || order.customer?.phone || order.whatsapp_phone || order.whatsappPhone || '';
+
+        let itemsLines = '';
+        if (Array.isArray(order.items) && order.items.length > 0) {
+            itemsLines = order.items.map(i => {
+                const name = i.dealName || i.itemName || i.item_name_snapshot || 'Item';
+                const variant = i.variantName || i.variant_name_snapshot ? ` (${i.variantName || i.variant_name_snapshot})` : '';
+                const lineTotal = Number(i.lineTotal ?? i.line_total ?? (Number(i.unitPrice ?? i.unit_price ?? 0) * Number(i.quantity ?? 1))).toLocaleString('en-PK');
+                return `${i.quantity}x ${name}${variant} — Rs. ${lineTotal}`;
+            }).join('\n');
+        } else if (Array.isArray(order.order_items) && order.order_items.length > 0) {
+            itemsLines = order.order_items.map(i => {
+                const name = i.deal_name_snapshot || i.deal?.name || i.item_name_snapshot || i.menu_item?.name || 'Item';
+                const variant = i.variant_name_snapshot || i.menu_variant?.name ? ` (${i.variant_name_snapshot || i.menu_variant?.name})` : '';
+                const lineTotal = Number(i.line_total ?? (Number(i.unit_price ?? 0) * Number(i.quantity ?? 1))).toLocaleString('en-PK');
+                return `${i.quantity}x ${name}${variant} — Rs. ${lineTotal}`;
+            }).join('\n');
+        }
+
+        const subtotal = Number(order.pricing?.subtotal ?? order.subtotal ?? 0).toLocaleString('en-PK');
+        const deliveryFee = Number(order.pricing?.deliveryFee ?? order.delivery_fee ?? 0).toLocaleString('en-PK');
+        const total = Number(order.pricing?.total ?? order.total ?? order.final_total ?? 0).toLocaleString('en-PK');
+        const rawPayment = order.payment?.method || order.payment_method || 'COD';
+        const paymentMethod = String(rawPayment).toUpperCase() === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
+
+        const lat = order.delivery?.latitude ?? order.latitude;
+        const lng = order.delivery?.longitude ?? order.longitude;
+        let locationBlock = '';
+        if (lat != null && lng != null) {
+            locationBlock = `Delivery Location:\nLatitude: ${lat}\nLongitude: ${lng}\nGoogle Maps: https://www.google.com/maps?q=${lat},${lng}`;
+        } else {
+            let addr = order.delivery?.address || order.delivery_address || 'Google Maps Location Pin';
+            addr = addr.replace(/^customer\s*ne\s*location\s*(?:share\s*ki|pin)?\s*[:=-]?\s*/i, '').trim();
+            locationBlock = `Delivery Location:\nAddress: ${addr}`;
+        }
 
         const messageText = 
-`New Order Received
+`NEW CONFIRMED ORDER — CRAVEY CRUST
+Order ID: ${orderId}
+Status: Confirmed
+Customer Name: ${customerName}
+Customer Phone: ${customerPhone}
+Items:
+${itemsLines || '• 1x Order'}
+Subtotal: Rs. ${subtotal}
+Delivery Charges: Rs. ${deliveryFee}
+Total: Rs. ${total}
+Payment Method: ${paymentMethod}
+${locationBlock}
 
-Order: #${order.orderNumber || order.order_number}
-Customer: ${customerName}
-Total: Rs.${total}
-Area: ${areaName}
-Payment: ${payment}
-
-View in dashboard: http://localhost:3000`;
+Please review and process this order.`;
 
         for (const adminJid of recipients) {
             await activeSock.sendMessage(adminJid, { text: messageText });
-            logger.info({ orderNumber: order.order_number, adminJid }, '[NOTIFY] Admin WhatsApp notification sent');
+            logger.info({ orderNumber: orderId, adminJid }, '[NOTIFY] Admin WhatsApp notification sent with full order details');
         }
         return { success: true };
     } catch (err) {
-        // Notification failure must NEVER rollback or throw
-        logger.error({ err: err.message, orderNumber: order?.order_number }, '[NOTIFY] Failed to send admin new order notification');
+        logger.error({ err: err.message, orderNumber: order?.order_number || order?.orderNumber }, '[NOTIFY] Failed to send admin new order notification');
         return { success: false, error: err.message };
     }
 }

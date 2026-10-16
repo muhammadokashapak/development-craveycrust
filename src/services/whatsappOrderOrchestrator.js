@@ -1122,6 +1122,7 @@ Aap aaj kya order karna chahenge? Hamare paas Mazedar Pizzas, Burgers aur Deals 
                     delivery: draft.delivery,
                     paymentMethod: draft.paymentMethod || 'COD',
                     idempotencyKey: messageId,
+                    sock,
                 });
 
                 const ord = orderResult.order;

@@ -475,6 +475,7 @@ async function executeTool(toolName, args, context) {
                     },
                     paymentMethod: chosenPaymentMethod,
                     notes,
+                    sock,
                 });
 
                 const finalOrderNum = result.order?.orderNumber || result.order?.order_number;
@@ -748,13 +749,15 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     // ── 3. Build effective message text ──
     let effectiveText = (text || '').trim();
     if (!effectiveText && activeLocation) {
-        const parts = [];
-        if (activeLocation.name)    parts.push(`Jagah: ${activeLocation.name}`);
-        if (activeLocation.address) parts.push(`Pata: ${activeLocation.address}`);
-        if (activeLocation.latitude  != null) parts.push(`lat=${activeLocation.latitude}`);
-        if (activeLocation.longitude != null) parts.push(`lng=${activeLocation.longitude}`);
-        if (activeLocation.mapUrl)  parts.push(`url=${activeLocation.mapUrl}`);
-        effectiveText = `Customer ne location share ki: ${parts.join(', ')}`;
+        if (activeLocation.latitude != null && activeLocation.longitude != null) {
+            effectiveText = `https://www.google.com/maps?q=${activeLocation.latitude},${activeLocation.longitude}`;
+        } else if (activeLocation.mapUrl) {
+            effectiveText = activeLocation.mapUrl;
+        } else if (activeLocation.address) {
+            effectiveText = activeLocation.address;
+        } else {
+            effectiveText = 'Location Pin';
+        }
     }
 
     if (!effectiveText) return '';
