@@ -576,6 +576,34 @@ export async function sendAdminHandoverAlert({ customerChatId, sessionKey, custo
             }
         } catch (_) {}
 
+        // Retrieve recent order for context
+        let recentOrderSection = '';
+        try {
+            if (prisma) {
+                const lookupPhone = cleanCustomerDigits || '';
+                    const orConds = [];
+                    if (customerChatId) orConds.push({ source_chat_id: customerChatId });
+                    if (sessionKey) {
+                        orConds.push({ source_session_id: sessionKey });
+                        orConds.push({ source_chat_id: sessionKey });
+                    }
+                    if (lookupPhone) {
+                        orConds.push({ phone: lookupPhone });
+                        orConds.push({ whatsapp_phone: lookupPhone });
+                    }
+                    const ord = orConds.length > 0 ? await prisma.order.findFirst({
+                        where: {
+                            OR: orConds,
+                        },
+                        orderBy: { created_at: 'desc' },
+                        select: { order_number: true, order_status: true, total: true },
+                    }) : null;
+                if (ord) {
+                    recentOrderSection = `📦 *Recent Order:* #${ord.order_number} (${ord.order_status} — Rs. ${Number(ord.total)})\n`;
+                }
+            }
+        } catch (_) {}
+
         const alertText = 
 `🚨 *HUMAN HANDOVER REQUEST* 🚨
 
@@ -584,7 +612,7 @@ Aap ke WhatsApp bot par aik customer ne real support agent se baat karne ki requ
 👤 *Customer:* ${displayName}
 📱 *Phone Number:* ${displayPhone}
 ${waLink ? `💬 *Direct Chat Link:* ${waLink}\n` : ''}❓ *Wajah / Reason:* ${reason}
-${chatSummarySection}⏱️ *Bot Status:* Muted (Agley ${durationMinutes} minutes tak bot is customer ko auto-reply nahi karega)
+${recentOrderSection}${chatSummarySection}⏱️ *Bot Status:* Muted (Agley ${durationMinutes} minutes tak bot is customer ko auto-reply nahi karega)
 
 👉 *Action:* Aap direct customer ke number par ya diye gaye chat link par rabta kar saktay hain.
 💡 *Bot Resume:* Baat mukammal honay ke baad chat mein \`bot start\` ya \`.unmute\` likh kar bot dobara on kar saktay hain.`;

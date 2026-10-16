@@ -516,7 +516,7 @@ async function executeTool(toolName, args, context) {
             // 15. request_order_cancellation
             case 'request_order_cancellation':
             case 'cancel_order': {
-                const orderNum = (args.orderNumber || '').toUpperCase().trim();
+                let orderNum = (args.orderNumber || '').toUpperCase().trim();
                 if (!orderNum) {
                     const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
                     if (cart?.items && cart.items.length > 0) {
@@ -527,7 +527,34 @@ async function executeTool(toolName, args, context) {
                         } catch (_) {}
                         return { success: true, cartCleared: true, message: 'Cart khali aur pending order cancel kar diya gaya hai.' };
                     }
-                    return { error: 'ORDER_NUMBER_REQUIRED', message: 'Order cancel karne ke liye CC-XXXXXX order number dein.' };
+                    const prisma = getDbClient();
+                    if (prisma) {
+                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                        const orConditions = [];
+                        if (sessionKey) {
+                            orConditions.push({ source_session_id: sessionKey });
+                            orConditions.push({ source_chat_id: sessionKey });
+                        }
+                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
+                        if (cleanPhone) {
+                            orConditions.push({ phone: cleanPhone });
+                            orConditions.push({ whatsapp_phone: cleanPhone });
+                        }
+                        const recent = orConditions.length > 0 ? await prisma.order.findFirst({
+                            where: {
+                                restaurant_id: restId,
+                                OR: orConditions,
+                            },
+                            orderBy: { created_at: 'desc' },
+                            select: { id: true, order_number: true, order_status: true },
+                        }) : null;
+                        if (recent) {
+                            orderNum = recent.order_number;
+                        }
+                    }
+                    if (!orderNum) {
+                        return { error: 'ORDER_NUMBER_REQUIRED', message: 'Order cancel karne ke liye CC-XXXXXX order number dein.' };
+                    }
                 }
                 const prisma = getDbClient();
                 if (!prisma) return { error: 'Database unavailable' };
@@ -545,7 +572,37 @@ async function executeTool(toolName, args, context) {
             // 16. confirm_order_cancellation
             case 'confirm_order_cancellation': {
                 const { cancelOrder } = await import('./orderService.js');
-                const orderNum = (args.orderNumber || '').toUpperCase().trim();
+                let orderNum = (args.orderNumber || '').toUpperCase().trim();
+                if (!orderNum) {
+                    const prisma = getDbClient();
+                    if (prisma) {
+                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                        const orConditions = [];
+                        if (sessionKey) {
+                            orConditions.push({ source_session_id: sessionKey });
+                            orConditions.push({ source_chat_id: sessionKey });
+                        }
+                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
+                        if (cleanPhone) {
+                            orConditions.push({ phone: cleanPhone });
+                            orConditions.push({ whatsapp_phone: cleanPhone });
+                        }
+                        const recent = orConditions.length > 0 ? await prisma.order.findFirst({
+                            where: {
+                                restaurant_id: restId,
+                                OR: orConditions,
+                            },
+                            orderBy: { created_at: 'desc' },
+                            select: { id: true, order_number: true, order_status: true },
+                        }) : null;
+                        if (recent) {
+                            orderNum = recent.order_number;
+                        }
+                    }
+                }
+                if (!orderNum) {
+                    return { error: 'ORDER_NUMBER_REQUIRED', message: 'Cancel karne ke liye order number zaroori hai.' };
+                }
                 const result = await cancelOrder({
                     restaurantId: restId,
                     orderNumber: orderNum,

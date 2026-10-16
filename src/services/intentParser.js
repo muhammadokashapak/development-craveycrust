@@ -100,32 +100,75 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         paymentMethod = 'COD';
     }
 
-    // 2. Phone (including phone updates)
-    const phoneUpdateMatch = raw.match(/(?:number|numbr|no|phone|rabta)\s*(?:badal\s*(?:k\s*|ke\s*)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|kar\s*(?:do|dein|karo)|kr\s*(?:do|dein|kro)|h|hai|he|hy|:|=|-)\s*(\+?923\d{9}|03\d{9})/i);
+    // 2. Phone (including phone updates and validation)
+    let invalidPhone = null;
+    const phoneUpdateMatch = raw.match(/(?:number|numbr|numebr|no|phone|rabta|contact)\s*(?:mera\s+|apna\s+)?(?:badal\s*(?:k\s*|ke\s*)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|rakh\s*(?:do|dein|lo|du)|likh\s*(?:do|dein|lo|du)|h|hai|he|hy|:|=|-|\s+)\s*([+\d\s-]{7,18})/i);
     const isExplicitSamePhone = /\b(?:same\s*(?:number|numbr|no|whatsapp)|yahi\s*(?:number|numbr|no)|yehi\s*(?:number|numbr|no)|isi\s*number|wahi\s*(?:number|numbr|no)|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?)\b/i.test(lower);
     const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed && !knownDetails.phone;
     const isContextualSamePhone = isAwaitingPhone && /^(?:same|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number)[\s.!?]*$/i.test(lower.trim());
 
     if (phoneUpdateMatch) {
-        phone = phoneUpdateMatch[1].replace(/\D/g, '');
+        const rawDigits = phoneUpdateMatch[1].replace(/\D/g, '');
+        if (/^03\d{9}$/.test(rawDigits)) {
+            phone = rawDigits;
+        } else if (/^3\d{9}$/.test(rawDigits)) {
+            phone = '0' + rawDigits;
+        } else if (/^923\d{9}$/.test(rawDigits)) {
+            phone = '0' + rawDigits.slice(2);
+        } else if (rawDigits.length >= 7) {
+            invalidPhone = rawDigits;
+        }
     } else if (isExplicitSamePhone || isContextualSamePhone) {
         phone = 'SAME_WHATSAPP';
     } else {
         const phMatch = raw.match(/(?:03\d{9}|\+?923\d{9})/);
-        if (phMatch) phone = phMatch[0].replace(/\D/g, '');
+        if (phMatch) {
+            phone = phMatch[0].replace(/\D/g, '');
+            if (phone.startsWith('92')) phone = '0' + phone.slice(2);
+        } else if (isAwaitingPhone) {
+            // Bare digits provided when specifically waiting for phone
+            const bareDigitsMatch = raw.trim().match(/^([+\d\s-]{7,18})$/);
+            if (bareDigitsMatch) {
+                const rawDigits = bareDigitsMatch[1].replace(/\D/g, '');
+                if (/^03\d{9}$/.test(rawDigits)) {
+                    phone = rawDigits;
+                } else if (/^3\d{9}$/.test(rawDigits)) {
+                    phone = '0' + rawDigits;
+                } else if (/^923\d{9}$/.test(rawDigits)) {
+                    phone = '0' + rawDigits.slice(2);
+                } else {
+                    invalidPhone = rawDigits;
+                }
+            }
+        } else {
+            // Any sequence of 7+ digits provided in context of checkout
+            const anyDigitsMatch = raw.match(/\b([+\d]{7,16})\b/);
+            if (anyDigitsMatch && !phone) {
+                const rawDigits = anyDigitsMatch[1].replace(/\D/g, '');
+                if (/^03\d{9}$/.test(rawDigits)) {
+                    phone = rawDigits;
+                } else if (/^3\d{9}$/.test(rawDigits)) {
+                    phone = '0' + rawDigits;
+                } else if (/^923\d{9}$/.test(rawDigits)) {
+                    phone = '0' + rawDigits.slice(2);
+                } else if (rawDigits.length >= 7 && rawDigits.length <= 15) {
+                    invalidPhone = rawDigits;
+                }
+            }
+        }
     }
 
     // Comprehensive delivery location indicator regex covering all official delivery areas
     const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
     // 3. Name (Strictly excluded if matches location indicators, greetings, or known action words)
-    const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|madam|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+    const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
-    // Explicit name change or assignment patterns
-    const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna)?|rakh\s*(?:do|dein|lo|karo)|likh\s*(?:do|dein|lo|karo)|kar\s*(?:do|dein|karo)|kr\s*(?:do|dein|kro)|ab\s+|h|hai|he|hy|:|=|-|\s+)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
+    // Explicit name change or assignment patterns (supports "kr du", "kar du", "naam hatim", "mera naam hatim", etc.)
+    const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)|likh\s*(?:do|dein|lo|karo|du)|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|ab\s+|h|hai|he|hy|:|=|-|\s+)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:pehle\s+.*?\s+tha\s+ab\s+|nahi\s+)([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
-                           raw.match(/^(?:ab\s+)?([A-Za-z]{2,20})\s*(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein)/i);
+                           raw.match(/^(?:ab\s+)?([A-Za-z]{2,20})\s*(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du)/i);
 
     const nameBefore = raw.match(/\b([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\s+(?:meara|mera)\s+(?:name|naam)\b/i);
     const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:is|hai|h|:|=|-)?\s+([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
@@ -133,20 +176,27 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
 
     let nameCandidate = (nameUpdateMatch ? nameUpdateMatch[1] : (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null)))?.trim();
     if (nameCandidate) {
-        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|karo|kro|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
+        // Strip leading common prefixes e.g. "same ", "wahi ", "yehi ", "yahi ", "naam ", "kr du ", "kar du "
+        nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|apna|kr\s*du|kar\s*du|likh\s*du|rakh\s*du)\s+/i, '').trim();
+        // Strip trailing sentence filler e.g. "bki sari details same ha", "baki sab same hai"
+        nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
+        // Strip trailing action verbs/honorifics
+        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
     }
-    // Bare-string direct name check (e.g. user replies "Ali" or "Ali Khan")
-    if (!nameCandidate && !paymentMethod && !phone && !ADDRESS_INDICATORS.test(lower)) {
+    // Bare-string direct name check (e.g. user replies "Ali", "Ali Khan", "same hatim", "asim bki sari details...")
+    if (!nameCandidate && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower)) {
         const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
-            const directMatch = raw.trim().match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/);
+            let direct = raw.trim().replace(/^(?:same|wahi|yahi|yehi|isi)\s+/i, '').trim();
+            direct = direct.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
+            const directMatch = direct.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/);
             if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
                 nameCandidate = directMatch[1].trim();
             }
         }
     }
     if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate)) {
-        name = nameCandidate;
+        name = nameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     }
 
     // 4. Address (including address updates)
@@ -191,7 +241,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         }
     }
 
-    return { name, paymentMethod, phone, address };
+    return { name, paymentMethod, phone, address, invalidPhone };
 }
 
 export function formatPakistaniPhone(phone) {
@@ -1016,11 +1066,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── 1. Handover / Complaint / Real Person Request ──
     if (FAST_HANDOVER_REGEX.test(lower)) {
         let customerReply = 'Aapki request humare support agent ko forward kar di gayi hai, humara representative jald aapse rabta karega.';
+        let recentOrderSnippet = '';
         try {
             const { getDbClient } = await import('../db/client.js');
             const { getDefaultRestaurantId } = await import('./restaurantService.js');
             const prisma = getDbClient();
             const restId = await getDefaultRestaurantId();
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+
             if (prisma && restId) {
                 const setting = await prisma.restaurantSetting.findUnique({
                     where: { restaurant_id_key: { restaurant_id: restId, key: 'human_handoff_message' } }
@@ -1028,8 +1081,36 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (setting?.value?.trim()) {
                     customerReply = setting.value.trim();
                 }
+
+                // Look up recent order to give context to customer and agent
+                const orConds = [];
+                if (sessionKey) {
+                    orConds.push({ source_session_id: sessionKey });
+                    orConds.push({ source_chat_id: sessionKey });
+                }
+                if (chatId && chatId !== sessionKey) orConds.push({ source_chat_id: chatId });
+                if (cleanPhone) {
+                    orConds.push({ phone: cleanPhone });
+                    orConds.push({ whatsapp_phone: cleanPhone });
+                }
+                const recentOrder = orConds.length > 0 ? await prisma.order.findFirst({
+                    where: {
+                        restaurant_id: restId,
+                        OR: orConds,
+                    },
+                    orderBy: { created_at: 'desc' },
+                    select: { order_number: true, order_status: true, customer_name: true },
+                }).catch(() => null) : null;
+
+                if (recentOrder) {
+                    recentOrderSnippet = ` aur order details (*#${recentOrder.order_number}*)`;
+                }
             }
         } catch (_) {}
+
+        if (recentOrderSnippet && customerReply.includes('support agent ko forward')) {
+            customerReply = `Aap ki request${recentOrderSnippet} hamare support agent ko forward kar di gayi hai, hamara representative jald aapse rabta karega. Shukriya! 😊`;
+        }
 
         try {
             await muteChatForHandover({
@@ -1055,7 +1136,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (whatsappPhone) unmuteChat(whatsappPhone);
         } catch (_) {}
         const cache = await getCatalogCache();
-        const store = cache.storeName || 'Burger Mehfil';
+        const rawStore = cache.storeName || '';
+        const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
         return {
             handled: true,
             routeName: 'bot_start',
@@ -1072,8 +1154,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const userSessionId = sessionKey || chatId || whatsappPhone;
 
     // ── Check Fast Route: Order Cancellation / Cart Clear (Zero Tokens) ──
-    const isCancelOrClearRequest = /^(?:cancel|cancel\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*dein|karden|order|my\s*order)?|order\s*cancel(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*dein))?|cart\s*(?:clear|khali)(?:\s*(?:kr\s*do|kardo|kar\s*do))?|clear\s*cart|nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo)[\s!.?]*$/i.test(lower.trim());
-    if (isCancelOrClearRequest && userSessionId) {
+    const isCancellationIntent =
+        /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
+        /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
+        /\b(?:cart\s*(?:clear|khali)|clear\s*cart)\b/i.test(lower) ||
+        /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim());
+
+    const isPolicyQuestion = /\b(?:policy|rule|timing|kya\s*hai|how\s*to)\b/i.test(lower) && !/\b(?:kr\s*du|kar\s*do|kardo|karo|bhai|yaar|plz|please)\b/i.test(lower);
+
+    if (isCancellationIntent && !isPolicyQuestion && userSessionId) {
         try {
             const { getActiveCart, clearCart } = await import('./cartService.js');
             const { clearSessionOrderDetails } = await import('./sessionService.js');
@@ -1081,6 +1170,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 
+            // 1. If active cart has items, clear cart & session
             if (cart?.items && cart.items.length > 0) {
                 await clearCart({ sessionKey: userSessionId });
                 clearSessionOrderDetails(userSessionId, cleanPhone);
@@ -1088,41 +1178,122 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 _lastDiscussedItemBySession.delete(userSessionId);
                 return {
                     handled: true,
-                    routeName: 'fast_cancel_order',
+                    routeName: 'fast_cancel_cart',
                     reply: `Theek hai Ji! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
                 };
             }
 
-            // If cart is empty, check if user specified an order number like CC-123456
+            // 2. Active cart is empty: resolve placed order to cancel
+            const { cancelOrder } = await import('./orderService.js');
+            const { getDbClient } = await import('../db/client.js');
+            const prisma = getDbClient();
+
+            let targetOrder = null;
             const orderMatch = lower.match(/#?CC-\d{6}/i);
-            if (orderMatch) {
-                const { cancelOrder } = await import('./orderService.js');
+
+            if (orderMatch && prisma) {
                 const orderNum = orderMatch[0].replace('#', '').toUpperCase();
-                const cancelRes = await cancelOrder({
-                    restaurantId: cache.restId,
-                    orderNumber: orderNum,
-                    reason: 'Customer requested cancellation via WhatsApp',
+                targetOrder = await prisma.order.findFirst({
+                    where: { restaurant_id: cache.restId, order_number: orderNum },
                 });
-                if (cancelRes?.success) {
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_placed_order',
-                        reply: `Aap ka order *#${orderNum}* cancel kar diya gaya hai. Koi aur khidmat ho to zaroor bataiye ga!`,
-                    };
-                } else {
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_placed_order_failed',
-                        reply: `Order *#${orderNum}* cancel nahi ho saka: ${cancelRes?.message || 'Order tayar ho chuka hai ya kitchen mein ja chuka hai.'}`,
-                    };
+            }
+
+            // If no explicit order number, look up the latest order placed by this customer/chat
+            if (!targetOrder && prisma) {
+                const orConditions = [];
+                if (userSessionId) {
+                    orConditions.push({ source_session_id: userSessionId });
+                    orConditions.push({ source_chat_id: userSessionId });
+                }
+                if (chatId && chatId !== userSessionId) orConditions.push({ source_chat_id: chatId });
+                if (cleanPhone) {
+                    orConditions.push({ phone: cleanPhone });
+                    orConditions.push({ whatsapp_phone: cleanPhone });
+                    if (cleanPhone.length >= 9) {
+                        const last9 = cleanPhone.slice(-9);
+                        orConditions.push({ phone: { contains: last9 } });
+                        orConditions.push({ whatsapp_phone: { contains: last9 } });
+                    }
+                }
+                if (orConditions.length > 0) {
+                    targetOrder = await prisma.order.findFirst({
+                        where: {
+                            restaurant_id: cache.restId,
+                            OR: orConditions,
+                        },
+                        orderBy: { created_at: 'desc' },
+                    });
                 }
             }
 
-            return {
-                handled: true,
-                routeName: 'fast_cancel_empty',
-                reply: `Aap ke cart mein koi item nahi hai aur koi pending order nahi hai. Agar kuch mangwana hai to 'menu' ya 'deals' likhein! 😊`,
-            };
+            if (!targetOrder) {
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_not_found',
+                    reply: `Aap ka koi active order ya cart mein koi item nahi mila jise cancel kiya ja sake. Agar aap ne kisi aur number se order kiya tha to baraye meherbani apna Order Number (jaise #CC-123456) likh kar bhej dein. 😊`,
+                };
+            }
+
+            const custName = targetOrder.customer_name ? `${targetOrder.customer_name} bhai` : 'Ji';
+
+            // Case A: Already Cancelled (Idempotent response)
+            if (targetOrder.order_status === 'CANCELLED') {
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_already_cancelled',
+                    reply: `Ji ${custName}, aap ka order *#${targetOrder.order_number}* pehle hi cancel ho chuka hai! 👍\n\nAgar aap dobara kuch naya mangwana chahein ya koi aur madad chahiye ho, toh zaroor bataiyega. Main hamesha aap ki khidmat ke liye hazir hoon! 😊`,
+                };
+            }
+
+            // Case B: Delivered / Completed
+            if (targetOrder.order_status === 'DELIVERED' || targetOrder.order_status === 'COMPLETED') {
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_already_delivered',
+                    reply: `Aap ka order *#${targetOrder.order_number}* pehle hi deliver ho chuka hai, is liye ab cancel nahi kiya ja sakta. Agar koi masla ya shikayat ho to baraye meherbani hamare support agent se rabta karein.`,
+                };
+            }
+
+            // Case C: Out for Delivery (Rider has departed)
+            if (targetOrder.order_status === 'OUT_FOR_DELIVERY') {
+                try {
+                    await muteChatForHandover({
+                        chatId,
+                        sessionKey: userSessionId,
+                        reason: `Customer requested cancellation for Order #${targetOrder.order_number} which is already Out for Delivery`,
+                        customerPhone: cleanPhone,
+                        customerName: targetOrder.customer_name,
+                        sock,
+                    });
+                } catch (_) {}
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_out_for_delivery',
+                    reply: `Aap ka order *#${targetOrder.order_number}* rider ke sath deliver karne ke liye nikal chuka hai (Out for Delivery), is liye direct cancel nahi kiya ja sakta. Hum ne aap ki request foran support team ko bhej di hai, woh jald aapse rabta karenge.`,
+                };
+            }
+
+            // Case D: Cancellable (PENDING, CONFIRMED, PREPARING, READY)
+            const cancelRes = await cancelOrder({
+                restaurantId: cache.restId,
+                orderNumber: targetOrder.order_number,
+                reason: 'Customer requested cancellation via WhatsApp',
+            });
+
+            if (cancelRes?.success) {
+                clearSessionOrderDetails(userSessionId, cleanPhone);
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_placed_order_success',
+                    reply: `Ji ${custName}, aap ka order *#${targetOrder.order_number}* kamiyabi ke sath cancel kar diya gaya hai! ❌\n\nAgar aap dobara kuch mangwana chahein ya koi aur madad chahiye ho, toh zaroor bataiyega. Main hamesha aap ki khidmat ke liye hazir hoon! 😊`,
+                };
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'fast_cancel_placed_order_failed',
+                    reply: `Order *#${targetOrder.order_number}* cancel nahi ho saka: ${cancelRes?.message || 'Kitchen mein packing complete ho chuki hai.'} Baraye meherbani support agent se rabta karein.`,
+                };
+            }
         } catch (err) {
             console.error('[FAST_ROUTE] Error processing cancellation:', err.message);
         }
@@ -1412,13 +1583,20 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         READY: 'Taiyar hai aur rider ka intezar hai',
                         OUT_FOR_DELIVERY: 'Rider delivery ke liye nikal chuka hai',
                         DELIVERED: 'Deliver ho chuka hai',
-                        CANCELLED: 'Cancel ho gaya hai',
+                        CANCELLED: 'Cancel ho chuka hai',
                     }[recentOrder.order_status] || 'Process ho raha hai';
+
+                    let closingLine = 'Cravey Crust ka lazeez khana jald aap tak pahunch jayega! Shukriya!';
+                    if (recentOrder.order_status === 'CANCELLED') {
+                        closingLine = 'Yeh order cancel ho chuka hai. Agar aap dobara kuch mangwana chahein to \'menu\' ya \'deals\' likh kar bhej dein! 😊';
+                    } else if (recentOrder.order_status === 'DELIVERED') {
+                        closingLine = 'Umeed hai aap ne khana enjoy kiya hoga! Cravey Crust se shopping karne ka shukriya! 😊';
+                    }
 
                     return {
                         handled: true,
                         routeName: 'order_status_check',
-                        reply: `Assalam o Alaikum ${recentOrder.customer_name || 'Ji'}! Aap ka order *#${recentOrder.order_number}* ${statusUrdu}! 🎉\n\n💰 Total Bill: *Rs. ${Number(recentOrder.total)}* (${recentOrder.payment_method})\n📍 Delivery Address: ${recentOrder.delivery_address || 'Provided pin'}\n\nCravey Crust ka lazeez khana jald aap tak pahunch jayega! Shukriya!`,
+                        reply: `Assalam o Alaikum ${recentOrder.customer_name || 'Ji'}! Aap ka order *#${recentOrder.order_number}* ${statusUrdu}!\n\n💰 Total Bill: *Rs. ${Number(recentOrder.total)}* (${recentOrder.payment_method})\n📍 Delivery Address: ${recentOrder.delivery_address || 'Provided pin'}\n\n${closingLine}`,
                     };
                 }
             }
@@ -1553,6 +1731,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     updatePayload.phoneConfirmed = true;
                 }
 
+                // If customer provided an invalid phone number format, inform them immediately
+                if (extracted.invalidPhone) {
+                    if (Object.keys(updatePayload).length > 0) {
+                        updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
+                    }
+                    return {
+                        handled: true,
+                        routeName: 'invalid_phone_provided',
+                        reply: `Aap ka diya gaya contact number (*${extracted.invalidPhone}*) theek nahi hai. ❌\n\nBaraye meherbani 11-digit ka sahi Pakistani mobile number dein (jaise *03XXXXXXXXX*). 📞`,
+                    };
+                }
+
                 // Only proceed if at least one detail was actually updated to prevent repeat loops
                 if (Object.keys(updatePayload).length > 0) {
                     const details = updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
@@ -1607,11 +1797,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Customer Name Input during active cart checkout (Zero Tokens) ──
     const isGreetingName = FAST_GREETING_REGEX.test(raw.trim()) || /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
-    const nameCandidate = raw.replace(/^(?:mera\s+naam\s+|naam\s+|name\s*(?:is|hai|h|ja)?\s*:?\s*)/i, '')
-                             .replace(/(?:\s+(?:naam|name|hai|h|ja|mera))+$/i, '')
-                             .trim();
+    let nameCandidate = raw.replace(/^(?:mera\s+naam\s+|naam\s+|name\s*(?:is|hai|h|ja)?\s*:?\s*)/i, '')
+                           .replace(/(?:\s+(?:naam|name|hai|h|ja|mera))+$/i, '')
+                           .trim();
+    nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|apna|kr\s*du|kar\s*du)\s+/i, '').trim();
+    nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
-    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori)\b/i.test(nameCandidate);
+    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri)\b/i.test(nameCandidate);
     if (nameMatch && !isNotNameCandidate && userSessionId && wordCount <= 4 && !hasCartOrOrderAction) {
         try {
             const { getActiveCart } = await import('./cartService.js');
@@ -1621,7 +1813,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                const customerName = nameMatch[1].trim();
+                const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                 const isDifferent = !details.name || details.name.toLowerCase() !== customerName.toLowerCase();
                 if (isDifferent) {
                     const isUpdate = Boolean(details.name);
@@ -2036,7 +2228,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     if (isPaymentQueryMatch && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
-            const store = cache.storeName || 'Cravey Crust';
+            const rawStore = cache.storeName || '';
+            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
             let epSection = '';
             if (cache.easypaisaEnabled && cache.easypaisaNumber) {
                 epSection = `📱 *EasyPaisa Details:*\n• Number: *${cache.easypaisaNumber}*\n• Account Title: *${cache.accountName || store}*\n• Status: Active (Dastiyab)\n\nEasyPaisa transfer karne ke baad screenshot yahan share kar dein!\n\n`;
@@ -2056,21 +2249,30 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── 9. Quick Reply: Greeting (Dynamic Store Name & Burger Raja Persona) ──
+    // ── 9. Quick Reply: Greeting (Dynamic Store Name & Language-Aware Persona) ──
     if (FAST_GREETING_REGEX.test(lower)) {
         try {
             const cache = await getCatalogCache();
-            const store = cache.storeName || 'Cravey Crust';
+            const rawStore = cache.storeName || '';
+            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
+
+            let salutation = 'Assalam o Alaikum!';
+            if (/^(?:hi+|hello+|hey+|helo+|hellow+)\b/i.test(lower)) {
+                salutation = 'Hello!';
+            } else if (/salam|assalam|aoa/i.test(lower)) {
+                salutation = 'Walaikum Assalam!';
+            }
+
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `Walaikum Assalam! *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
             };
         } catch (_) {
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Walaikum Assalam! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!',
+                reply: 'Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!',
             };
         }
     }
@@ -2079,7 +2281,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     if (FAST_CHITCHAT_REGEX.test(lower) && wordCount <= 6) {
         try {
             const cache = await getCatalogCache();
-            const store = cache.storeName || 'Cravey Crust';
+            const rawStore = cache.storeName || '';
+            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
             return {
                 handled: true,
                 routeName: 'quick_reply',
@@ -2089,7 +2292,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Alhamdulillah main bilkul theek hoon! Main Cravey Crust ka AI assistant Burger Raja hoon. Aaj aap kya khana pasand karenge? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein!',
+                reply: 'Alhamdulillah main bilkul theek hoon! Main *Cravey Crust* ka AI assistant *Burger Raja* hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein!',
             };
         }
     }
