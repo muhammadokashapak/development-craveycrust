@@ -111,8 +111,8 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // Comprehensive delivery location indicator regex covering all official delivery areas
     const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
-    // 3. Name (Strictly excluded if matches location indicators or known action words)
-    const NOT_NAME_REGEX = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|food|water|drink|hi|hello|hey|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+    // 3. Name (Strictly excluded if matches location indicators, greetings, or known action words)
+    const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
     const nameBefore = raw.match(/\b([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\s+(?:meara|mera)\s+(?:name|naam)\b/i);
     const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:is|hai|h|:|=|-)?\s+([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
@@ -124,9 +124,12 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     }
     // Only attempt bare-string name extraction if name is not already known, not payment, not phone, and not an address
     if (!nameCandidate && !knownDetails.name && !paymentMethod && !phone && !ADDRESS_INDICATORS.test(lower)) {
-        const directMatch = raw.trim().match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})$/);
-        if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
-            nameCandidate = directMatch[1].trim();
+        const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
+        if (!isGreetingOrFiller) {
+            const directMatch = raw.trim().match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})$/);
+            if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
+                nameCandidate = directMatch[1].trim();
+            }
         }
     }
     if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate)) {
@@ -954,7 +957,7 @@ import { getCatalogCache } from './catalogCacheService.js';
 const FAST_HANDOVER_REGEX = /\b(bot\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|ai\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|(ap|aap|tum)\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|baat\s*(nahi|nh|nai|nhi)\s*k(a)?rni|bat\s*(nahi|nh|nai|nhi)\s*k(a)?rni|agent|human|person|real\s*person|live\s*agent|representative|operator|manager|owner|malik|maalik|complaint|shikayat|shikayet|service\s*achi\s*nahi|service\s*achhi\s*nahi|call\s*me|call\s*karo|call\s*karein|phone\s*karo|bande\s*(se|sai|sy)\s*baat|banda|insan\s*(se|sai|sy)\s*baat|insan|talk\s*to\s*(human|agent|person|someone))\b/i;
 const FAST_BOT_START_REGEX = /^((\.)?bot\s*(start|on|activate|active|resume|shuru|chalao)|start\s*bot|resume\s*bot|unmute|bot|\.bot)$/i;
 
-const FAST_GREETING_REGEX = /^(salam|assalam|assalamualaikum|assalam\s*o\s*alaikum|aoa|hi+|hello+|hey+|bhai|suno)[\s!?.]*$/i;
+const FAST_GREETING_REGEX = /^(salam|assalam|assalamualaikum|assalam\s*o\s*alaikum|aoa|slam|hi+|hello+|hey+|hlo+|hlw+|hy+|helo+|hellow+|bhai|suno|oye|yo)[\s!?.]*$/i;
 const FAST_CHITCHAT_REGEX = /\b(kese ho|keise ho|kaise ho|kya haal hai|kia haal hai|how are you|sab theek|sab kheriat)\b/i;
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
@@ -1153,16 +1156,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── Check Fast Route: Extra Items Response ("Nahi aur kch nahi") ──
-    const isNoExtraItems = /^(?:nahi|nahin|na|no|nope|kuch\s*nahi|kch\s*nahi|aur\s*kuch\s*nahi|aur\s*kch\s*nahi|nahi\s*aur\s*k(?:u)?ch\s*nahi|kuch\s*aur\s*nahi|kch\s*aur\s*nahi|bas|bas\s*yahi|bas\s*yehi|nothing|nothing\s*else|nahi\s*bhai|no\s*thanks|nahi\s*shukriya|rehne\s*do|rehn\s*do|aur\s*nahi|nahi\s*aur\s*nahi|nahi\s*sirf\s*yehi|sirf\s*yehi|sirf\s*yahi)[\s.!?]*$/i.test(lower.trim());
+    // ── Check Fast Route: Extra Items Response ("Nhi", "Nahi", "kch nhi", "Nahi aur kch nahi") ──
+    const isNoExtraItems = /^(?:nahi|nahin|nhi|nh|nai|nhe|nhn|na|no|nope|kuch\s*nahi|kch\s*nahi|kuch\s*nhi|kch\s*nhi|aur\s*kuch\s*nahi|aur\s*kch\s*nahi|aur\s*kuch\s*nhi|aur\s*kch\s*nhi|nahi\s*aur\s*k(?:u)?ch\s*na?h?i?|nhi\s*aur\s*k(?:u)?ch\s*na?h?i?|kuch\s*aur\s*na?h?i?|kch\s*aur\s*na?h?i?|bas|bas\s*yahi|bas\s*yehi|nothing|nothing\s*else|na?h?i?\s*bhai|no\s*thanks|na?h?i?\s*shukriya|rehne\s*do|rehn\s*do|aur\s*na?h?i?|na?h?i?\s*aur\s*na?h?i?|na?h?i?\s*sirf\s*yehi|sirf\s*yehi|sirf\s*yahi|itna\s*hi)[\s.!?]*$/i.test(lower.trim());
     if (isNoExtraItems && userSessionId) {
         try {
             const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
-            // If customer has selected payment method and hasn't answered extra items inquiry yet
-            if (currDetails?.paymentMethod && !currDetails?.extraItemsAnswered) {
+            // If customer has selected payment method (or address/location exists)
+            if (currDetails?.paymentMethod) {
                 currDetails.extraItemsAnswered = true;
                 currDetails.extraItemsInquired = true;
                 updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true, extraItemsInquired: true }, cleanPhone);
@@ -1195,34 +1198,34 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-            if (cart?.items && cart.items.length > 0 && details.awaitingFinalConfirmation && !details.locationAwaitingConfirmation) {
-                if (details.name && (details.address || details.location) && details.paymentMethod) {
-                    const { createOrder } = await import('./orderService.js');
-                    const res = await createOrder({
-                        restaurantId: cache.restId,
-                        sessionKey: userSessionId,
-                        customerName: details.name,
-                        phone: details.phone || cleanPhone,
-                        delivery: {
-                            address: details.address || details.location?.address || 'Google Maps Location Pin',
-                            latitude: details.location?.latitude ?? null,
-                            longitude: details.location?.longitude ?? null,
-                        },
-                        paymentMethod: details.paymentMethod,
-                        sock,
-                    });
-                    const orderNum = res.order?.orderNumber || res.order?.order_number;
-                    const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
-                    if (orderNum) {
-                        clearSessionOrderDetails(userSessionId, cleanPhone);
-                        _lastDiscussedDealBySession.delete(userSessionId);
-                        const customerName = details.name ? details.name.trim() : 'Customer';
-                        return {
-                            handled: true,
-                            routeName: 'fast_order_confirm',
-                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
-                        };
-                    }
+            const readyToConfirm = details.name && (details.address || details.location) && (details.paymentMethod || 'COD');
+            if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation) {
+                const finalPayment = details.paymentMethod || 'COD';
+                const { createOrder } = await import('./orderService.js');
+                const res = await createOrder({
+                    restaurantId: cache.restId,
+                    sessionKey: userSessionId,
+                    customerName: details.name || 'Customer',
+                    phone: details.phone || cleanPhone,
+                    delivery: {
+                        address: details.address || details.location?.address || 'Google Maps Location Pin',
+                        latitude: details.location?.latitude ?? null,
+                        longitude: details.location?.longitude ?? null,
+                    },
+                    paymentMethod: finalPayment,
+                    sock,
+                });
+                const orderNum = res.order?.orderNumber || res.order?.order_number;
+                const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                if (orderNum) {
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    _lastDiscussedDealBySession.delete(userSessionId);
+                    const customerName = details.name ? details.name.trim() : 'Customer';
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_confirm',
+                        reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
+                    };
                 }
             }
         } catch (err) {
@@ -1504,11 +1507,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Customer Name Input during active cart checkout (Zero Tokens) ──
+    const isGreetingName = FAST_GREETING_REGEX.test(raw.trim()) || /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
     const nameCandidate = raw.replace(/^(?:mera\s+naam\s+|naam\s+|name\s*(?:is|hai|h|ja)?\s*:?\s*)/i, '')
                              .replace(/(?:\s+(?:naam|name|hai|h|ja|mera))+$/i, '')
                              .trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
-    const isNotNameCandidate = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|khan|bro|food|water|drink|hi|hello|hey|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori)\b/i.test(nameCandidate);
+    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori)\b/i.test(nameCandidate);
     if (nameMatch && !isNotNameCandidate && userSessionId && wordCount <= 4 && !hasCartOrOrderAction) {
         try {
             const { getActiveCart } = await import('./cartService.js');

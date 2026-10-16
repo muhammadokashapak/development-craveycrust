@@ -183,16 +183,20 @@ async function executeTool(toolName, args, context) {
             // 8. get_cart
             case 'get_cart': {
                 const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
-                const items = (cart.items || []).map(i => ({
-                    id: i.id,
-                    name: i.deal ? i.deal.name : i.menu_item?.name,
-                    variant: i.menu_variant?.name,
-                    quantity: i.quantity,
-                    unitPrice: Number(i.unit_price || 0),
-                    subtotal: Number(i.subtotal || 0),
-                    notes: i.special_instructions || '',
-                }));
-                return { cartId: cart.id, items, itemCount: items.length };
+                const items = (cart.items || []).map(i => {
+                    const price = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
+                    return {
+                        id: i.id,
+                        name: i.deal ? i.deal.name : (i.menu_item?.name || 'Item'),
+                        variant: i.menu_variant?.name,
+                        quantity: i.quantity,
+                        unitPrice: price,
+                        subtotal: price * i.quantity,
+                        notes: i.special_instructions || i.notes || '',
+                    };
+                });
+                const cartTotal = items.reduce((s, it) => s + it.subtotal, 0);
+                return { cartId: cart.id, items, itemCount: items.length, total: cartTotal };
             }
 
             // 9. add_to_cart
@@ -390,12 +394,13 @@ async function executeTool(toolName, args, context) {
             // 14. create_confirmed_order
             case 'create_confirmed_order': {
                 let { customerName, deliveryAddress, phone, paymentMethod, notes } = args;
-                const savedDetails = getSessionOrderDetails(sessionKey);
+                const cleanPhoneDigitsForDetails = (whatsappPhone || phone || '').replace(/\D/g, '');
+                const savedDetails = getSessionOrderDetails(sessionKey, cleanPhoneDigitsForDetails);
 
                 // ── Strict Validation 1: Customer Name ──
                 let trimmedName = (customerName || '').trim();
                 let isPlaceholderName = !trimmedName ||
-                    /^(customer|user|guest|none|\.|anonymous|client|bhai|sir)$/i.test(trimmedName) ||
+                    /^(customer|user|guest|none|\.|anonymous|client|bhai|sir|hlo|helo|hi|hello)$/i.test(trimmedName) ||
                     trimmedName.length < 2;
 
                 if (isPlaceholderName && savedDetails.name) {
@@ -445,13 +450,17 @@ async function executeTool(toolName, args, context) {
                     finalAddress = activeLoc.formattedAddress || activeLoc.address || `GPS Pin (${activeLoc.latitude}, ${activeLoc.longitude})`;
                 }
 
-                // ── Strict Validation 4b: Explicit Payment Method Selection ──
-                const chosenPaymentMethod = (paymentMethod || savedDetails.paymentMethod || '').trim().toUpperCase();
-                if (!chosenPaymentMethod || !['COD', 'EASYPAISA'].includes(chosenPaymentMethod)) {
-                    return {
-                        error: 'PAYMENT_METHOD_REQUIRED',
-                        message: 'Customer ne abhi tak Payment Method (Cash on Delivery [COD] ya EasyPaisa) select nahi kiya. Pehle customer se payment method zaroor poochein.'
-                    };
+                // ── Strict Validation 4b: Explicit Payment Method Selection (Robust normalization) ──
+                let rawPayment = (paymentMethod || savedDetails.paymentMethod || '').trim().toUpperCase();
+                let chosenPaymentMethod = 'COD';
+                if (/EASY\s*PAISA|EP/i.test(rawPayment)) {
+                    chosenPaymentMethod = 'EASYPAISA';
+                } else if (/COD|CASH/i.test(rawPayment)) {
+                    chosenPaymentMethod = 'COD';
+                } else if (savedDetails.paymentMethod) {
+                    chosenPaymentMethod = /EASY/i.test(savedDetails.paymentMethod) ? 'EASYPAISA' : 'COD';
+                } else {
+                    chosenPaymentMethod = 'COD';
                 }
 
                 // ── Strict Validation 4c: Customer Confirmation ──
@@ -488,6 +497,11 @@ async function executeTool(toolName, args, context) {
                 if (!finalOrderNum) {
                     return { error: 'ORDER_CREATION_FAILED', message: 'Order place nahi ho saka. Dobara koshish karein.' };
                 }
+
+                try {
+                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    clearSessionOrderDetails(sessionKey, cleanPhoneDigitsForDetails);
+                } catch (_) {}
 
                 return {
                     success: true,
@@ -880,11 +894,15 @@ export async function processMessage({ sock, msg, session, text, identity, locat
             const lines = activeCart.items.map(i => {
                 const name = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
                 const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                const p = Number(i.unit_price || 0) * i.quantity;
-                return `• ${i.quantity}x ${name}${v} — Rs. ${p}`;
+                const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
+                const p = unitPrice * i.quantity;
+                return `• ${i.quantity}x ${name}${v} — Rs. ${p.toLocaleString('en-PK')}`;
             });
-            const subtotal = activeCart.items.reduce((s, i) => s + Number(i.unit_price || 0) * i.quantity, 0);
-            activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${subtotal}`;
+            const subtotal = activeCart.items.reduce((s, i) => {
+                const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
+                return s + unitPrice * i.quantity;
+            }, 0);
+            activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${subtotal.toLocaleString('en-PK')}`;
         }
     } catch (_) {}
 
