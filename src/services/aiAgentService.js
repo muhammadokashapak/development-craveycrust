@@ -19,7 +19,7 @@ import { routeLLM } from './llmRouter.js';
 import { getCatalogCache, getSyncEpoch } from './catalogCacheService.js';
 import { env } from '../config/env.js';
 import { logZeroTokenReply, logAiTokenReply } from '../utils/logger.js';
-import { checkFastRoute, extractCustomerDetails, setLastDiscussedItem, getLastDiscussedItem, clearLastDiscussedItem, clearLastDiscussedDeal } from './intentParser.js';
+import { checkFastRoute, extractCustomerDetails, cleanExtractedAddress, setLastDiscussedItem, getLastDiscussedItem, clearLastDiscussedItem, clearLastDiscussedDeal } from './intentParser.js';
 import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
 import { extractLocationFromText } from '../../utils/location.js';
 import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails } from './sessionService.js';
@@ -831,11 +831,11 @@ export async function processMessage({ sock, msg, session, text, identity, locat
             location: activeLocation,
         }, whatsappPhone);
     }
-    const extracted = extractCustomerDetails(effectiveText);
+    const extracted = extractCustomerDetails(effectiveText, sessionDetails);
     const updatePayload = {};
     if (extracted.name && !sessionDetails.name) updatePayload.name = extracted.name;
     if (extracted.address && !sessionDetails.address) updatePayload.address = extracted.address;
-    if (extracted.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
+    if (extracted.paymentMethod && !sessionDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
     if (extracted.phone) {
         updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? (whatsappPhone || '').replace(/\D/g, '') : extracted.phone;
         updatePayload.phoneConfirmed = true;
@@ -846,6 +846,22 @@ export async function processMessage({ sock, msg, session, text, identity, locat
         if (isAffirmativePhone) {
             updatePayload.phone = (whatsappPhone || '').replace(/\D/g, '');
             updatePayload.phoneConfirmed = true;
+        }
+    }
+    // If name & phone are confirmed and awaiting address (Step 3)
+    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && !sessionDetails.address && !updatePayload.address && !activeLocation) {
+        const candidate = cleanExtractedAddress(effectiveText);
+        const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim());
+        if (candidate && candidate.length >= 3 && !isNotAddr) {
+            updatePayload.address = candidate;
+        }
+    }
+    // If name, phone & address are confirmed and awaiting payment (Step 4)
+    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && (sessionDetails.address || updatePayload.address || activeLocation) && !sessionDetails.paymentMethod && !updatePayload.paymentMethod) {
+        if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(effectiveText.toLowerCase())) {
+            updatePayload.paymentMethod = 'COD';
+        } else if (/^(?:easypaisa|easy\s*paisa|ep|2)[\s.!?]*$/i.test(effectiveText.trim()) || /\b(?:easypaisa|easy\s*paisa|ep)\b/i.test(effectiveText.toLowerCase())) {
+            updatePayload.paymentMethod = 'EASYPAISA';
         }
     }
     if (Object.keys(updatePayload).length > 0) {

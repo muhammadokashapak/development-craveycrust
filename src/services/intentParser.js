@@ -54,15 +54,30 @@ export function clearLastDiscussedItem(sessionKey) {
 
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
-    let cleaned = text;
-    cleaned = cleaned.replace(/\b(?:sari|saari|ye|yeh|is|mera|apna|sab)?\s*(?:deals?|order|items?|khana)?\s*(?:bhi)?\s*(?:parcel|deliver|delivery|bhej|bhejo|send|pack)?\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|karo|kro|krna|karna|karein|chahiye)?\s*(?:ha|hai|h|ho)?\b/gi, ' ');
-    cleaned = cleaned.replace(/^(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|mera\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)\s*[:=-]?\s*/i, ' ');
+    let cleaned = text.trim();
+
+    // 1. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
+    cleaned = cleaned.replace(/^(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|mera\s*ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|ad(?:d)?re(?:e)?s(?:s)?|pata|location)\s*[:=-]?\s*/i, ' ');
+
+    // 2. Canonical mapping for common typos and delivery areas
+    cleaned = cleaned.replace(/\b(?:khann?a)\s+(?:pull?l?|pool|pol)\b/gi, 'Khana Pull');
+    cleaned = cleaned.replace(/\b(?:khana|khanna)\s*pull?l?\b/gi, 'Khana Pull');
+    cleaned = cleaned.replace(/\b(?:ghori|gauri|ghawri)\s+town\b/gi, 'Ghauri Town');
+    cleaned = cleaned.replace(/\b(?:tarlay|terlai)\b/gi, 'Tarlai');
+    cleaned = cleaned.replace(/\b(?:tarmari|taramary)\b/gi, 'Taramari');
+    cleaned = cleaned.replace(/\b(?:sanam\s+chow?k)\b/gi, 'Sanam Chok');
+
+    // 3. Remove conversational filler phrases only when combined with action verbs
+    cleaned = cleaned.replace(/\b(?:ye|yeh|is|mera|apna|sab)?\s*(?:deals?|order|items?)\s*(?:bhi)?\s*(?:parcel|deliver|delivery|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|karo|kro|krna|karna|karein|chahiye)?\s*(?:ha|hai|h|ho)?\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:khana)\s+(?:bhi\s+)?(?:deliver|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|karo|kro|karein|chahiye)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:mein|me|mai|mei|mn|par|pe|ko)\s+(?:delivery\s+)?(?:krni|karni|h|hai|karein)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|kro|karo|krna|karna)?\s*(?:ha|hai|h)?\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:bhej\s*do|kar\s*do|kr\s*do|kar\s*du|kr\s*du|bhejo|kardo|krdo|do|du|dein)\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:mein|me|mai|mei|mn|par|pe|idhar|idr|yahan|wahan|ko)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:bhej\s*do|kar\s*do|kr\s*do|kar\s*du|kr\s*du|bhejo|kardo|krdo|dein)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:idhar|idr|yahan|wahan)\s+(?:deliver|bhej|kardo|krdo)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:krni|karni)\s+(?:ha|hai|h)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhejna|bhej)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|easypaisa|easy\s*paisa|ep|cod|cash\s*on\s*delivery|cash|payment\s*(?:method)?)\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:krni|karni|ha|hai|h)\b/gi, ' ');
+
     cleaned = cleaned.replace(/^[,\s.-]+|[,\s.-]+$/g, '').replace(/\s+/g, ' ').trim();
     return cleaned;
 }
@@ -70,7 +85,7 @@ export function cleanExtractedAddress(text) {
 /**
  * Extracts customer checkout details (name, delivery address, payment method, phone) from conversational text.
  */
-export function extractCustomerDetails(raw) {
+export function extractCustomerDetails(raw, knownDetails = {}) {
     if (!raw || typeof raw !== 'string') return {};
     const lower = raw.toLowerCase().trim();
     let name = null;
@@ -93,8 +108,11 @@ export function extractCustomerDetails(raw) {
         if (phMatch) phone = phMatch[0].replace(/\D/g, '');
     }
 
-    // 3. Name
-    const NOT_NAME_REGEX = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|food|water|drink|hi|hello|hey|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num)\b/i;
+    // Comprehensive delivery location indicator regex covering all official delivery areas
+    const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
+
+    // 3. Name (Strictly excluded if matches location indicators or known action words)
+    const NOT_NAME_REGEX = /\b(krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|done|ok|yes|haan|han|hn|ha|g|ji|jee|no|nahi|na|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|bhai|sain|sir|bro|food|water|drink|hi|hello|hey|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|no|num|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
     const nameBefore = raw.match(/\b([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\s+(?:meara|mera)\s+(?:name|naam)\b/i);
     const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:is|hai|h|:|=|-)?\s+([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
@@ -104,7 +122,8 @@ export function extractCustomerDetails(raw) {
     if (nameCandidate) {
         nameCandidate = nameCandidate.replace(/\s+(?:hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
     }
-    if (!nameCandidate && !paymentMethod && !phone) {
+    // Only attempt bare-string name extraction if name is not already known, not payment, not phone, and not an address
+    if (!nameCandidate && !knownDetails.name && !paymentMethod && !phone && !ADDRESS_INDICATORS.test(lower)) {
         const directMatch = raw.trim().match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})$/);
         if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
             nameCandidate = directMatch[1].trim();
@@ -126,24 +145,30 @@ export function extractCustomerDetails(raw) {
     const locBefore = textForAddr.match(/([^,\n]+?)\s+(?:meari|meri)\s+location\b/i);
     const locExplicit = textForAddr.match(/(?:(?:meari|mera|apni)\s+)?location\s*(?:ha|hai|h)?\s*[:=-]?\s*([^,\n]+(?:,\s*[^,\n]+)*)/i);
 
-    const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|pul|pull|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha)\b/i;
-
     if (addrExplicit) {
         address = cleanExtractedAddress(addrExplicit[1]);
     } else if (locBefore) {
         address = cleanExtractedAddress(locBefore[1]);
     } else if (locExplicit) {
         address = cleanExtractedAddress(locExplicit[1]);
-    } else if (!paymentMethod && !name && ADDRESS_INDICATORS.test(lower)) {
+    } else if (!paymentMethod && (!name || knownDetails.name) && ADDRESS_INDICATORS.test(lower)) {
         const potentialAddr = cleanExtractedAddress(textForAddr);
-        if (potentialAddr && ADDRESS_INDICATORS.test(potentialAddr) && potentialAddr.length >= 4 && potentialAddr.length <= 80) {
+        if (potentialAddr && (ADDRESS_INDICATORS.test(potentialAddr) || potentialAddr.length >= 4) && potentialAddr.length <= 120) {
             address = potentialAddr;
+        }
+    } else if (knownDetails.name && (knownDetails.phoneConfirmed || knownDetails.phone) && !knownDetails.address && !paymentMethod && !phone) {
+        // Customer is actively at Step 3 (awaiting delivery address).
+        // If not a cancellation or menu command, clean and accept this text as candidate address.
+        const candidateAddr = cleanExtractedAddress(textForAddr);
+        const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
+        if (candidateAddr && candidateAddr.length >= 3 && candidateAddr.length <= 120 && !isNotAddress) {
+            address = candidateAddr;
         }
     }
 
     if (address) {
         address = cleanExtractedAddress(address);
-        if (address.length < 4 || !ADDRESS_INDICATORS.test(address)) {
+        if (address && address.length < 3) {
             address = null;
         }
     }
@@ -1272,28 +1297,42 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) &&
                     /^(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
 
-                const extracted = extractCustomerDetails(raw);
-                if (extracted.name || extracted.address || extracted.paymentMethod || extracted.phone || isPhoneConfirmation) {
-                    const updatePayload = {};
-                    if (extracted.name && !currDetails.name) updatePayload.name = extracted.name;
-                    if (extracted.address && !currDetails.address) updatePayload.address = extracted.address;
-                    if (extracted.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
-                    if (extracted.phone) {
-                        updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
-                        updatePayload.phoneConfirmed = true;
-                    } else if (isPhoneConfirmation) {
-                        updatePayload.phone = cleanPhone;
-                        updatePayload.phoneConfirmed = true;
-                    }
+                const extracted = extractCustomerDetails(raw, currDetails);
+                const updatePayload = {};
+                if (extracted.name && !currDetails.name) updatePayload.name = extracted.name;
+                if (extracted.address && !currDetails.address) updatePayload.address = extracted.address;
+                if (extracted.paymentMethod && !currDetails.paymentMethod) updatePayload.paymentMethod = extracted.paymentMethod;
+                if (extracted.phone) {
+                    updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
+                    updatePayload.phoneConfirmed = true;
+                } else if (isPhoneConfirmation) {
+                    updatePayload.phone = cleanPhone;
+                    updatePayload.phoneConfirmed = true;
+                }
 
+                // Only proceed if at least one detail was actually updated to prevent repeat loops
+                if (Object.keys(updatePayload).length > 0) {
                     const details = updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
+
+                    let introMessage = '';
+                    if (updatePayload.address) {
+                        introMessage = `Delivery address (*${updatePayload.address}*) note kar liya hai. 📍`;
+                    } else if (updatePayload.paymentMethod) {
+                        introMessage = `Payment method (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*) note kar liya hai. 💵`;
+                    } else if (updatePayload.phoneConfirmed) {
+                        introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Contact number confirm ho gaya (${formatPakistaniPhone(details.phone || cleanPhone)}). 👍`;
+                    } else if (updatePayload.name) {
+                        introMessage = `Theek hai ${details.name} bhai! Aap ka naam note kar liya hai. 😊`;
+                    } else {
+                        introMessage = `Theek hai ${details.name ? details.name + ' Ji! ' : ''}Aap ki details note kar li hain.`;
+                    }
 
                     return await getNextCheckoutStepResponse({
                         details,
                         whatsappPhone,
                         cart,
                         cache,
-                        introMessage: `Theek hai ${details.name ? details.name + ' Ji! ' : ''}Aap ki details note kar li hain.`,
+                        introMessage,
                     });
                 }
             }
@@ -1327,7 +1366,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         whatsappPhone,
                         cart,
                         cache,
-                        introMessage: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai.`,
+                        introMessage: `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai. 😊`,
                     });
                 }
             }
@@ -1362,6 +1401,82 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 });
             }
         } catch (_) {}
+    }
+
+    // ── Check Customer Delivery Address when awaiting Step 3 (Zero Tokens) ──
+    if (userSessionId && !hasCartOrOrderAction) {
+        try {
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            // Active checkout awaiting address: Name & Phone are confirmed, Address is missing
+            if (currDetails?.name && (currDetails?.phoneConfirmed || currDetails?.phone) && !currDetails?.address && !currDetails?.location) {
+                const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
+                if (!isNotAddr && wordCount <= 25) {
+                    const cleanedAddr = cleanExtractedAddress(raw);
+                    if (cleanedAddr && cleanedAddr.length >= 3) {
+                        const { getActiveCart } = await import('./cartService.js');
+                        const cache = await getCatalogCache();
+                        const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                        if (cart?.items && cart.items.length > 0) {
+                            const details = updateSessionOrderDetails(userSessionId, { address: cleanedAddr }, cleanPhone);
+                            return await getNextCheckoutStepResponse({
+                                details,
+                                whatsappPhone,
+                                cart,
+                                cache,
+                                introMessage: `Delivery address (*${cleanedAddr}*) note kar liya hai. 📍`,
+                            });
+                        }
+                    } else if (raw.trim().length > 0 && raw.trim().length < 3) {
+                        return {
+                            handled: true,
+                            routeName: 'step_address_clarification',
+                            reply: `Baraye meherbani apna mukammal delivery address (area/street ya landmark, maslan: Khana Pull ya Ghauri Town) bhej dein taake rider asani se pohnch sake 📍`,
+                        };
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing step 3 address:', err.message);
+        }
+    }
+
+    // ── Check Customer Payment Method when awaiting Step 4 (Zero Tokens) ──
+    if (userSessionId && !hasCartOrOrderAction) {
+        try {
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            if (currDetails?.name && (currDetails?.phoneConfirmed || currDetails?.phone) && (currDetails?.address || currDetails?.location) && !currDetails?.paymentMethod) {
+                let selectedPayment = null;
+                if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(lower.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(lower)) {
+                    selectedPayment = 'COD';
+                } else if (/^(?:easypaisa|easy\s*paisa|ep|2)[\s.!?]*$/i.test(lower.trim()) || /\b(?:easypaisa|easy\s*paisa|ep)\b/i.test(lower)) {
+                    selectedPayment = 'EASYPAISA';
+                }
+
+                if (selectedPayment) {
+                    const { getActiveCart } = await import('./cartService.js');
+                    const cache = await getCatalogCache();
+                    const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                    if (cart?.items && cart.items.length > 0) {
+                        const details = updateSessionOrderDetails(userSessionId, { paymentMethod: selectedPayment }, cleanPhone);
+                        return await getNextCheckoutStepResponse({
+                            details,
+                            whatsappPhone,
+                            cart,
+                            cache,
+                            introMessage: `Payment method (*${selectedPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*) note kar liya hai. 💵`,
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing step 4 payment:', err.message);
+        }
     }
 
     // ── Check Specific Deal Inquiry (Zero Tokens, e.g. "deal 5 mai kya kya h?", "deal 5", "deal 1 details") ──
