@@ -666,6 +666,167 @@ export async function cancelOrder({ restaurantId, orderNumber, reason = 'Custome
 }
 
 /**
+ * Update placed order details (customer name, delivery address, phone, payment method)
+ * and synchronize with customer profile and chat history.
+ */
+export async function updateOrderDetails({
+    restaurantId,
+    orderNumber,
+    customerName,
+    address,
+    location,
+    phone,
+    paymentMethod,
+    changedByType = 'CUSTOMER',
+    sock,
+}) {
+    const prisma = getDbClient();
+    if (!prisma) throw new Error('Database client not available');
+
+    const restId = restaurantId === null ? null : (restaurantId || await getDefaultRestaurantId());
+
+    const where = { order_number: orderNumber };
+    if (restId) where.restaurant_id = restId;
+
+    let order = await prisma.order.findFirst({
+        where,
+        include: {
+            order_items: true,
+            customer: true,
+        },
+    });
+
+    if (!order && restId) {
+        order = await prisma.order.findFirst({
+            where: { order_number: orderNumber },
+            include: {
+                order_items: true,
+                customer: true,
+            },
+        });
+    }
+
+    if (!order) {
+        return { success: false, error: 'ORDER_NOT_FOUND', message: `Order #${orderNumber} nahi mila.` };
+    }
+
+    if (order.order_status === 'DELIVERED') {
+        return { success: false, error: 'ORDER_ALREADY_DELIVERED', message: `Order #${orderNumber} deliver ho chuka hai, is liye ab update nahi kiya ja sakta.` };
+    }
+
+    if (order.order_status === 'CANCELLED') {
+        return { success: false, error: 'ORDER_ALREADY_CANCELLED', message: `Order #${orderNumber} cancel ho chuka hai.` };
+    }
+
+    const updateData = {};
+    const changeLog = [];
+
+    if (customerName && typeof customerName === 'string' && customerName.trim() && customerName.trim() !== order.customer_name) {
+        updateData.customer_name = customerName.trim();
+        changeLog.push(`Name: ${order.customer_name} -> ${customerName.trim()}`);
+    }
+
+    if (address && typeof address === 'string' && address.trim() && address.trim() !== order.delivery_address) {
+        updateData.delivery_address = address.trim();
+        changeLog.push(`Address: ${order.delivery_address || 'None'} -> ${address.trim()}`);
+    }
+
+    if (location?.latitude != null && location?.longitude != null) {
+        updateData.latitude = Number(location.latitude);
+        updateData.longitude = Number(location.longitude);
+        updateData.google_maps_url = location.mapUrl || `https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
+        changeLog.push(`Location Pin updated`);
+    }
+
+    if (phone && typeof phone === 'string') {
+        const cleanPh = phone.replace(/\D/g, '');
+        if (cleanPh && cleanPh !== order.phone) {
+            updateData.phone = cleanPh;
+            changeLog.push(`Phone: ${order.phone} -> ${cleanPh}`);
+        }
+    }
+
+    if (paymentMethod && typeof paymentMethod === 'string') {
+        const pm = /EASY/i.test(paymentMethod) ? 'EASYPAISA' : 'COD';
+        if (pm !== order.payment_method) {
+            updateData.payment_method = pm;
+            changeLog.push(`Payment: ${order.payment_method} -> ${pm}`);
+        }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+        return { success: true, order, noChanges: true, message: 'Details pehle se yahi set hain.' };
+    }
+
+    const updated = await prisma.order.update({
+        where: { id: order.id },
+        data: updateData,
+        include: {
+            order_items: true,
+            customer: true,
+        },
+    });
+
+    // Record status history entry
+    await prisma.orderStatusHistory.create({
+        data: {
+            order_id: order.id,
+            previous_status: order.order_status,
+            new_status: order.order_status,
+            changed_by_type: changedByType,
+            reason: `Customer updated: ${changeLog.join(', ')}`,
+        },
+    }).catch(() => {});
+
+    // Broadcast SSE live event to dashboard
+    broadcastOrderEvent('order.status_changed', {
+        id: order.id,
+        orderNumber: order.order_number,
+        previousStatus: order.order_status,
+        newStatus: order.order_status,
+        paymentStatus: updated.payment_status,
+        customerName: updated.customer_name,
+        deliveryAddress: updated.delivery_address,
+        updatedAt: updated.updated_at,
+    });
+
+    // Update customer in database if name or phone changed
+    if (order.customer_id) {
+        const custUpdate = {};
+        if (updateData.customer_name) custUpdate.name = updateData.customer_name;
+        if (updateData.phone) {
+            custUpdate.phone = updateData.phone;
+            custUpdate.whatsapp_phone = updateData.phone;
+        }
+        if (Object.keys(custUpdate).length > 0) {
+            await prisma.customer.update({
+                where: { id: order.customer_id },
+                data: custUpdate,
+            }).catch(() => {});
+        }
+    }
+
+    // Update chat history & memory so admin panel immediately shows updated name
+    if (updateData.customer_name) {
+        try {
+            const { updateCustomerNameForChat } = await import('./chatService.js');
+            await updateCustomerNameForChat({
+                chatId: order.source_chat_id || order.source_session_id,
+                phone: order.whatsapp_phone || order.phone,
+                customerName: updateData.customer_name,
+                restaurantId: order.restaurant_id,
+            });
+        } catch (_) {}
+    }
+
+    return {
+        success: true,
+        order: updated,
+        changes: changeLog,
+    };
+}
+
+/**
  * Update order status with state machine enforcement
  */
 export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, changedByType = 'ADMIN', changedById, reason }) {

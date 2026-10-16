@@ -237,4 +237,34 @@ export function clearSessionOrderDetails(sessionKey, altKey) {
     if (altKey) _sessionOrderDetails.delete(altKey);
 }
 
+// ─── In-Memory Active Placed Order Update Tracker ────────────────────────
+const _pendingOrderUpdate = new Map();
+
+export function setPendingOrderUpdate(sessionKey, data, altKey) {
+    if (!sessionKey && !altKey) return;
+    const primary = sessionKey || altKey;
+    _pendingOrderUpdate.set(primary, data);
+    if (altKey) _pendingOrderUpdate.set(altKey, data);
+    if (sessionKey) _pendingOrderUpdate.set(sessionKey, data);
+}
+
+export function getPendingOrderUpdate(sessionKey, altKey) {
+    if (!sessionKey && !altKey) return null;
+    const primary = sessionKey || altKey;
+    let entry = _pendingOrderUpdate.get(primary);
+    if (!entry && altKey) entry = _pendingOrderUpdate.get(altKey);
+    if (!entry) return null;
+    // Expire pending modification after 15 minutes
+    if (entry.timestamp && Date.now() - entry.timestamp > 15 * 60 * 1000) {
+        clearPendingOrderUpdate(sessionKey, altKey);
+        return null;
+    }
+    return entry;
+}
+
+export function clearPendingOrderUpdate(sessionKey, altKey) {
+    if (sessionKey) _pendingOrderUpdate.delete(sessionKey);
+    if (altKey) _pendingOrderUpdate.delete(altKey);
+}
+
 

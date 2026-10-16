@@ -74,13 +74,22 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|kro|karo|krna|karna)?\s*(?:ha|hai|h)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:bhej\s*do|kar\s*do|kr\s*do|kar\s*du|kr\s*du|bhejo|kardo|krdo|dein)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:idhar|idr|yahan|wahan)\s+(?:deliver|bhej|kardo|krdo)\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:krni|karni)\s+(?:ha|hai|h)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:krni|karni|krna|karna)\s+(?:ha|hai|h|he|hy|chahiye)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhejna|bhej)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|easypaisa|easy\s*paisa|ep|cod|cash\s*on\s*delivery|cash|payment\s*(?:method)?)\b/gi, ' ');
 
     cleaned = cleaned.replace(/^[,\s.-]+|[,\s.-]+$/g, '').replace(/\s+/g, ' ').trim();
+    if (!cleaned || cleaned.length < 3 || /^(?:krna|karna|krni|karni|kar\s*do|kr\s*do|kardo|krdo|ha|hai|hy|h|he|chahiye|ho|badalna|change|update)$/i.test(cleaned)) {
+        return null;
+    }
     return cleaned;
 }
+
+// Comprehensive delivery location indicator regex covering all official delivery areas
+export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
+
+// Words strictly excluded from customer name extraction (location indicators, greetings, action words)
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
 /**
  * Extracts customer checkout details (name, delivery address, payment method, phone) from conversational text.
@@ -158,14 +167,10 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         }
     }
 
-    // Comprehensive delivery location indicator regex covering all official delivery areas
-    const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
-
     // 3. Name (Strictly excluded if matches location indicators, greetings, or known action words)
-    const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
     // Explicit name change or assignment patterns (supports "kr du", "kar du", "naam hatim", "mera naam hatim", etc.)
-    const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)|likh\s*(?:do|dein|lo|karo|du)|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|ab\s+|(?:\b(?:hai|he|hy|h)\b)|:|=|-|\s+)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
+    const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:bhi\s*)?(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)?|likh\s*(?:do|dein|lo|karo|du)?|kar\s*(?:do|dein|karo|du)?|kr\s*(?:do|dein|kro|du)?|ab\s+|(?:\b(?:hai|he|hy|h)\b)|:|=|-|\s+)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:pehle\s+.*?\s+tha\s+ab\s+|nahi\s+)([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/^(?:ab\s+)?([A-Za-z]{2,20})\s*(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du)/i);
@@ -186,7 +191,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // Bare-string direct name check (e.g. user replies "Ali", "Ali Khan", "same hatim", "asim bki sari details...")
     const isMenuOrQueryWord = /\b(?:menu|menue|meny|mainu|mainue|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
     if (!nameCandidate && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord) {
-        const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
+        const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
             let direct = raw.trim().replace(/^(?:same|wahi|yahi|yehi|isi)\s+/i, '').trim();
             direct = direct.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
@@ -214,7 +219,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const locExplicit = textForAddr.match(/(?:(?:meari|mera|apni)\s+)?location\s*(?:ha|hai|h)?\s*[:=-]?\s*([^,\n]+(?:,\s*[^,\n]+)*)/i);
 
     if (addrUpdateMatch) {
-        address = cleanExtractedAddress(addrUpdateMatch[1]);
+        const rawAddrCandidate = addrUpdateMatch[1].trim();
+        const isOnlyActionVerb = /^(?:krna|karna|krni|karni|badalna|change|update|chahiye|kar\s*do|kr\s*do|kardo|krdo|dein|karein|kar\s*dein|kr\s*dein|plz|please|bhai)\s*(?:ha|hai|hy|h|he)?$/i.test(rawAddrCandidate);
+        if (!isOnlyActionVerb) {
+            address = cleanExtractedAddress(rawAddrCandidate);
+        }
     } else if (addrExplicit) {
         address = cleanExtractedAddress(addrExplicit[1]);
     } else if (locBefore) {
@@ -1300,6 +1309,312 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Placed Order Update & Status Inquiry (Zero Tokens) ──
+    try {
+        const { getPendingOrderUpdate, setPendingOrderUpdate, clearPendingOrderUpdate } = await import('./sessionService.js');
+        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+        const activeOrderUpdate = getPendingOrderUpdate(userSessionId, cleanPhone);
+
+        // Helper: Find customer's recent active order
+        async function findCustomerRecentActiveOrder() {
+            const { getDbClient } = await import('../db/client.js');
+            const prisma = getDbClient();
+            if (!prisma) return null;
+
+            const orderNumMatch = lower.match(/#?CC-\d{5,6}/i);
+            if (orderNumMatch) {
+                const num = orderNumMatch[0].replace('#', '').toUpperCase();
+                const byNum = await prisma.order.findFirst({
+                    where: { order_number: num },
+                    include: { order_items: true, customer: true },
+                });
+                if (byNum) return byNum;
+            }
+
+            const orConditions = [];
+            if (userSessionId) {
+                orConditions.push({ source_session_id: userSessionId });
+                orConditions.push({ source_chat_id: userSessionId });
+            }
+            if (chatId && chatId !== userSessionId) orConditions.push({ source_chat_id: chatId });
+            if (cleanPhone) {
+                orConditions.push({ phone: cleanPhone });
+                orConditions.push({ whatsapp_phone: cleanPhone });
+            }
+
+            if (orConditions.length === 0) return null;
+
+            return await prisma.order.findFirst({
+                where: {
+                    order_status: { in: ['CONFIRMED', 'PREPARING', 'PENDING', 'OUT_FOR_DELIVERY'] },
+                    OR: orConditions,
+                },
+                orderBy: { created_at: 'desc' },
+                include: { order_items: true, customer: true },
+            });
+        }
+
+        // Sub-case 1: Customer confirms pending order update (e.g. "Nahi bss yehi confirm kr do", "Haan confirm kr do", "Confirm")
+        const isUpdateConfirmKeyword = /^(?:(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?\s*)?(?:confirm|co?n?f[iy]?r[mn]+|haan|han|hn|yes|theek\s*hai?|thk\s*hai?|ok|okay|done|bilkul|kar\s*do|kr\s*do|kardo|krdo|kr\s*du|kar\s*du|update\s*(?:kr\s*do|kar\s*do|kr\s*du|kar\s*du)?)(?:\s+(?:kr\s*do|kar\s*do|kardo|krdo|kr\s*du|kar\s*du|bhai|please|plz))*$/i.test(lower.trim());
+        if (activeOrderUpdate && isUpdateConfirmKeyword && activeOrderUpdate.pendingChanges && Object.keys(activeOrderUpdate.pendingChanges).length > 0) {
+            const cache = await getCatalogCache();
+            const { updateOrderDetails } = await import('./orderService.js');
+            const res = await updateOrderDetails({
+                restaurantId: cache.restId,
+                orderNumber: activeOrderUpdate.orderNumber,
+                customerName: activeOrderUpdate.pendingChanges.name,
+                address: activeOrderUpdate.pendingChanges.address,
+                location: activeOrderUpdate.pendingChanges.location,
+                phone: activeOrderUpdate.pendingChanges.phone,
+                paymentMethod: activeOrderUpdate.pendingChanges.paymentMethod,
+                changedByType: 'CUSTOMER',
+                sock,
+            });
+
+            if (res.success) {
+                clearPendingOrderUpdate(userSessionId, cleanPhone);
+                const finalOrder = res.order;
+                const nameLine = activeOrderUpdate.pendingChanges.name ? `• Customer Name: *${activeOrderUpdate.pendingChanges.name}*\n` : '';
+                const addrLine = activeOrderUpdate.pendingChanges.address ? `• Delivery Address: *${activeOrderUpdate.pendingChanges.address}*\n` : '';
+                const phoneLine = activeOrderUpdate.pendingChanges.phone ? `• Contact Phone: *${activeOrderUpdate.pendingChanges.phone}*\n` : '';
+                const payLine = activeOrderUpdate.pendingChanges.paymentMethod ? `• Payment Method: *${activeOrderUpdate.pendingChanges.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n` : '';
+
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_confirmed',
+                    reply: `Zabardast! Aap ke order (*#${activeOrderUpdate.orderNumber}*) ki details kamyabi se update ho gayi hain! 🎉\n\n${nameLine}${addrLine}${phoneLine}${payLine}• Items: ${activeOrderUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(finalOrder.total).toLocaleString('en-PK')} (${finalOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nCravey Crust kitchen team aur rider ko update bhej di gayi hai. Mazay se khana enjoy karein! 🍕🛵`,
+                };
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_failed',
+                    reply: `Order update nahi ho saka: ${res.message || 'Kuch takneeki masla aa gaya.'} Baraye meherbani support agent se rabta karein.`,
+                };
+            }
+        }
+
+        // Sub-case 2: Active order update is in progress and customer sends changes (e.g. "Khanna pul", "Name bhi change kr k smilekashii kr do")
+        if (activeOrderUpdate) {
+            // Check if user is asking to change address or name (prompt request)
+            if (/\b(?:address\s*(?:change|badal|update|theek|sahi|galat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|badal|badalna|karna|krna)|pichl[ae]y?\s*order\s*ka\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower)) {
+                activeOrderUpdate.awaitingField = 'address';
+                activeOrderUpdate.timestamp = Date.now();
+                setPendingOrderUpdate(userSessionId, activeOrderUpdate, cleanPhone);
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_prompt_address',
+                    reply: `Koi masla nahi Ji! Aap ke order (*#${activeOrderUpdate.orderNumber}*) ka naya delivery address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp Location Pin) yahan likh kar bhej dein taake hum update kar dein! 📍`,
+                };
+            }
+
+            if (/\b(?:naam|name)\s*(?:change|badal|update|badalna|karna|krna)\b/i.test(lower) && !/\b(?:karke|kr\s*k|rakh|likh|kar\s*do|kr\s*do|kardo|krdo)\b/i.test(lower)) {
+                activeOrderUpdate.awaitingField = 'name';
+                activeOrderUpdate.timestamp = Date.now();
+                setPendingOrderUpdate(userSessionId, activeOrderUpdate, cleanPhone);
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_prompt_name',
+                    reply: `Koi masla nahi Ji! Aap ke order (*#${activeOrderUpdate.orderNumber}*) ke liye naya naam kya rakhna chahenge? Baraye meherbani apna naya naam likh kar bhej dein taake hum update kar dein! 😊`,
+                };
+            }
+
+            let hasNewChange = false;
+            const newChanges = { ...activeOrderUpdate.pendingChanges };
+
+            // Check if name is in message
+            const extracted = extractCustomerDetails(raw, { name: activeOrderUpdate.pendingChanges.name || activeOrderUpdate.originalName });
+            if (extracted.name && extracted.name.toLowerCase() !== (activeOrderUpdate.originalName || '').toLowerCase()) {
+                newChanges.name = extracted.name;
+                hasNewChange = true;
+                activeOrderUpdate.awaitingField = null;
+            } else if (activeOrderUpdate.awaitingField === 'name' && !extracted.name) {
+                const rawNameCandidate = raw.trim().replace(/^(?:mera\s+naam|naam|name|apna\s+naam)\s*[:=-]?\s*/i, '').trim();
+                if (rawNameCandidate.length >= 2 && rawNameCandidate.length <= 30 && !NOT_NAME_REGEX.test(rawNameCandidate)) {
+                    newChanges.name = rawNameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+                    hasNewChange = true;
+                    activeOrderUpdate.awaitingField = null;
+                }
+            }
+
+            // Check if address is in message
+            const { extractLocationFromText } = await import('../../utils/location.js');
+            const loc = extractLocationFromText(raw);
+            const explicitAddrMatch = extracted.address;
+            const cleanedAddr = cleanExtractedAddress(raw);
+            const hasAddressSignal = ADDRESS_INDICATORS.test(lower) || /\b(?:gali|street|house|makan|flat|block|road|chowk|chok|pul|pull|pool|colony|scheme|market|plaza|sector|phase|town|near|nearby|dakhana|stop)\b/i.test(lower);
+
+            if (loc?.latitude != null && loc?.longitude != null) {
+                newChanges.location = loc;
+                newChanges.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+                hasNewChange = true;
+                activeOrderUpdate.awaitingField = null;
+            } else if (explicitAddrMatch) {
+                newChanges.address = explicitAddrMatch;
+                newChanges.location = null;
+                hasNewChange = true;
+                activeOrderUpdate.awaitingField = null;
+            } else if ((activeOrderUpdate.awaitingField === 'address' || (!extracted.name && hasAddressSignal)) && cleanedAddr && cleanedAddr.length >= 3 && !/^(?:order|change|update|address|naam|name|pichla|purana|confirm|haan|nahi)[\s.!?]*$/i.test(cleanedAddr)) {
+                newChanges.address = cleanedAddr;
+                newChanges.location = null;
+                hasNewChange = true;
+                activeOrderUpdate.awaitingField = null;
+            }
+
+            // Check if phone is in message
+            if (extracted.phone && extracted.phone !== 'SAME_WHATSAPP') {
+                newChanges.phone = extracted.phone;
+                hasNewChange = true;
+            }
+
+            // Check if payment is in message
+            if (extracted.paymentMethod) {
+                newChanges.paymentMethod = extracted.paymentMethod;
+                hasNewChange = true;
+            }
+
+            if (hasNewChange) {
+                activeOrderUpdate.pendingChanges = newChanges;
+                activeOrderUpdate.timestamp = Date.now();
+                setPendingOrderUpdate(userSessionId, activeOrderUpdate, cleanPhone);
+
+                const nameLine = newChanges.name ? `• Naya Customer Name: *${newChanges.name}*\n` : '';
+                const addrLine = newChanges.address ? `• Naya Delivery Address: *${newChanges.address}*\n` : '';
+                const phoneLine = newChanges.phone ? `• Naya Contact Phone: *${newChanges.phone}*\n` : '';
+                const payLine = newChanges.paymentMethod ? `• Naya Payment Method: *${newChanges.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n` : '';
+
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_staged',
+                    reply: `Theek hai Ji! Aap ke order (*#${activeOrderUpdate.orderNumber}*) mein ye changes note kar li hain:\n\n${nameLine}${addrLine}${phoneLine}${payLine}• Items: ${activeOrderUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(activeOrderUpdate.total).toLocaleString('en-PK')} (${newChanges.paymentMethod || activeOrderUpdate.originalPaymentMethod || 'COD'})\n\nKya aap is order update ko confirm karte hain?\n(Confirm karne ke liye *"Haan"*, *"Confirm"* ya *"Yehi confirm kr do"* likhein)`,
+                };
+            }
+        }
+
+        // Sub-case 3: Customer inquires about current/previous order details (e.g. "Purany order ka adress kia ha ab?", "Order status kya hai?")
+        const isOrderInquiry = /\b(?:puran[ae]y?|pichl[ae]y?|mera|previous|last)\s*(?:order|oder)?\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam|details|detail|bill|total)\b/i.test(lower) ||
+            /\b(?:order|oder)\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam)\s*(?:kia|kya|kahan|kidhar)\b/i.test(lower) ||
+            /\b(?:mera\s+order\s*(?:kahan|kidhar|status))\b/i.test(lower);
+
+        if (isOrderInquiry && !hasCartOrOrderAction) {
+            const targetOrder = await findCustomerRecentActiveOrder();
+            if (targetOrder) {
+                const statusDesc = targetOrder.order_status === 'CONFIRMED' ? 'Bhatti mein taiyar ho raha hai' :
+                                   targetOrder.order_status === 'PREPARING' ? 'Kitchen mein taiyar ho raha hai' :
+                                   targetOrder.order_status === 'OUT_FOR_DELIVERY' ? 'Rider delivery ke liye nikal chuka hai' :
+                                   targetOrder.order_status === 'DELIVERED' ? 'Deliver ho chuka hai' :
+                                   targetOrder.order_status === 'CANCELLED' ? 'Cancel ho chuka hai' : targetOrder.order_status;
+
+                const itemsStr = (targetOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
+
+                return {
+                    handled: true,
+                    routeName: 'fast_order_status_inquiry',
+                    reply: `Ji ${targetOrder.customer_name ? targetOrder.customer_name + ' bhai!' : 'Ji!'} Aap ke order (*#${targetOrder.order_number}*) ki current details ye hain:\n\n• Status: *${targetOrder.order_status}* (${statusDesc})\n• Delivery Address: *${targetOrder.delivery_address || 'Registered Address'}*\n• Customer Name: *${targetOrder.customer_name}*\n• Contact Phone: *${targetOrder.phone}*\n• Items: ${itemsStr}\n• Total Bill: *Rs. ${Number(targetOrder.total).toLocaleString('en-PK')}* (${targetOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nAgar is mein kuch change karwana ho to batayein! 😊`,
+                };
+            }
+        }
+
+        // Sub-case 4: Customer initiates an order update request
+        let cartForUpdateCheck = null;
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            cartForUpdateCheck = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+        } catch (_) {}
+
+        const hasActiveCartItems = Boolean(cartForUpdateCheck?.items && cartForUpdateCheck.items.length > 0);
+        const isExplicitPreviousOrder = /\b(?:pichl[ae]y?|puran[ae]y?|last|previous|confirmed?)\s*(?:order|oder)\b/i.test(lower);
+        const isGenericChangeIntent = /\b(?:address\s*(?:change|badal|update|theek|sahi|galat|ghalat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|theek|sahi|galat|ghalat)|ad(?:d)?re(?:e)?s(?:s)?\s*(?:nahi|ni)\s*hai|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|ghalat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower) ||
+            /\b(?:naam|name)\s*(?:bhi\s*)?(?:change|badal|update)\b/i.test(lower) ||
+            /\b(?:number|phone)\s*(?:bhi\s*)?(?:change|badal|update)\b/i.test(lower) ||
+            /\b(?:order|oder)\s*(?:update|change|badal)\b/i.test(lower);
+
+        if ((isExplicitPreviousOrder || (!hasActiveCartItems && isGenericChangeIntent)) && userSessionId) {
+            const targetOrder = await findCustomerRecentActiveOrder();
+            if (targetOrder) {
+                const itemsStr = (targetOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
+
+                const newUpdate = {
+                    orderId: targetOrder.id,
+                    orderNumber: targetOrder.order_number,
+                    originalName: targetOrder.customer_name,
+                    originalAddress: targetOrder.delivery_address,
+                    originalPhone: targetOrder.phone,
+                    originalPaymentMethod: targetOrder.payment_method,
+                    total: Number(targetOrder.total),
+                    itemsSummary: itemsStr,
+                    pendingChanges: {},
+                    awaitingField: null,
+                    timestamp: Date.now(),
+                };
+
+                const extracted = extractCustomerDetails(raw, { name: targetOrder.customer_name });
+                const { extractLocationFromText } = await import('../../utils/location.js');
+                const loc = extractLocationFromText(raw);
+                const explicitAddrMatch = extracted.address;
+                const cleanedAddr = cleanExtractedAddress(raw);
+                const hasAddressSignal = ADDRESS_INDICATORS.test(lower) || /\b(?:gali|street|house|makan|flat|block|road|chowk|chok|pul|pull|pool|colony|scheme|market|plaza|sector|phase|town|near|nearby|dakhana|stop)\b/i.test(lower);
+
+                if (extracted.name && extracted.name.toLowerCase() !== targetOrder.customer_name.toLowerCase()) {
+                    newUpdate.pendingChanges.name = extracted.name;
+                }
+                if (loc?.latitude != null && loc?.longitude != null) {
+                    newUpdate.pendingChanges.location = loc;
+                    newUpdate.pendingChanges.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+                } else if (explicitAddrMatch) {
+                    newUpdate.pendingChanges.address = explicitAddrMatch;
+                } else if (!extracted.name && hasAddressSignal && cleanedAddr && cleanedAddr.length >= 3 && !/^(?:order|change|update|address|naam|name|pichla|purana)[\s.!?]*$/i.test(cleanedAddr)) {
+                    newUpdate.pendingChanges.address = cleanedAddr;
+                }
+                if (extracted.phone && extracted.phone !== 'SAME_WHATSAPP') {
+                    newUpdate.pendingChanges.phone = extracted.phone;
+                }
+
+                setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
+
+                if (Object.keys(newUpdate.pendingChanges).length > 0) {
+                    const nameLine = newUpdate.pendingChanges.name ? `• Naya Customer Name: *${newUpdate.pendingChanges.name}*\n` : '';
+                    const addrLine = newUpdate.pendingChanges.address ? `• Naya Delivery Address: *${newUpdate.pendingChanges.address}*\n` : '';
+                    const phoneLine = newUpdate.pendingChanges.phone ? `• Naya Contact Phone: *${newUpdate.pendingChanges.phone}*\n` : '';
+
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_update_staged',
+                        reply: `Theek hai Ji! Aap ke order (*#${newUpdate.orderNumber}*) mein ye changes note kar li hain:\n\n${nameLine}${addrLine}${phoneLine}• Items: ${newUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(newUpdate.total).toLocaleString('en-PK')} (${newUpdate.originalPaymentMethod === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nKya aap is order update ko confirm karte hain?\n(Confirm karne ke liye *"Haan"*, *"Confirm"* ya *"Yehi confirm kr do"* likhein)`,
+                    };
+                }
+
+                if (/address|pata|location/i.test(lower)) {
+                    newUpdate.awaitingField = 'address';
+                    setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_update_prompt_address',
+                        reply: `Koi masla nahi Ji! Aap ke order (*#${newUpdate.orderNumber}*) ka naya delivery address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp Location Pin) yahan likh kar bhej dein taake hum update kar dein! 📍`,
+                    };
+                }
+
+                if (/naam|name/i.test(lower)) {
+                    newUpdate.awaitingField = 'name';
+                    setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_update_prompt_name',
+                        reply: `Koi masla nahi Ji! Aap ke order (*#${newUpdate.orderNumber}*) ke liye naya naam kya rakhna chahenge? Baraye meherbani apna naya naam likh kar bhej dein taake hum update kar dein! 😊`,
+                    };
+                }
+
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_prompt_generic',
+                    reply: `Ji! Aap ke order (*#${newUpdate.orderNumber}*) mein kya change karwana chahenge? (Address, Name, Contact Number ya Payment Method?)`,
+                };
+            }
+        }
+    } catch (err) {
+        console.error('[FAST_ROUTE] Error processing placed order update:', err.message);
+    }
+
     // ── Check Fast Route: Location Confirmation Response ("Haan" / "Nahi") ──
     if (userSessionId) {
         try {
@@ -1797,14 +2112,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Customer Name Input during active cart checkout (Zero Tokens) ──
-    const isGreetingName = FAST_GREETING_REGEX.test(raw.trim()) || /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii)[\s.!?]*$/i.test(raw.trim());
+    const isGreetingName = FAST_GREETING_REGEX.test(raw.trim()) || /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo)[\s.!?]*$/i.test(raw.trim());
     let nameCandidate = raw.replace(/^(?:mera\s+naam\s+|naam\s+|name\s*(?:is|hai|h|ja)?\s*:?\s*)/i, '')
                            .replace(/(?:\s+(?:naam|name|hai|h|ja|mera))+$/i, '')
                            .trim();
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|apna|kr\s*du|kar\s*du)\s+/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
-    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|kashii|smilekashii|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri)\b/i.test(nameCandidate);
+    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri)\b/i.test(nameCandidate);
     if (nameMatch && !isNotNameCandidate && userSessionId && wordCount <= 4 && !hasCartOrOrderAction) {
         try {
             const { getActiveCart } = await import('./cartService.js');

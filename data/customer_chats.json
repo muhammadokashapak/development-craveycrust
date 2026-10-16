@@ -1208,5 +1208,60 @@
     "message": "Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.",
     "message_type": "text",
     "created_at": "2026-10-16T17:00:05.853Z"
+  },
+  {
+    "id": "chat_1792170998322_oejxp",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "kashiii",
+    "sender": "user",
+    "message": "Hello",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:16:38.322Z"
+  },
+  {
+    "id": "chat_1792170999219_x2jse",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "55362682097844",
+    "customer_name": "kashiii",
+    "sender": "bot",
+    "message": "Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:16:39.219Z"
+  },
+  {
+    "id": "chat_1792170999257_dtksn",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "kashiii",
+    "sender": "bot",
+    "message": "Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:16:39.257Z"
+  },
+  {
+    "id": "chat_1792171007095_xqjhp",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "kashiii",
+    "sender": "user",
+    "message": "Menu dikhao",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:16:47.095Z"
+  },
+  {
+    "id": "chat_1792171007442_w39r9",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "kashiii",
+    "sender": "bot",
+    "message": "HAMARA MENU\n\nMain Menu Dastiyab Hai\n\nKisi bhi item ya deal ka order karne ke liye uska naam bata dein!",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:16:47.442Z"
   }
 ]

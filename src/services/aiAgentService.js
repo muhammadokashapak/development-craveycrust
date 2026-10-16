@@ -83,6 +83,7 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 16. confirm_order_cancellation(orderNumber: string) — Finalize order cancellation.
 17. send_alternate_confirmation(phone: string) — Send notification to alternate phone.
 18. request_human_handover(reason?: string) — Mute bot for 120 minutes and notify manager.
+19. update_order_details(orderNumber?: string, customerName?: string, deliveryAddress?: string, phone?: string, paymentMethod?: string) — Update details (customer name, delivery address, phone, payment method) for an active placed order (PENDING/CONFIRMED/PREPARING).
 
 TOOL CALL FORMAT:
 {"tool": "tool_name", "args": {"param": "value"}}
@@ -648,6 +649,55 @@ async function executeTool(toolName, args, context) {
                 });
                 const mins = muteRes?.durationMinutes || 120;
                 return { success: true, muted: true, durationMinutes: mins };
+            }
+
+            // 19. update_order_details
+            case 'update_order_details':
+            case 'modify_order': {
+                const { updateOrderDetails } = await import('./orderService.js');
+                let orderNum = (args.orderNumber || '').toUpperCase().trim();
+                if (!orderNum) {
+                    const prisma = getDbClient();
+                    if (prisma) {
+                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                        const orConditions = [];
+                        if (sessionKey) {
+                            orConditions.push({ source_session_id: sessionKey });
+                            orConditions.push({ source_chat_id: sessionKey });
+                        }
+                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
+                        if (cleanPhone) {
+                            orConditions.push({ phone: cleanPhone });
+                            orConditions.push({ whatsapp_phone: cleanPhone });
+                        }
+                        const recent = orConditions.length > 0 ? await prisma.order.findFirst({
+                            where: {
+                                restaurant_id: restId,
+                                OR: orConditions,
+                                order_status: { in: ['PENDING', 'CONFIRMED', 'PREPARING'] },
+                            },
+                            orderBy: { created_at: 'desc' },
+                            select: { id: true, order_number: true, order_status: true },
+                        }) : null;
+                        if (recent) {
+                            orderNum = recent.order_number;
+                        }
+                    }
+                }
+                if (!orderNum) {
+                    return { error: 'ORDER_NOT_FOUND', message: 'Update karne ke liye koi active order nahi mila.' };
+                }
+                const result = await updateOrderDetails({
+                    restaurantId: restId,
+                    orderNumber: orderNum,
+                    customerName: args.customerName,
+                    address: args.deliveryAddress || args.address,
+                    phone: args.phone,
+                    paymentMethod: args.paymentMethod,
+                    changedByType: 'CUSTOMER',
+                    sock,
+                });
+                return result;
             }
 
             default:
