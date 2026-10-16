@@ -2411,6 +2411,10 @@ if (settingsForm) {
     const setHumanHandoffPhone = document.getElementById('setHumanHandoffPhone');
     const setHumanHandoffMuteMinutes = document.getElementById('setHumanHandoffMuteMinutes');
     const setHumanHandoffMsg = document.getElementById('setHumanHandoffMsg');
+    const setOutOfDeliveryMsg = document.getElementById('setOutOfDeliveryMsg');
+    const setGoogleReviewsUrl = document.getElementById('setGoogleReviewsUrl');
+
+    const supportPhoneVal = setHumanHandoffPhone ? setHumanHandoffPhone.value.trim() : '';
 
     const payload = {
       name: setRestName ? setRestName.value.trim() : undefined,
@@ -2426,14 +2430,14 @@ if (settingsForm) {
       easypaisa_enabled: setEasypaisaEnabled ? setEasypaisaEnabled.checked : false,
       easypaisa_number: setEasypaisaNumber ? setEasypaisaNumber.value.trim() || null : null,
       account_name: setAccountName ? setAccountName.value.trim() || null : null,
-      admin_notification_phone: setAdminPhone ? setAdminPhone.value.trim() || null : null,
+      admin_notification_phone: supportPhoneVal || (setAdminPhone ? setAdminPhone.value.trim() || null : null),
       custom_settings: {
         human_handoff_enabled: setHumanHandoffEnabled ? String(setHumanHandoffEnabled.checked) : 'true',
-        human_handoff_phone: setHumanHandoffPhone ? setHumanHandoffPhone.value.trim() : '',
+        human_handoff_phone: supportPhoneVal,
         human_handoff_mute_minutes: setHumanHandoffMuteMinutes && setHumanHandoffMuteMinutes.value.trim() ? setHumanHandoffMuteMinutes.value.trim() : '120',
         human_handoff_message: setHumanHandoffMsg ? setHumanHandoffMsg.value.trim() : '',
         out_of_delivery_range_message: setOutOfDeliveryMsg ? setOutOfDeliveryMsg.value.trim() : '',
-        google_reviews_url: document.getElementById('setGoogleReviewsUrl') ? document.getElementById('setGoogleReviewsUrl').value.trim() : '',
+        google_reviews_url: setGoogleReviewsUrl ? setGoogleReviewsUrl.value.trim() : '',
       },
     };
 

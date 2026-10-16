@@ -39,6 +39,17 @@ router.get('/', async (req, res) => {
             customSettingsMap[s.key] = s.value;
         });
 
+        // Ensure human_handoff_phone is loaded from any configured restaurant setting if missing in current tenant
+        if (!customSettingsMap.human_handoff_phone) {
+            const anyHandoff = await prisma.restaurantSetting.findFirst({
+                where: { key: 'human_handoff_phone', value: { not: '' } },
+                orderBy: { updated_at: 'desc' },
+            });
+            if (anyHandoff?.value) {
+                customSettingsMap.human_handoff_phone = anyHandoff.value;
+            }
+        }
+
         const data = {
             id: restaurant.id,
             name: restaurant.name,
@@ -90,6 +101,8 @@ router.put('/', async (req, res) => {
 
         const prisma = getDbClient();
         const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+
         const {
             name,
             phone,
@@ -125,30 +138,47 @@ router.put('/', async (req, res) => {
         if (easypaisa_enabled !== undefined) updateData.easypaisa_enabled = easypaisa_enabled;
         if (easypaisa_number !== undefined) updateData.easypaisa_number = easypaisa_number;
         if (account_name !== undefined) updateData.account_name = account_name;
-        if (admin_notification_phone !== undefined) updateData.admin_notification_phone = admin_notification_phone;
+        if (admin_notification_phone !== undefined) {
+            updateData.admin_notification_phone = admin_notification_phone;
+        } else if (custom_settings?.human_handoff_phone) {
+            updateData.admin_notification_phone = custom_settings.human_handoff_phone;
+        }
 
         const updated = await prisma.restaurant.update({
             where: { id: restaurantId },
             data: updateData,
         });
 
-        // Update custom settings key-values if provided
+        // Also update default restaurant if different
+        if (defaultRestId && defaultRestId !== restaurantId && updateData.admin_notification_phone) {
+            await prisma.restaurant.update({
+                where: { id: defaultRestId },
+                data: { admin_notification_phone: updateData.admin_notification_phone },
+            }).catch(() => {});
+        }
+
+        // Update custom settings key-values if provided across active restaurants
         if (custom_settings && typeof custom_settings === 'object') {
-            for (const [key, val] of Object.entries(custom_settings)) {
-                await prisma.restaurantSetting.upsert({
-                    where: {
-                        restaurant_id_key: {
-                            restaurant_id: restaurantId,
-                            key,
+            const targetRestaurantIds = new Set([restaurantId]);
+            if (defaultRestId) targetRestaurantIds.add(defaultRestId);
+
+            for (const tId of targetRestaurantIds) {
+                for (const [key, val] of Object.entries(custom_settings)) {
+                    await prisma.restaurantSetting.upsert({
+                        where: {
+                            restaurant_id_key: {
+                                restaurant_id: tId,
+                                key,
+                            },
                         },
-                    },
-                    update: { value: String(val) },
-                    create: {
-                        restaurant_id: restaurantId,
-                        key,
-                        value: String(val),
-                    },
-                });
+                        update: { value: String(val) },
+                        create: {
+                            restaurant_id: tId,
+                            key,
+                            value: String(val),
+                        },
+                    });
+                }
             }
         }
 
