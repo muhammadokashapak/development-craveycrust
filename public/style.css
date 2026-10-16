@@ -4216,8 +4216,12 @@ body.is-superadmin #viewWhatsapp #waSplitContainer {
   margin: 0 !important;
 }
 
-/* Customer Chats View */
+/* Customer Chats View - Super Admin Only */
 #navChats {
+  display: none !important;
+}
+
+body.is-superadmin #navChats {
   display: flex !important;
 }
 

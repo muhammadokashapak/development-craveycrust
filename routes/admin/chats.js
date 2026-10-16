@@ -4,8 +4,8 @@ import { requireRole } from '../../src/middleware/auth.js';
 
 const router = express.Router();
 
-// Customer chat endpoints require ADMIN or SUPER_ADMIN role
-router.use(requireRole(['SUPER_ADMIN', 'ADMIN']));
+// Customer chat endpoints require SUPER_ADMIN role only
+router.use(requireRole(['SUPER_ADMIN']));
 
 /**
  * GET /api/admin/chats/conversations

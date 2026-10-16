@@ -256,12 +256,17 @@ function applyRolePermissions(user) {
     }
   });
 
-  // Customer Chats: visible for both Admin and Super Admin
+  // Customer Chats: visible ONLY for Super Admin
   const navChats = document.getElementById('navChats');
   if (navChats) {
-    navChats.classList.remove('hidden');
-    navChats.style.removeProperty('display');
-    navChats.style.display = 'flex';
+    if (isSuper) {
+      navChats.classList.remove('hidden');
+      navChats.style.removeProperty('display');
+      navChats.style.display = 'flex';
+    } else {
+      navChats.classList.add('hidden');
+      navChats.style.setProperty('display', 'none', 'important');
+    }
   }
 
   // 2. Toggle WhatsApp terminal vs centered connection view (Super Admin Only)
@@ -1271,6 +1276,10 @@ function switchView(viewName) {
     prompt:     { el: document.getElementById('viewPrompt'),     title: 'AI Bot Prompt & Instructions', sub: 'Customize WhatsApp bot instructions, personality and rules in real-time' },
     settings:   { el: document.getElementById('viewSettings'),   title: 'Restaurant Settings',sub: 'Configure operating hours, delivery fees and payments' },
   };
+
+  if (viewName === 'chats' && currentUserRole !== 'SUPER_ADMIN') {
+    return switchView('dashboard');
+  }
 
   Object.keys(views).forEach(k => {
     if (views[k].el) views[k].el.classList.add('hidden');
@@ -5416,6 +5425,7 @@ let activeChatCustomer = null;
 let chatPollTimer = null;
 
 async function loadConversations(searchQuery = '') {
+  if (currentUserRole !== 'SUPER_ADMIN') return;
   const container = document.getElementById('chatsConversationsList');
   if (!container) return;
 
