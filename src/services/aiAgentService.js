@@ -731,7 +731,7 @@ async function runAgentLoop(messages, context) {
         } catch (err) {
             console.error('[AGENT] LLM call failed:', err.message);
             return {
-                text: 'Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.',
+                text: 'Mafi chahta hoon, rabtay mein thodi takheer ho sakti hai. Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein, ya support agent se rabte ke liye \'agent\' likhein.',
                 toolResults: allToolResults,
                 calledToolNames,
                 tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },

@@ -1098,5 +1098,115 @@
     "message": "Walaikum Assalam! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
     "message_type": "text",
     "created_at": "2026-10-16T02:41:27.738Z"
+  },
+  {
+    "id": "chat_1792169982200_lg0lu",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "user",
+    "message": "Jee",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:42.200Z"
+  },
+  {
+    "id": "chat_1792169983029_qk8xk",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "bot",
+    "message": "Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:43.029Z"
+  },
+  {
+    "id": "chat_1792169987142_35g08",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "user",
+    "message": "Hsshhsss",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:47.141Z"
+  },
+  {
+    "id": "chat_1792169987594_5hrvh",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "bot",
+    "message": "Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:47.594Z"
+  },
+  {
+    "id": "chat_1792169992192_tst5s",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "user",
+    "message": "Hii",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:52.192Z"
+  },
+  {
+    "id": "chat_1792169992614_x1gii",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "bot",
+    "message": "Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:52.614Z"
+  },
+  {
+    "id": "chat_1792169996650_6uygr",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "user",
+    "message": "Kase hi",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:56.650Z"
+  },
+  {
+    "id": "chat_1792169997065_hy24s",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "bot",
+    "message": "Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.",
+    "message_type": "text",
+    "created_at": "2026-10-16T16:59:57.065Z"
+  },
+  {
+    "id": "chat_1792170005448_rj6eb",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "user",
+    "message": "Meny dikhao",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:00:05.448Z"
+  },
+  {
+    "id": "chat_1792170005853_aw1tx",
+    "restaurant_id": "default-restaurant",
+    "chat_id": "55362682097844@lid",
+    "phone": "923199947554",
+    "customer_name": "Customer",
+    "sender": "bot",
+    "message": "Mafi chahta hoon, abhi system mein masla aa gaya hai. Thodi der baad dobara koshish karein ya call karein.",
+    "message_type": "text",
+    "created_at": "2026-10-16T17:00:05.853Z"
   }
 ]
