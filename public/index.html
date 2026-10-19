@@ -1290,6 +1290,9 @@
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                 <input type="text" id="chatsSearchInput" placeholder="Search customer, phone..." autocomplete="off" />
               </div>
+              <button type="button" id="chatsExportListBtn" class="chats-refresh-btn" title="Export All Conversations (CSV)">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </button>
               <button type="button" id="chatsRefreshBtn" class="chats-refresh-btn" title="Refresh Live Chats">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               </button>
@@ -1311,9 +1314,40 @@
                   <span id="chatActivePhone" class="chat-header-phone">WhatsApp Customer Chat Log</span>
                 </div>
               </div>
-              <div id="chatActiveStatusBadge" class="chat-verified-badge" style="display: none;">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                <span>VERIFIED WHATSAPP</span>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <!-- Export Chat Dropdown -->
+                <div class="chat-export-dropdown" style="position: relative;">
+                  <button type="button" id="chatExportBtn" class="chat-export-btn" style="display: none;" title="Export this customer's chat">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                      <polyline points="7 10 12 15 17 10"></polyline>
+                      <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span>Export Chat</span>
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+                  <div id="chatExportMenu" class="chat-export-menu" style="display: none;">
+                    <button type="button" id="exportChatTxtBtn" class="chat-export-menu-item">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                      <span>Text File (.txt)</span>
+                    </button>
+                    <button type="button" id="exportChatCsvBtn" class="chat-export-menu-item">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                      <span>CSV / Excel (.csv)</span>
+                    </button>
+                    <button type="button" id="exportChatJsonBtn" class="chat-export-menu-item">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                      <span>JSON Data (.json)</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div id="chatActiveStatusBadge" class="chat-verified-badge" style="display: none;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                  <span>VERIFIED WHATSAPP</span>
+                </div>
               </div>
             </div>
 

@@ -5682,6 +5682,8 @@ async function openCustomerChatThread(customer) {
   const headerPhone = document.getElementById('chatActivePhone');
   const headerAvatar = document.getElementById('chatActiveAvatar');
   const badge = document.getElementById('chatActiveStatusBadge');
+  const exportBtn = document.getElementById('chatExportBtn');
+  const exportMenu = document.getElementById('chatExportMenu');
 
   const resolvedName = customer.customerName && customer.customerName !== 'Customer' ? customer.customerName : (customer.phone ? `Customer (${customer.phone})` : 'Customer');
   const resolvedPhone = customer.phone || customer.chatId.split('@')[0];
@@ -5693,6 +5695,8 @@ async function openCustomerChatThread(customer) {
     badge.style.display = 'inline-flex';
     badge.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> <span>VERIFIED WHATSAPP</span>`;
   }
+  if (exportBtn) exportBtn.style.display = 'inline-flex';
+  if (exportMenu) exportMenu.style.display = 'none';
 
   await fetchAndRenderChatMessages(customer.chatId);
 }
@@ -5815,6 +5819,246 @@ if (chatsSearchInput) {
     }, 300);
   });
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CUSTOMER CHAT EXPORT FUNCTIONALITY
+// ══════════════════════════════════════════════════════════════════════════════
+
+async function exportCurrentChat(format = 'txt') {
+  if (!activeChatCustomer || !activeChatCustomer.chatId) {
+    if (typeof showToast === 'function') showToast('Please select a customer conversation first', 'error');
+    return;
+  }
+
+  const chatId = activeChatCustomer.chatId;
+  const rawCustomerName = activeChatCustomer.customerName && activeChatCustomer.customerName !== 'Customer'
+    ? activeChatCustomer.customerName
+    : (activeChatCustomer.phone ? `Customer (${activeChatCustomer.phone})` : 'Customer');
+  const phone = activeChatCustomer.phone || chatId.split('@')[0];
+
+  try {
+    if (typeof showToast === 'function') showToast('Generating chat export...', 'info');
+
+    // Fetch full message history (up to 5000 messages to prevent truncation)
+    const res = await fetch(`/api/admin/chats/conversations/${encodeURIComponent(chatId)}/messages?limit=5000`);
+    const data = await res.json();
+    if (!data.success) {
+      if (typeof showToast === 'function') showToast(data.error || 'Failed to export chat', 'error');
+      return;
+    }
+
+    const messages = data.data?.messages || [];
+    if (messages.length === 0) {
+      if (typeof showToast === 'function') showToast('No messages found to export', 'warning');
+      return;
+    }
+
+    const now = new Date();
+    const dateStamp = now.toISOString().slice(0, 10);
+    const cleanPhone = phone.replace(/\D/g, '');
+    const filenameBase = `Chat_${cleanPhone || 'customer'}_${dateStamp}`;
+
+    let fileContent = '';
+    let mimeType = 'text/plain;charset=utf-8';
+    let fileExt = 'txt';
+
+    if (format === 'json') {
+      mimeType = 'application/json;charset=utf-8';
+      fileExt = 'json';
+      const exportPayload = {
+        exportedAt: now.toISOString(),
+        customer: {
+          name: rawCustomerName,
+          phone: phone,
+          chatId: chatId,
+        },
+        totalMessages: messages.length,
+        messages: messages.map(m => ({
+          id: m.id,
+          sender: m.sender === 'user' ? 'customer' : 'bot',
+          senderLabel: m.sender === 'user' ? (m.customerName || rawCustomerName) : 'Cravey Crust',
+          message: m.message,
+          timestamp: m.createdAt || m.created_at || null,
+        })),
+      };
+      fileContent = JSON.stringify(exportPayload, null, 2);
+
+    } else if (format === 'csv') {
+      mimeType = 'text/csv;charset=utf-8';
+      fileExt = 'csv';
+      const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+      const rows = [
+        ['Timestamp', 'Sender Type', 'Sender Name', 'Message'],
+      ];
+      messages.forEach(m => {
+        const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleString() : '';
+        const senderType = m.sender === 'user' ? 'Customer' : 'Bot / Admin';
+        const senderName = m.sender === 'user' ? (m.customerName || rawCustomerName) : 'Cravey Crust';
+        rows.push([timeStr, senderType, senderName, m.message || '']);
+      });
+      fileContent = '\uFEFF' + rows.map(r => r.map(escapeCsv).join(',')).join('\r\n');
+
+    } else {
+      // Default: Formatted TXT Transcript (Universal WhatsApp Style)
+      mimeType = 'text/plain;charset=utf-8';
+      fileExt = 'txt';
+      const separator = '='.repeat(64);
+      const subSeparator = '-'.repeat(64);
+      let lines = [
+        separator,
+        '              CRAVEY CRUST - CUSTOMER CHAT TRANSCRIPT',
+        separator,
+        `Customer Name : ${rawCustomerName}`,
+        `Phone Number  : +${phone}`,
+        `WhatsApp ID   : ${chatId}`,
+        `Exported On   : ${now.toLocaleString()}`,
+        `Total Messages: ${messages.length}`,
+        separator,
+        '',
+      ];
+
+      messages.forEach(m => {
+        const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleString() : 'N/A';
+        const isUser = m.sender === 'user';
+        const senderLabel = isUser
+          ? `[Customer: ${m.customerName || rawCustomerName}]`
+          : '[Cravey Crust (Bot / Admin)]';
+
+        lines.push(`[${timeStr}] ${senderLabel}`);
+        lines.push(m.message || '');
+        lines.push('');
+      });
+
+      lines.push(subSeparator);
+      lines.push('                  END OF CUSTOMER TRANSCRIPT');
+      lines.push(separator);
+      fileContent = lines.join('\r\n');
+    }
+
+    // Trigger file download
+    const blob = new Blob([fileContent], { type: mimeType });
+    const downloadUrl = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = downloadUrl;
+    downloadAnchor.download = `${filenameBase}.${fileExt}`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    setTimeout(() => {
+      document.body.removeChild(downloadAnchor);
+      URL.revokeObjectURL(downloadUrl);
+    }, 200);
+
+    if (typeof showToast === 'function') showToast(`Exported chat (${fileExt.toUpperCase()}) successfully!`, 'success');
+
+  } catch (err) {
+    console.error('Export current chat failed:', err);
+    if (typeof showToast === 'function') showToast('Failed to export customer chat', 'error');
+  }
+}
+window.exportCurrentChat = exportCurrentChat;
+
+async function exportConversationsListCsv() {
+  try {
+    if (typeof showToast === 'function') showToast('Exporting customer conversations list...', 'info');
+    const res = await fetch('/api/admin/chats/conversations?limit=1000');
+    const data = await res.json();
+    if (!data.success) {
+      if (typeof showToast === 'function') showToast(data.error || 'Failed to fetch conversations', 'error');
+      return;
+    }
+
+    const conversations = data.data?.conversations || [];
+    if (conversations.length === 0) {
+      if (typeof showToast === 'function') showToast('No conversations to export', 'warning');
+      return;
+    }
+
+    const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Customer Name', 'Phone', 'Chat ID', 'Total Messages', 'Last Message Time', 'Last Message Snippet'],
+    ];
+
+    conversations.forEach(c => {
+      const name = c.customerName && c.customerName !== 'Customer' ? c.customerName : 'Customer';
+      const phone = c.phone || c.chatId?.split('@')[0] || '';
+      const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleString() : '';
+      rows.push([
+        name,
+        phone,
+        c.chatId || '',
+        c.totalMessages || 0,
+        timeStr,
+        c.lastMessage || '',
+      ]);
+    });
+
+    const fileContent = '\uFEFF' + rows.map(r => r.map(escapeCsv).join(',')).join('\r\n');
+    const blob = new Blob([fileContent], { type: 'text/csv;charset=utf-8' });
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const downloadUrl = URL.createObjectURL(blob);
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.href = downloadUrl;
+    downloadAnchor.download = `Customer_Conversations_${dateStamp}.csv`;
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    setTimeout(() => {
+      document.body.removeChild(downloadAnchor);
+      URL.revokeObjectURL(downloadUrl);
+    }, 200);
+
+    if (typeof showToast === 'function') showToast('Conversations list exported successfully!', 'success');
+  } catch (err) {
+    console.error('Export conversations failed:', err);
+    if (typeof showToast === 'function') showToast('Failed to export conversations', 'error');
+  }
+}
+window.exportConversationsListCsv = exportConversationsListCsv;
+
+// Wire up event listeners
+const chatExportBtn = document.getElementById('chatExportBtn');
+const chatExportMenu = document.getElementById('chatExportMenu');
+if (chatExportBtn && chatExportMenu) {
+  chatExportBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chatExportMenu.style.display = (chatExportMenu.style.display === 'none' || !chatExportMenu.style.display) ? 'flex' : 'none';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!chatExportBtn.contains(e.target) && !chatExportMenu.contains(e.target)) {
+      chatExportMenu.style.display = 'none';
+    }
+  });
+}
+
+const exportChatTxtBtn = document.getElementById('exportChatTxtBtn');
+if (exportChatTxtBtn) {
+  exportChatTxtBtn.addEventListener('click', () => {
+    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    exportCurrentChat('txt');
+  });
+}
+
+const exportChatCsvBtn = document.getElementById('exportChatCsvBtn');
+if (exportChatCsvBtn) {
+  exportChatCsvBtn.addEventListener('click', () => {
+    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    exportCurrentChat('csv');
+  });
+}
+
+const exportChatJsonBtn = document.getElementById('exportChatJsonBtn');
+if (exportChatJsonBtn) {
+  exportChatJsonBtn.addEventListener('click', () => {
+    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    exportCurrentChat('json');
+  });
+}
+
+const chatsExportListBtn = document.getElementById('chatsExportListBtn');
+if (chatsExportListBtn) {
+  chatsExportListBtn.addEventListener('click', exportConversationsListCsv);
+}
+
 
 
 

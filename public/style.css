@@ -8582,6 +8582,132 @@ body.is-superadmin[data-theme="dark"] #themeToggleBtn {
   visibility: visible !important;
 }
 
+/* ==========================================================================
+   CUSTOMER CHAT EXPORT CONTROLS
+   ========================================================================== */
+.chat-export-dropdown {
+  position: relative !important;
+  display: inline-block !important;
+}
+
+.chat-export-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 6px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 6px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  color: #1e293b !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  line-height: 1 !important;
+}
+
+.chat-export-btn:hover {
+  background: #f8fafc !important;
+  border-color: #10b981 !important;
+  color: #10b981 !important;
+}
+
+.chat-export-btn svg {
+  flex-shrink: 0 !important;
+}
+
+.chat-export-menu {
+  position: absolute !important;
+  top: calc(100% + 6px) !important;
+  right: 0 !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+  padding: 6px !important;
+  min-width: 175px !important;
+  z-index: 9999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.chat-export-menu-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #334155 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  transition: background 0.12s ease, color 0.12s ease !important;
+}
+
+.chat-export-menu-item:hover {
+  background: #f1f5f9 !important;
+  color: #059669 !important;
+}
+
+.chat-export-menu-item svg {
+  color: #64748b !important;
+  flex-shrink: 0 !important;
+}
+
+.chat-export-menu-item:hover svg {
+  color: #059669 !important;
+}
+
+/* Dark mode for chat export */
+[data-theme="dark"] .chat-export-btn,
+body.is-superadmin[data-theme="dark"] .chat-export-btn {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .chat-export-btn:hover,
+body.is-superadmin[data-theme="dark"] .chat-export-btn:hover {
+  background: #334155 !important;
+  border-color: #10b981 !important;
+  color: #10b981 !important;
+}
+
+[data-theme="dark"] .chat-export-menu,
+body.is-superadmin[data-theme="dark"] .chat-export-menu {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6) !important;
+}
+
+[data-theme="dark"] .chat-export-menu-item,
+body.is-superadmin[data-theme="dark"] .chat-export-menu-item {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .chat-export-menu-item:hover,
+body.is-superadmin[data-theme="dark"] .chat-export-menu-item:hover {
+  background: #334155 !important;
+  color: #34d399 !important;
+}
+
+[data-theme="dark"] .chat-export-menu-item svg,
+body.is-superadmin[data-theme="dark"] .chat-export-menu-item svg {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .chat-export-menu-item:hover svg,
+body.is-superadmin[data-theme="dark"] .chat-export-menu-item:hover svg {
+  color: #34d399 !important;
+}
+
+
 
 
 
