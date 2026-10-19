@@ -8399,6 +8399,142 @@ table.data-table td .subtext {
   color: #64748b !important;
 }
 
+/* 3. Comprehensive Dark Theme Cards & Structure */
+[data-theme="dark"] body,
+[data-theme="dark"] body.is-superadmin,
+body.is-superadmin[data-theme="dark"] {
+  background: #0b0f19 !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .app-sidebar,
+[data-theme="dark"] body.is-superadmin .app-sidebar,
+body.is-superadmin[data-theme="dark"] .app-sidebar {
+  background: #111827 !important;
+  border-color: #1f2937 !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .orders-card,
+[data-theme="dark"] .catalog-card,
+[data-theme="dark"] .settings-card,
+[data-theme="dark"] .deal-card,
+[data-theme="dark"] #viewDashboard .card,
+body.is-superadmin[data-theme="dark"] .card,
+body.is-superadmin[data-theme="dark"] #viewDashboard .card {
+  background: #111827 !important;
+  border: 1px solid #1f2937 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .card h3,
+[data-theme="dark"] .card h4,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+body.is-superadmin[data-theme="dark"] .card h3,
+body.is-superadmin[data-theme="dark"] .card h4 {
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .table-scroll-area,
+[data-theme="dark"] #viewDashboard .table-scroll-area,
+body.is-superadmin[data-theme="dark"] .table-scroll-area {
+  background: #111827 !important;
+  border: 1px solid #1f2937 !important;
+}
+
+[data-theme="dark"] .metric-card .metric-icon,
+[data-theme="dark"] #viewDashboard .metric-icon,
+body.is-superadmin[data-theme="dark"] .metric-icon {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+}
+
+[data-theme="dark"] #pageTitle,
+body.is-superadmin[data-theme="dark"] #pageTitle {
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] #pageSubtitle,
+body.is-superadmin[data-theme="dark"] #pageSubtitle {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] #dashLogoutBtn,
+body.is-superadmin[data-theme="dark"] #dashLogoutBtn {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] #dashLogoutBtn:hover,
+body.is-superadmin[data-theme="dark"] #dashLogoutBtn:hover {
+  background: #334155 !important;
+  border-color: #475569 !important;
+}
+
+[data-theme="dark"] .theme-toggle,
+[data-theme="dark"] #themeToggleBtn,
+body.is-superadmin[data-theme="dark"] #themeToggleBtn {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+/* 4. Theme Toggle Button Icon Controls & Pointer Safety */
+.theme-toggle,
+#themeToggleBtn,
+#authThemeToggleBtn {
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  user-select: none !important;
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.theme-toggle *,
+#themeToggleBtn *,
+#authThemeToggleBtn * {
+  pointer-events: none !important;
+}
+
+[data-theme="dark"] .theme-toggle .sun-icon,
+[data-theme="dark"] #themeToggleBtn .sun-icon,
+[data-theme="dark"] #authThemeToggleBtn .sun-icon {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+[data-theme="dark"] .theme-toggle .moon-icon,
+[data-theme="dark"] #themeToggleBtn .moon-icon,
+[data-theme="dark"] #authThemeToggleBtn .moon-icon {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+[data-theme="light"] .theme-toggle .sun-icon,
+[data-theme="light"] #themeToggleBtn .sun-icon,
+[data-theme="light"] #authThemeToggleBtn .sun-icon {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+[data-theme="light"] .theme-toggle .moon-icon,
+[data-theme="light"] #themeToggleBtn .moon-icon,
+[data-theme="light"] #authThemeToggleBtn .moon-icon {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+
 
 
 

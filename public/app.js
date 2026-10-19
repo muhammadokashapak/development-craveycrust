@@ -379,6 +379,7 @@ async function initAuth() {
 
 // ─── Theme Switcher (Dark / Light) ─────────────────────────
 const themeToggleBtn = document.getElementById('themeToggleBtn');
+const authThemeToggleBtn = document.getElementById('authThemeToggleBtn');
 const savedTheme = localStorage.getItem('wa_bot_theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 if (document.body) {
@@ -400,25 +401,36 @@ function updateThemeUI(theme) {
   }
 }
 
-function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+let _lastThemeToggleTs = 0;
+function toggleTheme(e) {
+  if (e) {
+    if (typeof e.preventDefault === 'function') e.preventDefault();
+    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+  }
+  const now = Date.now();
+  if (now - _lastThemeToggleTs < 350) return;
+  _lastThemeToggleTs = now;
+
+  const currentTheme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nextTheme);
   if (document.body) {
     document.body.setAttribute('data-theme', nextTheme);
   }
-  localStorage.setItem('wa_bot_theme', nextTheme);
+  try {
+    localStorage.setItem('wa_bot_theme', nextTheme);
+  } catch (_) {}
   updateThemeUI(nextTheme);
-  console.log('[THEME] Toggled theme to:', nextTheme);
+  console.log('[THEME] Successfully toggled theme to:', nextTheme);
 }
 window.toggleTheme = toggleTheme;
 
-if (themeToggleBtn) {
-  themeToggleBtn.addEventListener('click', toggleTheme);
-}
-if (authThemeToggleBtn) {
-  authThemeToggleBtn.addEventListener('click', toggleTheme);
-}
+document.addEventListener('click', (e) => {
+  const btn = e.target && e.target.closest ? e.target.closest('#themeToggleBtn, #authThemeToggleBtn, .theme-toggle') : null;
+  if (btn) {
+    toggleTheme(e);
+  }
+});
 updateThemeUI(savedTheme);
 
 // ─── State Variables ───────────────────────────────────────
