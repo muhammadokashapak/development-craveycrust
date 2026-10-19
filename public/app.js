@@ -379,7 +379,6 @@ async function initAuth() {
 
 // ─── Theme Switcher (Dark / Light) ─────────────────────────
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-const authThemeToggleBtn = document.getElementById('authThemeToggleBtn');
 const savedTheme = localStorage.getItem('wa_bot_theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
 if (document.body) {
