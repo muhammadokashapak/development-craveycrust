@@ -2414,6 +2414,24 @@ async function loadSettings() {
         setGoogleReviewsUrl.value = custom.google_reviews_url || 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
       }
 
+      const setMaxDeliveryRadius = document.getElementById('setMaxDeliveryRadius');
+      const setRestaurantMapUrl = document.getElementById('setRestaurantMapUrl');
+      const setRestaurantLat = document.getElementById('setRestaurantLat');
+      const setRestaurantLng = document.getElementById('setRestaurantLng');
+
+      if (setMaxDeliveryRadius) {
+        setMaxDeliveryRadius.value = custom.max_delivery_radius_km || '10';
+      }
+      if (setRestaurantMapUrl) {
+        setRestaurantMapUrl.value = custom.restaurant_map_url || 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
+      }
+      if (setRestaurantLat) {
+        setRestaurantLat.value = custom.restaurant_lat || '33.6180334';
+      }
+      if (setRestaurantLng) {
+        setRestaurantLng.value = custom.restaurant_lng || '73.1398525';
+      }
+
       if (s.name) updateBrandDisplay(s.name);
     }
   } catch (err) {
@@ -2460,6 +2478,20 @@ async function loadBrandDisplay() {
 // Immediately load brand display on page startup so login screen gets dynamic name
 loadBrandDisplay();
 
+const setRestaurantMapUrlEl = document.getElementById('setRestaurantMapUrl');
+if (setRestaurantMapUrlEl) {
+  setRestaurantMapUrlEl.addEventListener('input', (e) => {
+    const val = (e.target.value || '').trim();
+    const coordMatch = val.match(/(?:q=|@)(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+    if (coordMatch) {
+      const latEl = document.getElementById('setRestaurantLat');
+      const lngEl = document.getElementById('setRestaurantLng');
+      if (latEl) latEl.value = coordMatch[1];
+      if (lngEl) lngEl.value = coordMatch[2];
+    }
+  });
+}
+
 const settingsForm = document.getElementById('settingsForm');
 if (settingsForm) {
   settingsForm.addEventListener('submit', async (e) => {
@@ -2484,6 +2516,10 @@ if (settingsForm) {
     const setHumanHandoffMsg = document.getElementById('setHumanHandoffMsg');
     const setOutOfDeliveryMsg = document.getElementById('setOutOfDeliveryMsg');
     const setGoogleReviewsUrl = document.getElementById('setGoogleReviewsUrl');
+    const setMaxDeliveryRadius = document.getElementById('setMaxDeliveryRadius');
+    const setRestaurantMapUrl = document.getElementById('setRestaurantMapUrl');
+    const setRestaurantLat = document.getElementById('setRestaurantLat');
+    const setRestaurantLng = document.getElementById('setRestaurantLng');
 
     const supportPhoneVal = setHumanHandoffPhone ? setHumanHandoffPhone.value.trim() : '';
 
@@ -2509,6 +2545,10 @@ if (settingsForm) {
         human_handoff_message: setHumanHandoffMsg ? setHumanHandoffMsg.value.trim() : '',
         out_of_delivery_range_message: setOutOfDeliveryMsg ? setOutOfDeliveryMsg.value.trim() : '',
         google_reviews_url: setGoogleReviewsUrl ? setGoogleReviewsUrl.value.trim() : '',
+        max_delivery_radius_km: setMaxDeliveryRadius && setMaxDeliveryRadius.value.trim() ? setMaxDeliveryRadius.value.trim() : '10',
+        restaurant_map_url: setRestaurantMapUrl ? setRestaurantMapUrl.value.trim() : 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9',
+        restaurant_lat: setRestaurantLat && setRestaurantLat.value.trim() ? setRestaurantLat.value.trim() : '33.6180334',
+        restaurant_lng: setRestaurantLng && setRestaurantLng.value.trim() ? setRestaurantLng.value.trim() : '73.1398525',
       },
     };
 

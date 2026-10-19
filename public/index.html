@@ -938,7 +938,7 @@
           <div class="settings-card">
             <div class="settings-card-header">
               <h3>Pricing & Delivery Defaults</h3>
-              <p>Thresholds applied when calculating cart totals.</p>
+              <p>Delivery radius, restaurant coordinates, and thresholds applied when calculating cart totals.</p>
             </div>
             <div class="settings-fields">
               <div class="form-row-2">
@@ -951,10 +951,35 @@
                   <input type="number" id="setDefaultDelivery" min="0" step="any" />
                 </div>
               </div>
+
+              <div class="form-row-2" style="margin-top: 14px;">
+                <div class="input-group">
+                  <label for="setMaxDeliveryRadius">Maximum Delivery Radius (KM)</label>
+                  <input type="number" id="setMaxDeliveryRadius" min="1" max="100" step="0.5" placeholder="10" />
+                  <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Restaurant se circular delivery radius (e.g. 10 km). Is se bahar delivery provide nahi hogi.</span>
+                </div>
+                <div class="input-group">
+                  <label for="setRestaurantMapUrl">Restaurant Location (Google Maps Link)</label>
+                  <input type="url" id="setRestaurantMapUrl" placeholder="https://maps.app.goo.gl/rVvANx8pRmtXrEMj9" />
+                  <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Cravey Crust Google Maps link ya pin (Auto-detects GPS coordinates).</span>
+                </div>
+              </div>
+
+              <div class="form-row-2" style="margin-top: 10px;">
+                <div class="input-group">
+                  <label for="setRestaurantLat">Restaurant Latitude</label>
+                  <input type="text" id="setRestaurantLat" placeholder="33.6180334" />
+                </div>
+                <div class="input-group">
+                  <label for="setRestaurantLng">Restaurant Longitude</label>
+                  <input type="text" id="setRestaurantLng" placeholder="73.1398525" />
+                </div>
+              </div>
+
               <div class="input-group" style="margin-top: 14px;">
                 <label for="setOutOfDeliveryMsg">Out of Delivery Range Message (Unapproved Areas)</label>
-                <textarea id="setOutOfDeliveryMsg" rows="3" placeholder="Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.&#10;&#10;Barah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!"></textarea>
-                <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Agar customer ki location delivery range se bahar ho ya unapproved area mein ho to bot ye dynamic message bhejega.</span>
+                <textarea id="setOutOfDeliveryMsg" rows="3" placeholder="Maazrat! Aap ki location hamare restaurant se door hai. Hamari delivery range 10 km tak mehdood hai.&#10;&#10;Barah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein. Shukriya!"></textarea>
+                <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Agar customer ki location delivery radius se bahar ho to bot ye dynamic message bhejega. Agar khali chorein ge to automatic distance aur 10km radius ka polite message jaye ga.</span>
               </div>
             </div>
           </div>

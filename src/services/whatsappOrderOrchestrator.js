@@ -997,7 +997,8 @@ Barah-e-karam cart mein mazeed items add karein taakay delivery possible ho saka
             const codOk = restaurant?.cod_enabled !== false;
             const epOk = restaurant?.easypaisa_enabled === true;
 
-            let payMsg = `Aapki location hamare delivery area mein aati hai (${delResult.area.name})!\n📍 Delivery Address select ho gaya hai: ${finalAddress}\n🚚 Delivery Fee: ${feeDisplay}.\n\nPayment method select karein:\n`;
+            const distText = delResult.distanceKm != null ? ` - approx. ${delResult.distanceKm} km` : '';
+            let payMsg = `Aapki location hamare delivery area mein aati hai (${delResult.area.name}${distText})!\n📍 Delivery Address select ho gaya hai: ${finalAddress}\n🚚 Delivery Fee: ${feeDisplay}.\n\nPayment method select karein:\n`;
             if (codOk) payMsg += `1. COD (Cash on Delivery)\n`;
             if (epOk) {
                 payMsg += `2. EasyPaisa\n`;
@@ -1014,9 +1015,10 @@ Barah-e-karam cart mein mazeed items add karein taakay delivery possible ho saka
         }
 
         // Case 2: Cart is empty -> confirm area & address, prompt to browse menu/deals
+        const distText = delResult.distanceKm != null ? ` - approx. ${delResult.distanceKm} km` : '';
         return {
             text: 
-`Aapki location hamare delivery area mein aati hai (${delResult.area.name})!
+`Aapki location hamare delivery area mein aati hai (${delResult.area.name}${distText})!
 📍 Delivery Address select ho gaya hai: ${finalAddress}
 🚚 Delivery Fee: ${feeDisplay}
 

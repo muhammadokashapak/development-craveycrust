@@ -251,6 +251,18 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
         const reviewsSetting = (restaurant?.settings || []).find(s => s.key === 'google_reviews_url');
         const googleReviewsUrl = (reviewsSetting?.value && reviewsSetting.value.trim()) ? reviewsSetting.value.trim() : defaultReviewsUrl;
 
+        const radiusSetting = (restaurant?.settings || []).find(s => s.key === 'max_delivery_radius_km');
+        const maxDeliveryRadiusKm = (radiusSetting?.value && !isNaN(parseFloat(radiusSetting.value))) ? parseFloat(radiusSetting.value) : 10.0;
+
+        const latSetting = (restaurant?.settings || []).find(s => s.key === 'restaurant_lat');
+        const restaurantLat = (latSetting?.value && !isNaN(parseFloat(latSetting.value))) ? parseFloat(latSetting.value) : 33.6180334;
+
+        const lngSetting = (restaurant?.settings || []).find(s => s.key === 'restaurant_lng');
+        const restaurantLng = (lngSetting?.value && !isNaN(parseFloat(lngSetting.value))) ? parseFloat(lngSetting.value) : 73.1398525;
+
+        const mapUrlSetting = (restaurant?.settings || []).find(s => s.key === 'restaurant_map_url');
+        const restaurantMapUrl = (mapUrlSetting?.value && mapUrlSetting.value.trim()) ? mapUrlSetting.value.trim() : 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
+
         return {
             restId,
             syncEpoch: _syncEpoch,
@@ -278,6 +290,10 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             defaultDeliveryFee: deliveryFee,
             outOfDeliveryMessage,
             googleReviewsUrl,
+            maxDeliveryRadiusKm,
+            restaurantLat,
+            restaurantLng,
+            restaurantMapUrl,
             rawCategories: validCategories,
             rawDeals,
         };

@@ -50,6 +50,20 @@ router.get('/', async (req, res) => {
             }
         }
 
+        // Default Cravey Crust delivery radius and Google Maps location defaults
+        if (!customSettingsMap.max_delivery_radius_km) {
+            customSettingsMap.max_delivery_radius_km = '10';
+        }
+        if (!customSettingsMap.restaurant_lat) {
+            customSettingsMap.restaurant_lat = '33.6180334';
+        }
+        if (!customSettingsMap.restaurant_lng) {
+            customSettingsMap.restaurant_lng = '73.1398525';
+        }
+        if (!customSettingsMap.restaurant_map_url) {
+            customSettingsMap.restaurant_map_url = 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
+        }
+
         const data = {
             id: restaurant.id,
             name: restaurant.name,

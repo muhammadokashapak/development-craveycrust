@@ -5,15 +5,25 @@ import { geocodeAddress } from './geocodingService.js';
 /**
  * Fetch dynamic Out of Delivery Range Message from restaurant settings cache.
  */
-export async function getOutOfDeliveryMessage(restaurantId) {
+export async function getOutOfDeliveryMessage(restaurantId, distanceKm = null, maxRadiusKm = null) {
     try {
         const { getCatalogCache } = await import('./catalogCacheService.js');
         const cache = await getCatalogCache();
+        const configuredRadius = maxRadiusKm != null ? maxRadiusKm : (cache?.maxDeliveryRadiusKm ?? RESTAURANT_CENTER.maxRadiusKm);
+
+        if (distanceKm != null && !isNaN(distanceKm)) {
+            const distFormatted = distanceKm.toFixed(1);
+            const radiusFormatted = configuredRadius % 1 === 0 ? configuredRadius.toFixed(0) : configuredRadius.toFixed(1);
+            return `Maazrat! Aap ki location hamare restaurant se ${distFormatted} km door hai, jabke hamari delivery range ${radiusFormatted} km tak mehdood hai. Is waqt hum is area mein delivery provide nahi karte.\n\nBarah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein jo hamari ${radiusFormatted} km range mein ho. Shukriya!`;
+        }
+
         if (cache?.outOfDeliveryMessage) {
             return cache.outOfDeliveryMessage;
         }
     } catch (_) {}
-    return 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.\n\nBarah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!';
+
+    const radiusText = maxRadiusKm != null ? `${maxRadiusKm} km` : '10 km';
+    return `Maazrat! Aap ki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery range (${radiusText}) mein delivery provide karte hain.\n\nBarah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein. Shukriya!`;
 }
 
 /**
@@ -76,9 +86,10 @@ export const DELIVERY_AREA_COORDINATES = {
 };
 
 export const RESTAURANT_CENTER = {
-    lat: 33.6261,
-    lng: 73.1255,
-    maxRadiusKm: 20.0,
+    lat: 33.6180334,
+    lng: 73.1398525,
+    maxRadiusKm: 10.0,
+    mapUrl: 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9',
 };
 
 /**
@@ -331,14 +342,36 @@ export async function checkDeliveryAvailability(params) {
 
     let matchedArea = null;
 
-    // Determine max delivery radius (dynamically from restaurant settings or default 20km)
+    // Determine restaurant center and max delivery radius (dynamically from cache or DB settings)
+    let centerLat = RESTAURANT_CENTER.lat;
+    let centerLng = RESTAURANT_CENTER.lng;
     let maxRadiusKm = RESTAURANT_CENTER.maxRadiusKm;
+
     try {
-        const radiusSetting = await prisma.restaurantSetting.findFirst({
-            where: { restaurant_id: restaurantId, key: 'max_delivery_radius_km' },
+        const { getCatalogCache } = await import('./catalogCacheService.js');
+        const cache = await getCatalogCache();
+        if (cache) {
+            if (typeof cache.maxDeliveryRadiusKm === 'number') maxRadiusKm = cache.maxDeliveryRadiusKm;
+            if (typeof cache.restaurantLat === 'number') centerLat = cache.restaurantLat;
+            if (typeof cache.restaurantLng === 'number') centerLng = cache.restaurantLng;
+        }
+    } catch (_) {}
+
+    try {
+        const settings = await prisma.restaurantSetting.findMany({
+            where: {
+                restaurant_id: restaurantId,
+                key: { in: ['max_delivery_radius_km', 'restaurant_lat', 'restaurant_lng'] },
+            },
         });
-        if (radiusSetting && !isNaN(parseFloat(radiusSetting.value))) {
-            maxRadiusKm = parseFloat(radiusSetting.value);
+        for (const s of settings) {
+            if (s.key === 'max_delivery_radius_km' && !isNaN(parseFloat(s.value))) {
+                maxRadiusKm = parseFloat(s.value);
+            } else if (s.key === 'restaurant_lat' && !isNaN(parseFloat(s.value))) {
+                centerLat = parseFloat(s.value);
+            } else if (s.key === 'restaurant_lng' && !isNaN(parseFloat(s.value))) {
+                centerLng = parseFloat(s.value);
+            }
         }
     } catch (_) {}
 
@@ -379,16 +412,18 @@ export async function checkDeliveryAvailability(params) {
         }
     }
 
-    // 3. If GPS coordinates provided, match by coordinates first
+    // 3. If GPS coordinates provided, match by circular radius first
     if (!matchedArea && lat != null && lng != null) {
-        const distToRestaurant = calculateHaversineDistance(lat, lng, RESTAURANT_CENTER.lat, RESTAURANT_CENTER.lng);
+        const distToRestaurant = calculateHaversineDistance(lat, lng, centerLat, centerLng);
 
         if (distToRestaurant > maxRadiusKm) {
-            const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId);
+            const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, distToRestaurant, maxRadiusKm);
             return {
                 available: false,
-                code: 'DELIVERY_NOT_AVAILABLE',
+                code: 'DELIVERY_OUT_OF_RANGE',
                 message: outOfDeliveryMsg,
+                distanceKm: Math.round(distToRestaurant * 10) / 10,
+                maxRadiusKm,
             };
         }
 
@@ -397,8 +432,8 @@ export async function checkDeliveryAvailability(params) {
         // Rank areas by distance from the shared coordinates to each area's known center
         const rankedAreas = activeAreas.map(a => {
             const coords = DELIVERY_AREA_COORDINATES[a.slug];
-            const areaLat = (a.latitude != null && a.latitude !== 0) ? a.latitude : (coords?.lat ?? RESTAURANT_CENTER.lat);
-            const areaLng = (a.longitude != null && a.longitude !== 0) ? a.longitude : (coords?.lng ?? RESTAURANT_CENTER.lng);
+            const areaLat = (a.latitude != null && a.latitude !== 0) ? a.latitude : (coords?.lat ?? centerLat);
+            const areaLng = (a.longitude != null && a.longitude !== 0) ? a.longitude : (coords?.lng ?? centerLng);
             const dist = calculateHaversineDistance(lat, lng, areaLat, areaLng);
             const radiusKm = (a.radius_km != null && a.radius_km > 0) ? a.radius_km : (coords?.radiusKm || 2.5);
             return { area: a, distance: dist, radiusKm };
@@ -407,18 +442,16 @@ export async function checkDeliveryAvailability(params) {
         rankedAreas.sort((a, b) => a.distance - b.distance);
 
         if (rankedAreas.length > 0) {
-            const closest = rankedAreas[0];
-            const effectiveRadius = closest.radiusKm;
-            if (closest.distance <= effectiveRadius || distToRestaurant <= maxRadiusKm) {
-                matchedArea = closest.area;
-            } else {
-                const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId);
-                return {
-                    available: false,
-                    code: 'DELIVERY_NOT_AVAILABLE',
-                    message: outOfDeliveryMsg,
-                };
-            }
+            matchedArea = rankedAreas[0].area;
+        } else {
+            matchedArea = {
+                id: 'radius-zone',
+                name: 'Delivery Zone',
+                slug: 'delivery-zone',
+                delivery_fee: 0,
+                minimum_order: 0,
+                is_active: true,
+            };
         }
     }
 
@@ -449,18 +482,20 @@ export async function checkDeliveryAvailability(params) {
     if (!matchedArea && (lat == null || lng == null) && rawAddressText.length >= 3) {
         try {
             const geocodeResult = await geocodeAddress(rawAddressText, {
-                centerLat: RESTAURANT_CENTER.lat,
-                centerLng: RESTAURANT_CENTER.lng,
+                centerLat,
+                centerLng,
             });
 
             if (geocodeResult && geocodeResult.success) {
                 const geoDist = geocodeResult.distanceKm;
                 if (geoDist > maxRadiusKm) {
-                    const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId);
+                    const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, geoDist, maxRadiusKm);
                     return {
                         available: false,
                         code: 'DELIVERY_OUT_OF_RANGE',
                         message: outOfDeliveryMsg,
+                        distanceKm: Math.round(geoDist * 10) / 10,
+                        maxRadiusKm,
                     };
                 }
 
@@ -471,8 +506,8 @@ export async function checkDeliveryAvailability(params) {
                 const activeAreas = allAreas.filter(a => a.is_active);
                 const rankedAreas = activeAreas.map(a => {
                     const coords = DELIVERY_AREA_COORDINATES[a.slug];
-                    const aLat = (a.latitude != null && a.latitude !== 0) ? a.latitude : (coords?.lat ?? RESTAURANT_CENTER.lat);
-                    const aLng = (a.longitude != null && a.longitude !== 0) ? a.longitude : (coords?.lng ?? RESTAURANT_CENTER.lng);
+                    const aLat = (a.latitude != null && a.latitude !== 0) ? a.latitude : (coords?.lat ?? centerLat);
+                    const aLng = (a.longitude != null && a.longitude !== 0) ? a.longitude : (coords?.lng ?? centerLng);
                     const dist = calculateHaversineDistance(lat, lng, aLat, aLng);
                     const rKm = (a.radius_km != null && a.radius_km > 0) ? a.radius_km : (coords?.radiusKm || 2.5);
                     return { area: a, distance: dist, radiusKm: rKm };
@@ -482,6 +517,15 @@ export async function checkDeliveryAvailability(params) {
 
                 if (rankedAreas.length > 0) {
                     matchedArea = rankedAreas[0].area;
+                } else {
+                    matchedArea = {
+                        id: 'radius-zone',
+                        name: 'Delivery Zone',
+                        slug: 'delivery-zone',
+                        delivery_fee: 0,
+                        minimum_order: 0,
+                        is_active: true,
+                    };
                 }
             }
         } catch (_) {}
@@ -490,17 +534,18 @@ export async function checkDeliveryAvailability(params) {
     // 7. If still not matched, area is not in approved coverage
     if (!matchedArea) {
         if (areaName || address) {
-            const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId);
+            const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, null, maxRadiusKm);
             return {
                 available: false,
                 code: 'DELIVERY_NOT_AVAILABLE',
                 message: outOfDeliveryMsg,
+                maxRadiusKm,
             };
         }
         return {
             available: false,
             code: 'INVALID_DELIVERY_REQUEST',
-            message: 'Delivery check karne ke liye barah-e-karam apna area ya address share karein.',
+            message: 'Delivery check karne ke liye barah-e-karam apna area ya WhatsApp location pin share karein.',
         };
     }
 
@@ -536,6 +581,10 @@ export async function checkDeliveryAvailability(params) {
         deliveryAddress += ` (Location Pin: ${mapUrl})`;
     }
 
+    const distToRest = (lat != null && lng != null)
+        ? Math.round(calculateHaversineDistance(lat, lng, centerLat, centerLng) * 10) / 10
+        : null;
+
     return {
         available: true,
         area: {
@@ -554,6 +603,8 @@ export async function checkDeliveryAvailability(params) {
         latitude: lat,
         longitude: lng,
         googleMapsUrl: mapUrl,
+        distanceKm: distToRest,
+        maxRadiusKm,
         ...(minMet ? {} : {
             code: 'DELIVERY_MINIMUM_NOT_MET',
             message: `Order subtotal of Rs. ${subtotalNum} is below minimum delivery order of Rs. ${minimumOrder}`,
