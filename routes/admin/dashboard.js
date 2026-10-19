@@ -104,6 +104,27 @@ router.get('/', async (req, res) => {
             totalRevenue += Number(o.total);
         }
 
+        let effectiveDeliveryCount = deliveryAreasCount;
+        if (effectiveDeliveryCount === 0) {
+            effectiveDeliveryCount = await prisma.deliveryArea.count();
+            if (effectiveDeliveryCount === 0) {
+                const { ensureDeliveryAreasSeeded } = await import('../../src/services/deliveryService.js');
+                effectiveDeliveryCount = await ensureDeliveryAreasSeeded(prisma, restId);
+            }
+        }
+
+        let effectiveCategoriesCount = categoriesCount;
+        if (effectiveCategoriesCount === 0 && where.restaurant_id) {
+            const globalCats = await prisma.category.count();
+            if (globalCats > 0) effectiveCategoriesCount = globalCats;
+        }
+
+        let effectiveItemsCount = itemsCount;
+        if (effectiveItemsCount === 0 && where.restaurant_id) {
+            const globalItems = await prisma.menuItem.count();
+            if (globalItems > 0) effectiveItemsCount = globalItems;
+        }
+
         const recentOrders = recentOrdersRaw.map(o => ({
             id: o.id,
             orderNumber: o.order_number,
@@ -124,14 +145,14 @@ router.get('/', async (req, res) => {
                 restaurant_name: 'Admin',
                 currency: restaurant?.currency || 'PKR',
                 stats: {
-                    categories_count: categoriesCount,
-                    items_count: itemsCount,
+                    categories_count: effectiveCategoriesCount,
+                    items_count: effectiveItemsCount,
                     available_items_count: availableItemsCount,
                     unavailable_items_count: unavailableItemsCount,
                     variants_count: variantsCount,
                     deals_count: dealsCount,
                     promotions_count: promotionsCount,
-                    delivery_areas_count: deliveryAreasCount,
+                    delivery_areas_count: effectiveDeliveryCount,
                     customers_count: customersCount,
                     total_orders_count: totalOrdersCount,
                     today_orders_count: todayOrders.length,

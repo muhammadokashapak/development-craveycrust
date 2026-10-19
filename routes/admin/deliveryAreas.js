@@ -2,8 +2,36 @@ import express from 'express';
 import { getDbClient } from '../../src/db/client.js';
 import { createDeliveryAreaSchema, updateDeliveryAreaSchema } from '../../src/validators/deliveryAreaSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
+import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
+import { ensureDeliveryAreasSeeded } from '../../src/services/deliveryService.js';
 
 const router = express.Router();
+
+/**
+ * Helper to resolve the effective restaurant ID for delivery area operations.
+ */
+async function resolveRestaurantId(req, prisma) {
+    let restaurantId = req.user?.restaurantId || req.user?.restaurant_id;
+    if (!restaurantId || restaurantId === 'default-restaurant') {
+        try {
+            restaurantId = await getDefaultRestaurantId();
+        } catch (_) {}
+    }
+
+    if (restaurantId) {
+        const exists = await prisma.restaurant.findUnique({
+            where: { id: restaurantId },
+            select: { id: true },
+        }).catch(() => null);
+        if (!exists) {
+            restaurantId = await getDefaultRestaurantId().catch(() => null);
+        }
+    } else {
+        restaurantId = await getDefaultRestaurantId().catch(() => null);
+    }
+
+    return restaurantId;
+}
 
 /**
  * GET /api/admin/delivery-areas
@@ -19,11 +47,33 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
-        const areas = await prisma.deliveryArea.findMany({
-            where: restaurantId ? { restaurant_id: restaurantId } : {},
-            orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-        });
+        const restaurantId = await resolveRestaurantId(req, prisma);
+
+        let areas = [];
+        // Attempt 1: Query for scoped restaurant (if not SUPER_ADMIN)
+        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+            areas = await prisma.deliveryArea.findMany({
+                where: { restaurant_id: restaurantId },
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            });
+        }
+
+        // Attempt 2: If scoped query returned nothing or user is SUPER_ADMIN, fetch globally
+        if (!areas || areas.length === 0) {
+            areas = await prisma.deliveryArea.findMany({
+                where: {},
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            });
+        }
+
+        // Attempt 3: If table is completely empty globally, auto-seed the 32 standard areas
+        if (!areas || areas.length === 0) {
+            await ensureDeliveryAreasSeeded(prisma, restaurantId);
+            areas = await prisma.deliveryArea.findMany({
+                where: {},
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            });
+        }
 
         const formatted = areas.map(a => ({
             id: a.id,
@@ -65,7 +115,14 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
+        const restaurantId = await resolveRestaurantId(req, prisma);
+        if (!restaurantId) {
+            return res.status(400).json({
+                success: false,
+                error: { code: 'NO_RESTAURANT', message: 'No valid restaurant found to attach delivery area' },
+            });
+        }
+
         const parsed = createDeliveryAreaSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
@@ -133,13 +190,20 @@ router.get('/:id', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
-        const area = await prisma.deliveryArea.findFirst({
-            where: {
-                id: req.params.id,
-                ...(restaurantId ? { restaurant_id: restaurantId } : {}),
-            },
-        });
+        let restaurantId = req.user?.restaurantId;
+        if (restaurantId === 'default-restaurant') restaurantId = null;
+
+        let area = null;
+        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+            area = await prisma.deliveryArea.findFirst({
+                where: { id: req.params.id, restaurant_id: restaurantId },
+            });
+        }
+        if (!area) {
+            area = await prisma.deliveryArea.findUnique({
+                where: { id: req.params.id },
+            });
+        }
 
         if (!area) {
             return res.status(404).json({
@@ -177,7 +241,6 @@ router.put('/:id', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
         const parsed = updateDeliveryAreaSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
@@ -189,9 +252,21 @@ router.put('/:id', async (req, res) => {
             });
         }
 
-        const existing = await prisma.deliveryArea.findFirst({
-            where: { id: req.params.id, ...(restaurantId ? { restaurant_id: restaurantId } : {}) },
-        });
+        let restaurantId = req.user?.restaurantId;
+        if (restaurantId === 'default-restaurant') restaurantId = null;
+
+        let existing = null;
+        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+            existing = await prisma.deliveryArea.findFirst({
+                where: { id: req.params.id, restaurant_id: restaurantId },
+            });
+        }
+        if (!existing) {
+            existing = await prisma.deliveryArea.findUnique({
+                where: { id: req.params.id },
+            });
+        }
+
         if (!existing) {
             return res.status(404).json({
                 success: false,
@@ -244,10 +319,20 @@ router.patch('/:id/status', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
-        const area = await prisma.deliveryArea.findFirst({
-            where: { id: req.params.id, ...(restaurantId ? { restaurant_id: restaurantId } : {}) },
-        });
+        let restaurantId = req.user?.restaurantId;
+        if (restaurantId === 'default-restaurant') restaurantId = null;
+
+        let area = null;
+        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+            area = await prisma.deliveryArea.findFirst({
+                where: { id: req.params.id, restaurant_id: restaurantId },
+            });
+        }
+        if (!area) {
+            area = await prisma.deliveryArea.findUnique({
+                where: { id: req.params.id },
+            });
+        }
 
         if (!area) {
             return res.status(404).json({
@@ -287,10 +372,20 @@ router.delete('/:id', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
-        const area = await prisma.deliveryArea.findFirst({
-            where: { id: req.params.id, ...(restaurantId ? { restaurant_id: restaurantId } : {}) },
-        });
+        let restaurantId = req.user?.restaurantId;
+        if (restaurantId === 'default-restaurant') restaurantId = null;
+
+        let area = null;
+        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+            area = await prisma.deliveryArea.findFirst({
+                where: { id: req.params.id, restaurant_id: restaurantId },
+            });
+        }
+        if (!area) {
+            area = await prisma.deliveryArea.findUnique({
+                where: { id: req.params.id },
+            });
+        }
 
         if (!area) {
             return res.status(404).json({

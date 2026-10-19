@@ -399,11 +399,28 @@ export async function resolveBusinessAnswer({
 
     // 2.1 Delivery Areas & Fee Inquiry
     if ((isDeliveryInfoQuery(cleanQuery) || intent === 'DELIVERY_AREAS_QUERY' || intent === 'DELIVERY_AREAS') && prisma) {
-        const activeAreas = await prisma.deliveryArea.findMany({
+        let activeAreas = await prisma.deliveryArea.findMany({
             where: { restaurant_id: restaurantId, is_active: true },
             orderBy: { sort_order: 'asc' },
             select: { name: true, delivery_fee: true },
         });
+
+        if (activeAreas.length === 0) {
+            activeAreas = await prisma.deliveryArea.findMany({
+                where: { is_active: true },
+                orderBy: { sort_order: 'asc' },
+                select: { name: true, delivery_fee: true },
+            });
+            if (activeAreas.length === 0) {
+                const { ensureDeliveryAreasSeeded } = await import('./deliveryService.js');
+                await ensureDeliveryAreasSeeded(prisma, restaurantId);
+                activeAreas = await prisma.deliveryArea.findMany({
+                    where: { is_active: true },
+                    orderBy: { sort_order: 'asc' },
+                    select: { name: true, delivery_fee: true },
+                });
+            }
+        }
 
         const restName = restaurant?.name && !/cravey/i.test(restaurant.name) ? restaurant.name : 'Store';
 

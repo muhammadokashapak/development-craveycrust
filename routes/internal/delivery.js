@@ -21,13 +21,28 @@ router.get(['/', '/areas'], async (req, res) => {
         }
 
         const restaurantId = await getDefaultRestaurantId();
-        const areas = await prisma.deliveryArea.findMany({
+        let areas = await prisma.deliveryArea.findMany({
             where: {
                 restaurant_id: restaurantId,
                 is_active: true,
             },
             orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
         });
+
+        if (areas.length === 0) {
+            areas = await prisma.deliveryArea.findMany({
+                where: { is_active: true },
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            });
+            if (areas.length === 0) {
+                const { ensureDeliveryAreasSeeded } = await import('../../src/services/deliveryService.js');
+                await ensureDeliveryAreasSeeded(prisma, restaurantId);
+                areas = await prisma.deliveryArea.findMany({
+                    where: { is_active: true },
+                    orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+                });
+            }
+        }
 
         const formatted = areas.map(a => ({
             id: a.id,

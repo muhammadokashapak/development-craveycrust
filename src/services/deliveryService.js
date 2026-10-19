@@ -106,8 +106,88 @@ export const SUB_AREA_TO_PRIMARY = {
     'chistiyan-market': 'tarlai',
     'zamna-bad':        'taramari',
     'p-v-scheme':       'taramari',
-    'tali-mor':         'taramari',
 };
+
+/**
+ * Auto-seeds standard delivery areas if none exist.
+ * Idempotent: uses upsert on (restaurant_id, slug).
+ *
+ * @param {object} [prismaClient]
+ * @param {string} [restaurantId]
+ * @returns {Promise<number>} Number of areas seeded/confirmed
+ */
+export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantId = null) {
+    const prisma = prismaClient || getDbClient();
+    if (!prisma) return 0;
+
+    try {
+        let rid = restaurantId;
+        if (!rid || rid === 'default-restaurant') {
+            rid = await getDefaultRestaurantId().catch(() => null);
+        } else {
+            const exists = await prisma.restaurant.findUnique({
+                where: { id: rid },
+                select: { id: true },
+            }).catch(() => null);
+            if (!exists) {
+                rid = await getDefaultRestaurantId().catch(() => null);
+            }
+        }
+
+        if (!rid) return 0;
+
+        const existingCount = await prisma.deliveryArea.count({
+            where: { restaurant_id: rid },
+        });
+
+        if (existingCount > 0) {
+            return existingCount;
+        }
+
+        console.log(`[DELIVERY] Auto-seeding 32 delivery areas for restaurant ${rid}...`);
+        const entries = Object.entries(DELIVERY_AREA_COORDINATES);
+        let sortOrder = 1;
+
+        for (const [slug, item] of entries) {
+            await prisma.deliveryArea.upsert({
+                where: {
+                    restaurant_id_slug: {
+                        restaurant_id: rid,
+                        slug,
+                    },
+                },
+                update: {
+                    name: item.name,
+                    delivery_fee: 0,
+                    minimum_order: 0,
+                    is_active: true,
+                    latitude: item.lat,
+                    longitude: item.lng,
+                    radius_km: item.radiusKm,
+                },
+                create: {
+                    restaurant_id: rid,
+                    name: item.name,
+                    slug,
+                    delivery_fee: 0,
+                    minimum_order: 0,
+                    is_active: true,
+                    sort_order: sortOrder++,
+                    latitude: item.lat,
+                    longitude: item.lng,
+                    radius_km: item.radiusKm,
+                },
+            });
+        }
+
+        console.log(`[DELIVERY] ✅ 32 delivery areas successfully seeded for restaurant ${rid}.`);
+        return entries.length;
+    } catch (err) {
+        console.error('[DELIVERY] Error auto-seeding delivery areas:', err.message);
+        return 0;
+    }
+}
+
 
 function escapeRegex(string) {
     return string.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -280,10 +360,24 @@ export async function checkDeliveryAvailability(params) {
     }
 
     // 2. Fetch all configured areas for this restaurant
-    const allAreas = await prisma.deliveryArea.findMany({
+    let allAreas = await prisma.deliveryArea.findMany({
         where: { restaurant_id: restaurantId },
         orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
     });
+
+    if (allAreas.length === 0) {
+        allAreas = await prisma.deliveryArea.findMany({
+            where: {},
+            orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+        });
+        if (allAreas.length === 0) {
+            await ensureDeliveryAreasSeeded(prisma, restaurantId);
+            allAreas = await prisma.deliveryArea.findMany({
+                where: {},
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            });
+        }
+    }
 
     // 3. If GPS coordinates provided, match by coordinates first
     if (!matchedArea && lat != null && lng != null) {
