@@ -52,9 +52,25 @@ export function clearLastDiscussedItem(sessionKey) {
     }
 }
 
+export function isDeliveryAreaInquiry(text) {
+    if (!text || typeof text !== 'string') return false;
+    const lower = text.toLowerCase().trim();
+    return /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|hai|he|hy|h|\?)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|available|possible)\s*(?:hai|he|hy|h|\?)?/i.test(lower) ||
+           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|range|zone)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s*(?:area|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|\?)/i.test(lower) ||
+           /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?delivery\b/i.test(lower) ||
+           /\b(?:area\s*(?:mein|me|mai|pe|par)\s*(?:aati|aata|ata|ati|hoti|hota))\b/i.test(lower);
+}
+
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
     let cleaned = text.trim();
+
+    // 0. Do not treat delivery inquiries/questions as delivery address
+    if (isDeliveryAreaInquiry(cleaned)) {
+        return null;
+    }
 
     // 1. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
     cleaned = cleaned.replace(/^(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|mera\s*ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|ad(?:d)?re(?:e)?s(?:s)?|pata|location)\s*[:=-]?\s*/i, ' ');
@@ -80,8 +96,15 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhejna|bhej)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|easypaisa|easy\s*paisa|ep|cod|cash\s*on\s*delivery|cash|payment\s*(?:method)?)\b/gi, ' ');
 
+    // 4. Strip trailing conversational endings cleanly (e.g. "par karni ha", "karni hai", "par", "ha", etc.)
+    let prev;
+    do {
+        prev = cleaned;
+        cleaned = cleaned.replace(/\s+(?:par|pe|mein|me|mai|ko|karni|krni|karna|krna|karwana|krwana|karein|kar|kr|bhejo|bhej|bhejna|send|deliver|delivery|parcel|pack|do|dein|karo|kro|krdo|kardo|ha|hai|h|he|hy|ho|chahiye|hoga|hogi|plz|please)$/i, '');
+    } while (cleaned !== prev);
+
     cleaned = cleaned.replace(/^[,\s.-]+|[,\s.-]+$/g, '').replace(/\s+/g, ' ').trim();
-    const INVALID_ADDR_STRICT = /^(?:par|pe|idhar|idr|yahan|wahan|send|bhej|bhejo|kro|karo|krdo|kardo|ha|hai|hy|h|he|chahiye|ho|badalna|change|update|location|ad(?:d)?re(?:e)?s(?:s)?|es\s*location|is\s*location|ye\s*location|ye\s*mere\s*location|ye\s*meri\s*location|meri\s*location)$/i;
+    const INVALID_ADDR_STRICT = /^(?:par|pe|idhar|idr|yahan|wahan|send|bhej|bhejo|kro|karo|krdo|kardo|ha|hai|hy|h|he|chahiye|ho|badalna|change|update|location|ad(?:d)?re(?:e)?s(?:s)?|es\s*location|is\s*location|ye\s*location|ye\s*mere\s*location|ye\s*meri\s*location|meri\s*location|area\s*me\s*aati\s*hai\??|delivery\s*area\??)$/i;
     if (!cleaned || cleaned.length < 4 || INVALID_ADDR_STRICT.test(cleaned)) {
         return null;
     }
@@ -241,29 +264,31 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const locBefore = textForAddr.match(/([^,\n]+?)\s+(?:meari|meri)\s+location\b/i);
     const locExplicit = textForAddr.match(/(?:(?:meari|mera|apni)\s+)?location\s*(?:ha|hai|h)?\s*[:=-]?\s*([^,\n]+(?:,\s*[^,\n]+)*)/i);
 
-    if (addrUpdateMatch) {
-        const rawAddrCandidate = addrUpdateMatch[1].trim();
-        const isOnlyActionVerb = /^(?:krna|karna|krni|karni|badalna|change|update|chahiye|kar\s*do|kr\s*do|kardo|krdo|dein|karein|kar\s*dein|kr\s*dein|plz|please|bhai)\s*(?:ha|hai|hy|h|he)?$/i.test(rawAddrCandidate);
-        if (!isOnlyActionVerb) {
-            address = cleanExtractedAddress(rawAddrCandidate);
-        }
-    } else if (addrExplicit) {
-        address = cleanExtractedAddress(addrExplicit[1]);
-    } else if (locBefore) {
-        address = cleanExtractedAddress(locBefore[1]);
-    } else if (locExplicit) {
-        address = cleanExtractedAddress(locExplicit[1]);
-    } else if (!paymentMethod && (!name || knownDetails.name) && ADDRESS_INDICATORS.test(lower)) {
-        const potentialAddr = cleanExtractedAddress(textForAddr);
-        if (potentialAddr && (ADDRESS_INDICATORS.test(potentialAddr) || potentialAddr.length >= 4) && potentialAddr.length <= 120) {
-            address = potentialAddr;
-        }
-    } else if (knownDetails.name && (knownDetails.phoneConfirmed || knownDetails.phone) && !knownDetails.address && !paymentMethod && !phone) {
-        // Customer is actively at Step 3 (awaiting delivery address).
-        const candidateAddr = cleanExtractedAddress(textForAddr);
-        const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|nahin|nhi|na|no|nope|theek|ok|done|hi|hello|hey|suno|bhai)\b/i.test(lower.trim());
-        if (candidateAddr && candidateAddr.length >= 3 && candidateAddr.length <= 120 && !isNotAddress) {
-            address = candidateAddr;
+    if (!isDeliveryAreaInquiry(textForAddr)) {
+        if (addrUpdateMatch) {
+            const rawAddrCandidate = addrUpdateMatch[1].trim();
+            const isOnlyActionVerb = /^(?:krna|karna|krni|karni|badalna|change|update|chahiye|kar\s*do|kr\s*do|kardo|krdo|dein|karein|kar\s*dein|kr\s*dein|plz|please|bhai)\s*(?:ha|hai|hy|h|he)?$/i.test(rawAddrCandidate);
+            if (!isOnlyActionVerb) {
+                address = cleanExtractedAddress(rawAddrCandidate);
+            }
+        } else if (addrExplicit) {
+            address = cleanExtractedAddress(addrExplicit[1]);
+        } else if (locBefore) {
+            address = cleanExtractedAddress(locBefore[1]);
+        } else if (locExplicit) {
+            address = cleanExtractedAddress(locExplicit[1]);
+        } else if (!paymentMethod && (!name || knownDetails.name) && ADDRESS_INDICATORS.test(lower)) {
+            const potentialAddr = cleanExtractedAddress(textForAddr);
+            if (potentialAddr && (ADDRESS_INDICATORS.test(potentialAddr) || potentialAddr.length >= 4) && potentialAddr.length <= 120) {
+                address = potentialAddr;
+            }
+        } else if (knownDetails.name && (knownDetails.phoneConfirmed || knownDetails.phone) && !knownDetails.address && !paymentMethod && !phone) {
+            // Customer is actively at Step 3 (awaiting delivery address).
+            const candidateAddr = cleanExtractedAddress(textForAddr);
+            const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|nahin|nhi|na|no|nope|theek|ok|done|hi|hello|hey|suno|bhai)\b/i.test(lower.trim());
+            if (candidateAddr && candidateAddr.length >= 3 && candidateAddr.length <= 120 && !isNotAddress) {
+                address = candidateAddr;
+            }
         }
     }
 
@@ -434,6 +459,13 @@ export async function getNextCheckoutStepResponse({
                 longitude: details.location?.longitude,
                 subtotal,
             });
+            if (dCheck && !dCheck.available) {
+                return {
+                    handled: true,
+                    routeName: 'final_order_out_of_range',
+                    reply: `${dCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+                };
+            }
             if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
                 deliveryFee = dCheck.deliveryFee;
                 deliveryFeeKnown = true;
@@ -2251,6 +2283,81 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
+    // ── Check Delivery Area / Coverage Inquiries (Zero Tokens) ──
+    if (isDeliveryAreaInquiry(raw)) {
+        try {
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : {};
+            const cache = await getCatalogCache();
+            const restId = cache?.restId || (await (await import('./restaurantService.js')).getDefaultRestaurantId());
+
+            let targetAddr = currDetails.address || currDetails.location?.address;
+            let targetLat = currDetails.location?.latitude;
+            let targetLng = currDetails.location?.longitude;
+
+            // If no address in session, check if an area was mentioned in the text itself
+            if (!targetAddr && targetLat == null) {
+                const { extractLocationFromText } = await import('../../utils/location.js');
+                const loc = extractLocationFromText(raw);
+                if (loc?.latitude != null && loc?.longitude != null) {
+                    targetLat = loc.latitude;
+                    targetLng = loc.longitude;
+                } else {
+                    const cleanedCandidate = cleanExtractedAddress(raw.replace(/\b(?:delivery|deliver|area|range|zone|mein|me|mai|pe|par|aati|aata|ata|ati|hoti|hota|krte|karte|possible|available|hai|he|hy|h|\?|kya|kia|ye|yeh|is)\b/gi, ' '));
+                    if (cleanedCandidate && cleanedCandidate.length >= 3) {
+                        targetAddr = cleanedCandidate;
+                    }
+                }
+            }
+
+            if (targetAddr || targetLat != null) {
+                const { checkDeliveryAvailability } = await import('./deliveryService.js');
+                const dCheck = await checkDeliveryAvailability({
+                    restaurantId: restId,
+                    address: targetAddr,
+                    latitude: targetLat,
+                    longitude: targetLng,
+                });
+
+                const displayLoc = targetAddr || (targetLat ? `[Google Maps Pin](https://www.google.com/maps?q=${targetLat},${targetLng})` : 'Aap ki location');
+
+                if (dCheck.available) {
+                    const distInfo = dCheck.distanceKm != null ? ` (approx. ${dCheck.distanceKm} km door)` : '';
+                    let reply = `Ji bilkul ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Aap ki location (*${displayLoc}*) hamari delivery range mein aati hai${distInfo}. 👍\n\n`;
+                    if (!currDetails.paymentMethod) {
+                        reply += `Payment method kaunsa pasand karenge — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`;
+                    } else {
+                        reply += `Order confirm karne ke liye “Confirm” ya “Haan” likhein!`;
+                    }
+                    return {
+                        handled: true,
+                        routeName: 'delivery_area_confirmed',
+                        reply,
+                    };
+                } else {
+                    if (userSessionId && currDetails.address) {
+                        updateSessionOrderDetails(userSessionId, { address: null, location: null }, cleanPhone);
+                    }
+                    return {
+                        handled: true,
+                        routeName: 'delivery_area_denied',
+                        reply: `${dCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+                    };
+                }
+            } else {
+                const configuredRadius = cache?.maxDeliveryRadiusKm || 10;
+                return {
+                    handled: true,
+                    routeName: 'delivery_general_inquiry',
+                    reply: `Ji bilkul! Cravey Crust hamare restaurant se ${configuredRadius} KM circular radius ke andar delivery provide karta hai. 🚚\n\nBaraye meherbani apna delivery address ya WhatsApp location pin share karein taake hum aapki delivery confirm kar sakein! 📍`,
+                };
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing delivery area inquiry:', err.message);
+        }
+    }
+
     // ── Check Customer Multi-Field Checkout Input (Name, Address, Payment, Phone) during active cart (Zero Tokens) ──
     if (userSessionId && !hasCartOrOrderAction) {
         try {
@@ -2281,6 +2388,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (extracted.address && (!currDetails.address || extracted.address.toLowerCase() !== currDetails.address.toLowerCase())) {
                     const { extractLocationFromText } = await import('../../utils/location.js');
                     const loc = extractLocationFromText(raw);
+
+                    // VALIDATE DELIVERY RADIUS BEFORE SAVING ADDRESS
+                    const { checkDeliveryAvailability } = await import('./deliveryService.js');
+                    const delCheck = await checkDeliveryAvailability({
+                        restaurantId: cache?.restId,
+                        address: extracted.address,
+                        latitude: loc?.latitude,
+                        longitude: loc?.longitude,
+                    });
+
+                    if (!delCheck.available) {
+                        return {
+                            handled: true,
+                            routeName: 'address_out_of_range',
+                            reply: `${delCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+                        };
+                    }
+
                     if (loc?.latitude != null && loc?.longitude != null) {
                         updatePayload.location = loc;
                         updatePayload.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
@@ -2291,6 +2416,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         updatePayload.location = null;
                         updatePayload.locationConfirmed = true;
                         updatePayload.locationAwaitingConfirmation = false;
+                    }
+                    if (delCheck.distanceKm != null) {
+                        updatePayload.distanceKm = delCheck.distanceKm;
                     }
                     isAddressUpdated = Boolean(currDetails.address || currDetails.location);
                 }
@@ -2340,7 +2468,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     if (isNameUpdated) {
                         introMessage = `Theek hai ${updatePayload.name} bhai! Aap ka naam update kar diya hai (*${updatePayload.name}*). 😊`;
                     } else if (isAddressUpdated) {
-                        introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Delivery address update kar diya hai (*${updatePayload.address}*). 📍`;
+                        const distSuffix = updatePayload.distanceKm != null ? ` (delivery range mein available hai - approx. ${updatePayload.distanceKm} km)` : '';
+                        introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Delivery address update kar diya hai (*${updatePayload.address}*)${distSuffix}. 📍`;
                     } else if (isPaymentUpdated) {
                         introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Payment method update kar diya hai (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*). 💵`;
                     } else if (isPhoneUpdated) {
@@ -2348,7 +2477,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     } else if (updatePayload.locationAwaitingConfirmation) {
                         introMessage = '';
                     } else if (updatePayload.address) {
-                        introMessage = `Delivery address (*${updatePayload.address}*) note kar liya hai. 📍`;
+                        const distSuffix = updatePayload.distanceKm != null ? ` (delivery range mein available hai - approx. ${updatePayload.distanceKm} km)` : '';
+                        introMessage = `Delivery address (*${updatePayload.address}*) note kar liya hai${distSuffix}. 📍`;
                     } else if (updatePayload.paymentMethod) {
                         introMessage = `Payment method (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*) note kar liya hai. 💵`;
                     } else if (updatePayload.phoneConfirmed) {
