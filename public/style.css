@@ -8627,9 +8627,14 @@ body.is-superadmin[data-theme="dark"] #themeToggleBtn {
   padding: 6px !important;
   min-width: 175px !important;
   z-index: 9999 !important;
-  display: flex !important;
+  display: none !important;
   flex-direction: column !important;
   gap: 2px !important;
+}
+
+.chat-export-menu.is-open,
+.chat-export-menu.show {
+  display: flex !important;
 }
 
 .chat-export-menu-item {

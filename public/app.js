@@ -5736,7 +5736,9 @@ async function openCustomerChatThread(customer) {
     badge.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> <span>VERIFIED WHATSAPP</span>`;
   }
   if (exportBtn) exportBtn.style.display = 'inline-flex';
-  if (exportMenu) exportMenu.style.display = 'none';
+  if (exportMenu) {
+    exportMenu.classList.remove('is-open', 'show');
+  }
 
   await fetchAndRenderChatMessages(customer.chatId);
 }
@@ -6060,12 +6062,12 @@ const chatExportMenu = document.getElementById('chatExportMenu');
 if (chatExportBtn && chatExportMenu) {
   chatExportBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    chatExportMenu.style.display = (chatExportMenu.style.display === 'none' || !chatExportMenu.style.display) ? 'flex' : 'none';
+    chatExportMenu.classList.toggle('is-open');
   });
 
   document.addEventListener('click', (e) => {
     if (!chatExportBtn.contains(e.target) && !chatExportMenu.contains(e.target)) {
-      chatExportMenu.style.display = 'none';
+      chatExportMenu.classList.remove('is-open', 'show');
     }
   });
 }
@@ -6073,7 +6075,7 @@ if (chatExportBtn && chatExportMenu) {
 const exportChatTxtBtn = document.getElementById('exportChatTxtBtn');
 if (exportChatTxtBtn) {
   exportChatTxtBtn.addEventListener('click', () => {
-    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    if (chatExportMenu) chatExportMenu.classList.remove('is-open', 'show');
     exportCurrentChat('txt');
   });
 }
@@ -6081,7 +6083,7 @@ if (exportChatTxtBtn) {
 const exportChatCsvBtn = document.getElementById('exportChatCsvBtn');
 if (exportChatCsvBtn) {
   exportChatCsvBtn.addEventListener('click', () => {
-    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    if (chatExportMenu) chatExportMenu.classList.remove('is-open', 'show');
     exportCurrentChat('csv');
   });
 }
@@ -6089,7 +6091,7 @@ if (exportChatCsvBtn) {
 const exportChatJsonBtn = document.getElementById('exportChatJsonBtn');
 if (exportChatJsonBtn) {
   exportChatJsonBtn.addEventListener('click', () => {
-    if (chatExportMenu) chatExportMenu.style.display = 'none';
+    if (chatExportMenu) chatExportMenu.classList.remove('is-open', 'show');
     exportCurrentChat('json');
   });
 }
