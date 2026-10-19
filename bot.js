@@ -1436,13 +1436,18 @@ async function handleMessage(sock, msg, session) {
             }
             console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
 
+            const incomingUserMsg = text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null)));
+            if (!incomingUserMsg) {
+                return; // Ignore empty protocol or cipher stubs
+            }
+
             // Record incoming customer chat
             recordChatMessage({
                 chatId: jid,
                 phone: customerPhone,
                 customerName: customerName,
                 sender: 'user',
-                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : 'Message')),
+                message: incomingUserMsg,
             }).catch(() => {});
 
             try {
@@ -1519,13 +1524,18 @@ async function handleMessage(sock, msg, session) {
                 customerName = liveDetailsOrder.name;
             }
 
+            const incomingOrderMsg = text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null)));
+            if (!incomingOrderMsg) {
+                return;
+            }
+
             // Record incoming customer chat
             recordChatMessage({
                 chatId: jid,
                 phone: customerPhone,
                 customerName: customerName,
                 sender: 'user',
-                message: text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : 'Message')),
+                message: incomingOrderMsg,
             }).catch(() => {});
 
             const normalized = {

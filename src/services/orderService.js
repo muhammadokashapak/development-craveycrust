@@ -275,6 +275,8 @@ export async function createOrder(params) {
         if (!finalDeliveryAddress) {
             if (delivery?.latitude != null && delivery?.longitude != null) {
                 finalDeliveryAddress = `${areaLabel ? areaLabel + ' ' : ''}(Location Pin: https://www.google.com/maps?q=${delivery.latitude},${delivery.longitude})`;
+            } else if (delivery?.address && /google\.com\/maps|location\s*pin|maps/i.test(delivery.address)) {
+                finalDeliveryAddress = delivery.address;
             }
         }
 

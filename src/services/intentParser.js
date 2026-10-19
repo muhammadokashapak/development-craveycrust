@@ -68,6 +68,8 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/\b(?:sanam\s+chow?k)\b/gi, 'Sanam Chok');
 
     // 3. Remove conversational filler phrases only when combined with action verbs
+    cleaned = cleaned.replace(/\b(?:es|is|yeh|ye|yahi|yehi|wahi|meri|mera|apni)\s+(?:location|pata|address|jagah)\s*(?:par|pe|idhar|bhi)?\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:par|pe|idhar|idr|yahan|wahan)\s+(?:send|bhej|bhejo|deliver|parcel)\s*(?:kro|karo|krdo|kardo|kar\s*do|kr\s*do)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:ye|yeh|is|mera|apna|sab)?\s*(?:deals?|order|items?)\s*(?:bhi)?\s*(?:parcel|deliver|delivery|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|karo|kro|krna|karna|karein|chahiye)?\s*(?:ha|hai|h|ho)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:khana)\s+(?:bhi\s+)?(?:deliver|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|karo|kro|karein|chahiye)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:mein|me|mai|mei|mn|par|pe|ko)\s+(?:delivery\s+)?(?:krni|karni|h|hai|karein)\b/gi, ' ');
@@ -79,7 +81,11 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|easypaisa|easy\s*paisa|ep|cod|cash\s*on\s*delivery|cash|payment\s*(?:method)?)\b/gi, ' ');
 
     cleaned = cleaned.replace(/^[,\s.-]+|[,\s.-]+$/g, '').replace(/\s+/g, ' ').trim();
-    if (!cleaned || cleaned.length < 3 || /^(?:krna|karna|krni|karni|kar\s*do|kr\s*do|kardo|krdo|ha|hai|hy|h|he|chahiye|ho|badalna|change|update)$/i.test(cleaned)) {
+    const INVALID_ADDR_STRICT = /^(?:par|pe|idhar|idr|yahan|wahan|send|bhej|bhejo|kro|karo|krdo|kardo|ha|hai|hy|h|he|chahiye|ho|badalna|change|update|location|ad(?:d)?re(?:e)?s(?:s)?|es\s*location|is\s*location|ye\s*location|ye\s*mere\s*location|ye\s*meri\s*location|meri\s*location)$/i;
+    if (!cleaned || cleaned.length < 4 || INVALID_ADDR_STRICT.test(cleaned)) {
+        return null;
+    }
+    if (!cleaned.includes(' ') && !ADDRESS_INDICATORS.test(cleaned)) {
         return null;
     }
     return cleaned;
@@ -154,18 +160,28 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
                 }
             }
         } else {
-            // Any sequence of 7+ digits provided in context of checkout
-            const anyDigitsMatch = raw.match(/\b([+\d]{7,16})\b/);
-            if (anyDigitsMatch && !phone) {
-                const rawDigits = anyDigitsMatch[1].replace(/\D/g, '');
-                if (/^03\d{9}$/.test(rawDigits)) {
-                    phone = rawDigits;
-                } else if (/^3\d{9}$/.test(rawDigits)) {
-                    phone = '0' + rawDigits;
-                } else if (/^923\d{9}$/.test(rawDigits)) {
-                    phone = '0' + rawDigits.slice(2);
-                } else if (rawDigits.length >= 7 && rawDigits.length <= 15) {
-                    invalidPhone = rawDigits;
+            // Strip URLs and decimal numbers to prevent coordinates (e.g. 33.6010934) from being treated as phone numbers
+            const textWithoutUrlsAndDecimals = raw.replace(/https?:\/\/\S+/gi, '').replace(/\b\d+\.\d+\b/g, '');
+            const phMatchInText = textWithoutUrlsAndDecimals.match(/(?:03\d{9}|\+?923\d{9})/);
+            if (phMatchInText) {
+                phone = phMatchInText[0].replace(/\D/g, '');
+                if (phone.startsWith('92')) phone = '0' + phone.slice(2);
+            } else {
+                const hasExplicitPhoneKeyword = /(?:number|numbr|numebr|no|phone|rabta|contact)/i.test(raw);
+                if (hasExplicitPhoneKeyword || isAwaitingPhone) {
+                    const anyDigitsMatch = textWithoutUrlsAndDecimals.match(/\b([+\d]{7,16})\b/);
+                    if (anyDigitsMatch && !phone) {
+                        const rawDigits = anyDigitsMatch[1].replace(/\D/g, '');
+                        if (/^03\d{9}$/.test(rawDigits)) {
+                            phone = rawDigits;
+                        } else if (/^3\d{9}$/.test(rawDigits)) {
+                            phone = '0' + rawDigits;
+                        } else if (/^923\d{9}$/.test(rawDigits)) {
+                            phone = '0' + rawDigits.slice(2);
+                        } else if (rawDigits.length >= 7 && rawDigits.length <= 15) {
+                            invalidPhone = rawDigits;
+                        }
+                    }
                 }
             }
         }
@@ -328,8 +344,9 @@ export async function getNextCheckoutStepResponse({
         };
     }
 
-    // STEP 2: Phone Confirmation
-    if (!details.phoneConfirmed && !details.phone) {
+    // STEP 2: Phone Confirmation (Never re-ask if phone already confirmed, or if customer has already progressed to address/location/payment)
+    const phoneAlreadyEstablished = Boolean(details.phoneConfirmed || details.phone || details.address || details.location || details.paymentMethod || details.extraItemsAnswered || details.awaitingFinalConfirmation);
+    if (!phoneAlreadyEstablished) {
         return {
             handled: true,
             routeName: 'step_phone_needed',
@@ -337,6 +354,8 @@ export async function getNextCheckoutStepResponse({
             reply: (introMessage ? `${introMessage}\n\n` : '') +
                 `Shukriya ${customerName}! Rabtay ke liye rider ko yahi WhatsApp number (*${displayPhone}*) dein ya koi doosra contact number likhna hai?`,
         };
+    } else if (!details.phoneConfirmed) {
+        details.phoneConfirmed = true;
     }
 
     // STEP 3: Delivery Address or Location Pin
@@ -1899,10 +1918,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
             // If customer has selected payment method (or address/location exists)
-            if (currDetails?.paymentMethod) {
+            if (currDetails?.paymentMethod || currDetails?.address || currDetails?.location) {
                 currDetails.extraItemsAnswered = true;
                 currDetails.extraItemsInquired = true;
-                updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true, extraItemsInquired: true }, cleanPhone);
+                currDetails.phoneConfirmed = true; // Lock phone confirmation so it never loops back
+                updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true, extraItemsInquired: true, phoneConfirmed: true }, cleanPhone);
 
                 const { getActiveCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
@@ -1932,45 +1952,55 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const { getSessionOrderDetails, clearSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const details = getSessionOrderDetails(userSessionId, cleanPhone);
-            const { getActiveCart } = await import('./cartService.js');
-            const cache = await getCatalogCache();
-            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-            const readyToConfirm = details.name && (details.address || details.location) && (details.paymentMethod || 'COD');
-            if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation) {
-                const finalPayment = details.paymentMethod || 'COD';
-                const { createOrder } = await import('./orderService.js');
-                const res = await createOrder({
-                    restaurantId: cache.restId,
-                    sessionKey: userSessionId,
-                    customerName: details.name || 'Customer',
-                    phone: details.phone || cleanPhone,
-                    delivery: {
-                        address: details.address || details.location?.address || 'Google Maps Location Pin',
-                        latitude: details.location?.latitude ?? null,
-                        longitude: details.location?.longitude ?? null,
-                    },
-                    paymentMethod: finalPayment,
-                    sock,
-                });
-                const orderNum = res.order?.orderNumber || res.order?.order_number;
-                const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
-                if (orderNum) {
-                    clearSessionOrderDetails(userSessionId, cleanPhone);
-                    _lastDiscussedDealBySession.delete(userSessionId);
-                    const customerName = details.name ? details.name.trim() : 'Customer';
-                    return {
-                        handled: true,
-                        routeName: 'fast_order_confirm',
-                        reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
-                    };
+
+            // Guard: Do not confirm order if customer was specifically answering the Step 2 phone confirmation
+            const isWaitingForPhone = Boolean(details?.name && !details?.phoneConfirmed && !details?.phone && !details?.address && !details?.location && !details?.paymentMethod);
+            if (isWaitingForPhone) {
+                // Let isPhoneAffirmativeWhenAwaiting below handle this affirmative response!
+            } else {
+                const { getActiveCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                const readyToConfirm = details.name && (details.address || details.location) && (details.paymentMethod || 'COD') && (details.phoneConfirmed || details.phone);
+                if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation) {
+                    const finalPayment = details.paymentMethod || 'COD';
+                    const { createOrder } = await import('./orderService.js');
+                    const res = await createOrder({
+                        restaurantId: cache.restId,
+                        sessionKey: userSessionId,
+                        customerName: details.name || 'Customer',
+                        phone: details.phone || cleanPhone,
+                        delivery: {
+                            address: details.address || details.location?.address || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
+                            latitude: details.location?.latitude ?? null,
+                            longitude: details.location?.longitude ?? null,
+                        },
+                        paymentMethod: finalPayment,
+                        sock,
+                    });
+                    const orderNum = res.order?.orderNumber || res.order?.order_number;
+                    const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                    if (orderNum) {
+                        clearSessionOrderDetails(userSessionId, cleanPhone);
+                        _lastDiscussedDealBySession.delete(userSessionId);
+                        const customerName = details.name ? details.name.trim() : 'Customer';
+                        return {
+                            handled: true,
+                            routeName: 'fast_order_confirm',
+                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
+                        };
+                    }
                 }
             }
         } catch (err) {
             console.error('[FAST_ROUTE] Error booking confirmed order:', err.message);
+            const userFriendlyMsg = (err.code === 'DELIVERY_ADDRESS_REQUIRED' || /delivery address|location pin/i.test(err.message))
+                ? 'Baraye meherbani delivery ke liye apna mukammal address ya WhatsApp location pin bhej dein taake hum aap ka order book kar sakein! 📍'
+                : 'Maazrat! Aap ka order is waqt process nahi ho saka. Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.';
             return {
                 handled: true,
                 routeName: 'fast_order_confirm_failed',
-                reply: `Maazrat! Aap ka order is waqt process nahi ho saka (${err.message || 'System error'}). Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.`,
+                reply: userFriendlyMsg,
             };
         }
     }

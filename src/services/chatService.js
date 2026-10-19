@@ -158,6 +158,9 @@ export async function recordChatMessage({
     const cleanChatId = String(chatId).trim();
     let cleanPhone = sanitizePhone(phone, cleanChatId);
     const cleanMsg = typeof message === 'string' ? message.trim() : JSON.stringify(message);
+    // Discard empty or dummy protocol stubs
+    if (!cleanMsg || cleanMsg === 'Message') return null;
+
     const cleanSender = (sender === 'bot' || sender === 'agent') ? 'bot' : 'user';
     const timestamp = new Date();
 
@@ -343,6 +346,7 @@ export async function getConversations({ restaurantId, search, limit = 50, page 
             });
 
             for (const msg of dbMsgs) {
+                if (!msg.message || msg.message.trim() === 'Message') continue;
                 const key = msg.chat_id;
                 if (!conversationsMap.has(key)) {
                     conversationsMap.set(key, {
@@ -371,6 +375,7 @@ export async function getConversations({ restaurantId, search, limit = 50, page 
     // 2. Merge / Fallback to local memory store
     for (let i = _localChatStore.length - 1; i >= 0; i--) {
         const msg = _localChatStore[i];
+        if (!msg.message || msg.message.trim() === 'Message') continue;
         const key = msg.chat_id;
         if (!conversationsMap.has(key)) {
             conversationsMap.set(key, {
@@ -682,6 +687,7 @@ export async function getCustomerChatMessages(chatId, { restaurantId, limit = 20
         }
     }
 
+    messages = messages.filter(m => m.message && m.message.trim() && m.message.trim() !== 'Message');
     messages.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
     return messages.slice(-limit);
 }
