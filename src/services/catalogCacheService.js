@@ -238,11 +238,6 @@ Phone: ${storePhone}
 Min Order: Rs. ${minOrder} | Default Delivery Fee: Rs. ${deliveryFee}
 COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'} (${easypaisaNumber} - ${accountName})`;
 
-        // ── 5. Compact Knowledge & FAQ Summary for AI Prompt (Saves 4,000+ Tokens) ──
-        const cachedFaqs = `• Free Delivery Areas: Ghauri Town (All Phases), Ghauri VIP, Taramari, Tarlai, Burma, Khana Pull, Rehman Enclave, Sanam Chowk, Shakral, Madina Town, Bilal Town, Gulzar-e-Quaid, Gulberg Green. Delivery radius 10KM.
-• Payment: COD or advance EasyPaisa (${easypaisaNumber} - ${accountName}).
-• Food Quality: 100% Halal fresh dough pizzas & burgers.`;
-
         const defaultOutOfDeliveryMsg = 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.\n\nBarah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!';
         const outOfDeliverySetting = (restaurant?.settings || []).find(s => s.key === 'out_of_delivery_range_message');
         const outOfDeliveryMessage = (outOfDeliverySetting?.value && outOfDeliverySetting.value.trim()) ? outOfDeliverySetting.value.trim() : defaultOutOfDeliveryMsg;
@@ -262,6 +257,11 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
 
         const mapUrlSetting = (restaurant?.settings || []).find(s => s.key === 'restaurant_map_url');
         const restaurantMapUrl = (mapUrlSetting?.value && mapUrlSetting.value.trim()) ? mapUrlSetting.value.trim() : 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
+
+        // ── 5. Compact Knowledge & FAQ Summary for AI Prompt (Saves 4,000+ Tokens) ──
+        const cachedFaqs = `• Free Delivery Areas: Ghauri Town (All Phases), Ghauri VIP, Taramari, Tarlai, Burma, Khana Pull, Rehman Enclave, Sanam Chowk, Shakral, Madina Town, Bilal Town, Gulzar-e-Quaid, Gulberg Green. Delivery radius ${maxDeliveryRadiusKm}KM.
+• Payment: COD or advance EasyPaisa (${easypaisaNumber} - ${accountName}).
+• Food Quality: 100% Halal fresh dough pizzas & burgers.`;
 
         return {
             restId,

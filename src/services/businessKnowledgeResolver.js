@@ -468,7 +468,25 @@ export async function resolveBusinessAnswer({
         }
 
         if (matchedAreas.length > 0) {
+            const { checkDeliveryAvailability } = await import('./deliveryService.js');
             const matchedNames = matchedAreas.map(m => m.name).join(', ');
+
+            // Check if this matched area is within current max delivery radius
+            const delCheck = await checkDeliveryAvailability({
+                restaurantId,
+                areaName: matchedNames,
+                address: cleanQuery,
+            });
+
+            if (!delCheck.available) {
+                return {
+                    source: 'DELIVERY',
+                    type: 'DELIVERY_AREAS',
+                    data: { matchedAreas, count: matchedAreas.length },
+                    text: delCheck.message || `Maazrat! ${matchedNames} hamari delivery range se bahar hai. Hamari delivery sirf ${delCheck.maxRadiusKm || 10} km radius tak mehdood hai.`,
+                };
+            }
+
             const isAllFree = matchedAreas.every(m => Number(m.delivery_fee) === 0);
             const feeInfo = isAllFree ? 'delivery bilkul FREE hai!' : `delivery fee Rs. ${matchedAreas[0].delivery_fee} hai.`;
             let specificText = `Ji bilkul! ${restName} *${matchedNames}* mein deliver karta hai aur yahan ${feeInfo}`;
@@ -498,25 +516,48 @@ export async function resolveBusinessAnswer({
                 source: 'DELIVERY',
                 type: 'DELIVERY_AREAS',
                 data: { areas: activeAreas, count: activeAreas.length },
-                text: `Sorry, yeh area filhal hamari delivery coverage list mein shamil nahi hai. ${restName} darj zail ${activeAreas.length} areas mein deliver karta hai:\n\n${areaList}${activeAreas.length > 6 ? ' wagheira' : ''}.${feeNotice}`,
+                text: `Sorry, yeh area filhal hamari delivery coverage list mein shamil nahi hai. ${restName} darj zail areas mein deliver karta hai:\n\n${areaList}${activeAreas.length > 6 ? ' wagheira' : ''}.${feeNotice}`,
             };
         }
 
-        const areaNames = activeAreas.map((a) => a.name);
-        let deliveryText = `Hum darj zail ${activeAreas.length} areas mein deliver karte hain:\n\n${areaNames.join(', ')}`;
-        const isFree = activeAreas.every((a) => Number(a.delivery_fee) === 0);
+        // Retrieve maxRadiusKm from cache or settings
+        let maxRadiusKm = 10.0;
+        try {
+            const { getCatalogCache } = await import('./catalogCacheService.js');
+            const cache = await getCatalogCache();
+            if (cache && typeof cache.maxDeliveryRadiusKm === 'number') {
+                maxRadiusKm = cache.maxDeliveryRadiusKm;
+            }
+        } catch (_) {}
+
+        const { checkDeliveryAvailability } = await import('./deliveryService.js');
+        const deliverableAreas = [];
+        for (const a of activeAreas) {
+            const check = await checkDeliveryAvailability({
+                restaurantId,
+                areaName: a.name,
+            }).catch(() => null);
+            if (check && check.available) {
+                deliverableAreas.push(a);
+            }
+        }
+
+        const areasToShow = deliverableAreas.length > 0 ? deliverableAreas : activeAreas;
+        const areaNames = areasToShow.map((a) => a.name);
+        let deliveryText = `Hum ${restName} ke ${maxRadiusKm} km radius ke andar darj zail ${areasToShow.length} areas mein deliver karte hain:\n\n${areaNames.join(', ')}`;
+        const isFree = areasToShow.every((a) => Number(a.delivery_fee) === 0);
         if (isFree) {
             deliveryText += '\n\nIn tamaam areas mein delivery bilkul FREE hai!';
         }
 
         logger.info(
-            { query: cleanQuery, source: 'DELIVERY', type: 'DELIVERY_AREAS', count: activeAreas.length },
+            { query: cleanQuery, source: 'DELIVERY', type: 'DELIVERY_AREAS', count: areasToShow.length },
             `[KnowledgeResolver] query="${cleanQuery}" source=DELIVERY type=DELIVERY_AREAS`
         );
         return {
             source: 'DELIVERY',
             type: 'DELIVERY_AREAS',
-            data: { areas: activeAreas, count: activeAreas.length },
+            data: { areas: areasToShow, count: areasToShow.length },
             text: deliveryText,
         };
     }

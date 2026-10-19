@@ -147,15 +147,7 @@ export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantI
 
         if (!rid) return 0;
 
-        const existingCount = await prisma.deliveryArea.count({
-            where: { restaurant_id: rid },
-        });
-
-        if (existingCount > 0) {
-            return existingCount;
-        }
-
-        console.log(`[DELIVERY] Auto-seeding 32 delivery areas for restaurant ${rid}...`);
+        console.log(`[DELIVERY] Syncing 32 delivery areas with accurate coordinates for restaurant ${rid}...`);
         const entries = Object.entries(DELIVERY_AREA_COORDINATES);
         let sortOrder = 1;
 
@@ -169,9 +161,6 @@ export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantI
                 },
                 update: {
                     name: item.name,
-                    delivery_fee: 0,
-                    minimum_order: 0,
-                    is_active: true,
                     latitude: item.lat,
                     longitude: item.lng,
                     radius_km: item.radiusKm,
@@ -191,7 +180,7 @@ export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantI
             });
         }
 
-        console.log(`[DELIVERY] ✅ 32 delivery areas successfully seeded for restaurant ${rid}.`);
+        console.log(`[DELIVERY] ✅ 32 delivery areas successfully synced for restaurant ${rid}.`);
         return entries.length;
     } catch (err) {
         console.error('[DELIVERY] Error auto-seeding delivery areas:', err.message);
@@ -461,12 +450,29 @@ export async function checkDeliveryAvailability(params) {
         const textFound = findAreaByText(allAreas, rawAddressText);
         if (textFound && textFound.is_active) {
             matchedArea = textFound;
-            if (lat == null || lng == null) {
-                const coords = DELIVERY_AREA_COORDINATES[matchedArea.slug];
-                lat = (matchedArea.latitude != null && matchedArea.latitude !== 0) ? matchedArea.latitude : (coords?.lat ?? null);
-                lng = (matchedArea.longitude != null && matchedArea.longitude !== 0) ? matchedArea.longitude : (coords?.lng ?? null);
-            }
         }
+    }
+
+    // Ensure coordinates are resolved for matched area using accurate landmark coords
+    if (matchedArea && (lat == null || lng == null)) {
+        const coords = DELIVERY_AREA_COORDINATES[matchedArea.slug];
+        if (coords?.lat != null && coords?.lng != null) {
+            lat = coords.lat;
+            lng = coords.lng;
+        } else if (matchedArea.latitude != null && matchedArea.latitude !== 0 && matchedArea.longitude != null && matchedArea.longitude !== 0) {
+            lat = Number(matchedArea.latitude);
+            lng = Number(matchedArea.longitude);
+        }
+    }
+
+    if (matchedArea && (lat == null || lng == null)) {
+        try {
+            const geoRes = await geocodeAddress(`${matchedArea.name}, Islamabad`, { centerLat, centerLng });
+            if (geoRes && geoRes.success) {
+                lat = geoRes.latitude;
+                lng = geoRes.longitude;
+            }
+        } catch (_) {}
     }
 
     // 5. Map micro-landmarks, stops, and chowks to their primary town/sector (e.g. Sanam Chowk -> Ghauri Town)
