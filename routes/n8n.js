@@ -36,8 +36,6 @@ const getAllowedBotSecrets = () => new Set(
     [
         process.env.N8N_BOT_SECRET,
         process.env.INTERNAL_API_SECRET,
-        'my-test-secret-123',
-        'bot-internal-secret-phase2',
     ].filter(Boolean)
 );
 

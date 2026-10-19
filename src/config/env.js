@@ -11,7 +11,9 @@ const envSchema = z.object({
     PORT:            z.string().default('3000'),
     NODE_ENV:        z.enum(['development', 'production', 'test']).default('production'),
     DASHBOARD_USER:  z.string().default('admin'),
-    DASHBOARD_PASS:  z.string().default('xortlogix'),
+    DASHBOARD_PASS:  z.string().default(''),
+    SUPERADMIN_USER: z.string().default('superadmin'),
+    SUPERADMIN_PASS: z.string().default(''),
     N8N_ENABLED:     z.string().default('false'),
     N8N_WEBHOOK_URL: z.string().default(''),
     N8N_BOT_SECRET:  z.string().default(''),
@@ -23,7 +25,7 @@ const envSchema = z.object({
     REALTIME_DASHBOARD_ENABLED: z.string().default('false'),
     KNOWLEDGE_BASE_ENABLED:     z.string().default('true'),
     WHATSAPP_ORDERING_ENABLED:  z.string().default('true'),
-    INTERNAL_API_SECRET:        z.string().default('bot-internal-secret-phase2'),
+    INTERNAL_API_SECRET:        z.string().default(''),
     N8N_INTEGRATION_ENABLED:    z.string().default('false'),
     AI_PRIMARY_PROVIDER:        z.string().default('gemini'),
     AI_FALLBACK_PROVIDER:       z.string().default('deepseek'),
@@ -61,6 +63,13 @@ export const env = getEnv();
 
 if (env.RESTAURANT_DB_ENABLED === 'true' && !env.DATABASE_URL) {
     console.warn('[ENV] WARNING: RESTAURANT_DB_ENABLED=true but DATABASE_URL is not set.');
+}
+
+if (!env.DASHBOARD_PASS) {
+    console.warn('[ENV] NOTICE: DASHBOARD_PASS is not set in environment variables.');
+}
+if (!env.SUPERADMIN_PASS) {
+    console.warn('[ENV] NOTICE: SUPERADMIN_PASS is not set in environment variables.');
 }
 
 if (env.STANDALONE_AI_ENABLED === 'true') {

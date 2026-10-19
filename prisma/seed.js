@@ -47,16 +47,24 @@ async function main() {
     console.log(`✅ Restaurant: ${restaurant.name} (${restaurant.id})`);
 
     // ── Admin Users (Super Admin & Admin / Staff) ────────────
-    const superadmin_hash = await bcrypt.hash('superadmin123', 12);
-    const admin_hash = await bcrypt.hash('admin123', 12);
+    const superadminPass = process.env.SUPERADMIN_PASS || process.env.SUPER_ADMIN_PASS || 'superadmin123';
+    const adminPass = process.env.DASHBOARD_PASS || process.env.ADMIN_PASS || 'admin123';
+    const superadminEmail = process.env.SUPERADMIN_USER || 'superadmin@craveycrust.com';
+    const adminEmail = process.env.DASHBOARD_USER || 'admin@craveycrust.com';
+
+    const superadmin_hash = await bcrypt.hash(superadminPass, 12);
+    const admin_hash = await bcrypt.hash(adminPass, 12);
 
     const superAdminUser = await prisma.adminUser.upsert({
-        where: { email: 'superadmin@craveycrust.com' },
-        update: { role: 'SUPER_ADMIN' },
+        where: { email: superadminEmail.includes('@') ? superadminEmail : `${superadminEmail}@craveycrust.com` },
+        update: {
+            role: 'SUPER_ADMIN',
+            password_hash: superadmin_hash,
+        },
         create: {
             restaurant_id: restaurant.id,
-            username: 'superadmin',
-            email: 'superadmin@craveycrust.com',
+            username: superadminEmail.includes('@') ? superadminEmail.split('@')[0] : superadminEmail,
+            email: superadminEmail.includes('@') ? superadminEmail : `${superadminEmail}@craveycrust.com`,
             password_hash: superadmin_hash,
             role: 'SUPER_ADMIN',
             is_active: true,
@@ -65,12 +73,15 @@ async function main() {
     console.log(`✅ Super Admin: ${superAdminUser.username} (${superAdminUser.email})`);
 
     const adminUser = await prisma.adminUser.upsert({
-        where: { email: 'admin@craveycrust.com' },
-        update: { role: 'ADMIN' },
+        where: { email: adminEmail.includes('@') ? adminEmail : `${adminEmail}@craveycrust.com` },
+        update: {
+            role: 'ADMIN',
+            password_hash: admin_hash,
+        },
         create: {
             restaurant_id: restaurant.id,
-            username: 'admin',
-            email: 'admin@craveycrust.com',
+            username: adminEmail.includes('@') ? adminEmail.split('@')[0] : adminEmail,
+            email: adminEmail.includes('@') ? adminEmail : `${adminEmail}@craveycrust.com`,
             password_hash: admin_hash,
             role: 'ADMIN',
             is_active: true,
@@ -103,9 +114,9 @@ async function main() {
     console.log('═══════════════════════════════════════════════');
     console.log(`  Restaurant: ${restaurant.name}`);
     console.log(`  Restaurant ID: ${restaurant.id}`);
-    console.log(`  Admin login: admin@store.com`);
-    console.log(`  Admin password: admin12345`);
-    console.log('  ⚠️  Change password before production use!');
+    console.log(`  Super Admin: ${superAdminUser.email} (configured via SUPERADMIN_PASS)`);
+    console.log(`  Admin login: ${adminUser.email} (configured via DASHBOARD_PASS)`);
+    console.log('  ⚠️  Keep environment variables secure on your server!');
     console.log('═══════════════════════════════════════════════\n');
 }
 

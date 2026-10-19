@@ -27,7 +27,7 @@ export function isN8nActive() {
 
 
 export const N8N_ENABLED     = isN8nActive();
-export const N8N_BOT_SECRET  = process.env.N8N_BOT_SECRET || process.env.INTERNAL_API_SECRET || 'my-test-secret-123';
+export const N8N_BOT_SECRET  = process.env.N8N_BOT_SECRET || process.env.INTERNAL_API_SECRET || '';
 const        N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
 const        N8N_TIMEOUT     = parseInt(process.env.N8N_TIMEOUT || '10000', 10);
 

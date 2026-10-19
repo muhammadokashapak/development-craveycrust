@@ -102,7 +102,7 @@ const OWNER_NUMBER = process.env.OWNER_NUMBER || '';
 const AUTO_REPLY = process.env.AUTO_REPLY !== 'false';
 const PORT = process.env.PORT || 3000;
 const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
-const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'xortlogix';
+const DASHBOARD_PASS = process.env.DASHBOARD_PASS || '';
 const AUTH_SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
 
 // ─── Integration Mode Log ──────────────────────────────────

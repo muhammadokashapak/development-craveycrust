@@ -3,7 +3,7 @@ import { getDefaultRestaurantId } from '../services/restaurantService.js';
 import { flags } from '../config/flags.js';
 import { getDbClient } from '../db/client.js';
 
-const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET || process.env.N8N_BOT_SECRET || 'bot-internal-secret-phase2';
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET || process.env.N8N_BOT_SECRET || '';
 
 /**
  * Middleware ensuring request is from an authenticated admin.
@@ -65,8 +65,6 @@ const getAllowedInternalSecrets = () => new Set(
     [
         process.env.INTERNAL_API_SECRET,
         process.env.N8N_BOT_SECRET,
-        'bot-internal-secret-phase2',
-        'my-test-secret-123',
     ].filter(Boolean)
 );
 

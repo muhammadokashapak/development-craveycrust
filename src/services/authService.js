@@ -5,9 +5,34 @@ import { flags } from '../config/flags.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 
 const AUTH_SECRET = process.env.AUTH_SECRET || 'restaurant-bot-auth-secret-key';
-const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
-const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'xortlogix';
 const TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Helper functions for dynamic credential resolution from environment
+const getDashboardUser = () => (process.env.DASHBOARD_USER || process.env.ADMIN_USER || 'admin').trim();
+const getDashboardPass = () => process.env.DASHBOARD_PASS || process.env.ADMIN_PASS || '';
+
+const getSuperAdminUser = () => (process.env.SUPERADMIN_USER || process.env.SUPER_ADMIN_USER || 'superadmin').trim();
+const getSuperAdminPass = () => process.env.SUPERADMIN_PASS || process.env.SUPER_ADMIN_PASS || '';
+
+function isSuperAdminUsername(userStr) {
+    if (!userStr) return false;
+    const u = userStr.toLowerCase().trim();
+    const configured = getSuperAdminUser().toLowerCase();
+    return u === configured ||
+           u === 'superadmin' ||
+           u === 'superadmin@craveycrust.com' ||
+           (configured.includes('@') && u === configured.split('@')[0]);
+}
+
+function isAdminUsername(userStr) {
+    if (!userStr) return false;
+    const u = userStr.toLowerCase().trim();
+    const configured = getDashboardUser().toLowerCase();
+    return u === configured ||
+           u === 'admin' ||
+           u === 'admin@craveycrust.com' ||
+           (configured.includes('@') && u === configured.split('@')[0]);
+}
 
 /**
  * Generate a cryptographically signed admin token.
@@ -84,7 +109,7 @@ export function verifyToken(token) {
                 if (payload.exp && Date.now() > payload.exp) {
                     return { valid: false, error: 'TOKEN_EXPIRED' };
                 }
-                if (payload && (payload.username === 'admin' || payload.username === 'admin@craveycrust.com')) {
+                if (payload && payload.role !== 'SUPER_ADMIN' && isAdminUsername(payload.username)) {
                     payload.role = 'ADMIN';
                 }
                 return { valid: true, user: payload };
@@ -101,9 +126,10 @@ export function verifyToken(token) {
         if (Date.now() - ts > TOKEN_EXPIRY_MS) {
             return { valid: false, error: 'TOKEN_EXPIRED' };
         }
+        const currentDashUser = getDashboardUser();
         const expectedHash = crypto
             .createHmac('sha256', AUTH_SECRET)
-            .update(`${DASHBOARD_USER}:${timestamp}`)
+            .update(`${currentDashUser}:${timestamp}`)
             .digest('hex');
 
         const hashBuf = Buffer.from(hash);
@@ -113,7 +139,7 @@ export function verifyToken(token) {
                 valid: true,
                 user: {
                     userId: 'legacy-admin',
-                    username: DASHBOARD_USER,
+                    username: currentDashUser,
                     role: 'SUPER_ADMIN',
                     isLegacy: true,
                 },
@@ -138,12 +164,8 @@ export async function authenticateAdmin(username, password) {
     const trimmedUser = username.trim();
     const cleanUserLower = trimmedUser.toLowerCase();
 
-    // STRICT CHECK: For username "admin", password MUST be strictly "xortlogix"
-    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
-        if (password !== 'xortlogix') {
-            return null; // Reject immediately if wrong credentials!
-        }
-    }
+    const envAdminPass = getDashboardPass();
+    const envSuperPass = getSuperAdminPass();
 
     // 1. Database-backed authentication (if RESTAURANT_DB_ENABLED)
     if (flags.RESTAURANT_DB_ENABLED) {
@@ -163,12 +185,28 @@ export async function authenticateAdmin(username, password) {
 
                 if (dbUser) {
                     let match = false;
-                    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
-                        match = (password === 'xortlogix');
-                    } else if (cleanUserLower === 'superadmin' || cleanUserLower === 'superadmin@craveycrust.com') {
-                        match = (password === 'thinkbot');
+
+                    // If env credentials are set for Super Admin or Admin, they are authoritative
+                    if (isSuperAdminUsername(cleanUserLower) && envSuperPass) {
+                        match = (password === envSuperPass);
+                    } else if (isAdminUsername(cleanUserLower) && envAdminPass) {
+                        match = (password === envAdminPass);
                     } else if (dbUser.password_hash) {
                         match = await bcrypt.compare(password, dbUser.password_hash);
+                    }
+
+                    // If env password matched, ensure DB hash is synchronized in background
+                    if (match && dbUser.password_hash && (isSuperAdminUsername(cleanUserLower) || isAdminUsername(cleanUserLower))) {
+                        bcrypt.compare(password, dbUser.password_hash).then(hashesMatch => {
+                            if (!hashesMatch) {
+                                bcrypt.hash(password, 12).then(newHash => {
+                                    prisma.adminUser.update({
+                                        where: { id: dbUser.id },
+                                        data: { password_hash: newHash },
+                                    }).catch(() => {});
+                                }).catch(() => {});
+                            }
+                        }).catch(() => {});
                     }
 
                     if (match) {
@@ -177,10 +215,9 @@ export async function authenticateAdmin(username, password) {
                             data: { last_login_at: new Date() },
                         }).catch(() => {});
 
-                        const restName = 'Admin';
-                        const userRole = (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com')
-                            ? 'ADMIN'
-                            : dbUser.role;
+                        const isSuper = isSuperAdminUsername(cleanUserLower) || dbUser.role === 'SUPER_ADMIN';
+                        const userRole = isSuper ? 'SUPER_ADMIN' : (dbUser.role || 'ADMIN');
+                        const restName = dbUser.restaurant?.name || 'Admin';
 
                         const userPayload = {
                             userId: dbUser.id,
@@ -203,24 +240,19 @@ export async function authenticateAdmin(username, password) {
         }
     }
 
-    // 2. Built-in / Fallback Credentials (works with or without DB)
+    // 2. Built-in / Fallback Credentials from Environment Variables (works with or without DB)
     let matchedRole = null;
     let matchedUsername = null;
 
-    // Super Admin Check (strictly superadmin)
-    if (cleanUserLower === 'superadmin' || cleanUserLower === 'superadmin@craveycrust.com') {
-        if (password === 'thinkbot') {
-            matchedRole = 'SUPER_ADMIN';
-            matchedUsername = 'superadmin';
-        }
+    // Super Admin Check (from environment)
+    if (isSuperAdminUsername(cleanUserLower) && envSuperPass && password === envSuperPass) {
+        matchedRole = 'SUPER_ADMIN';
+        matchedUsername = getSuperAdminUser();
     }
-
-    // Admin Check (strictly admin + xortlogix)
-    if (cleanUserLower === 'admin' || cleanUserLower === 'admin@craveycrust.com') {
-        if (password === 'xortlogix') {
-            matchedRole = 'ADMIN';
-            matchedUsername = 'admin';
-        }
+    // Admin Check (from environment)
+    else if (isAdminUsername(cleanUserLower) && envAdminPass && password === envAdminPass) {
+        matchedRole = 'ADMIN';
+        matchedUsername = getDashboardUser();
     }
 
     if (matchedRole) {

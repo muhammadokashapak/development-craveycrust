@@ -17,23 +17,26 @@ services:
       - PREFIX=${PREFIX:-.}
       - OWNER_NUMBER=${OWNER_NUMBER:-}
       - DASHBOARD_USER=${DASHBOARD_USER:-admin}
-      - DASHBOARD_PASS=${DASHBOARD_PASS:-xortlogix}
-      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-cravey_secret_session_2026}
+      - DASHBOARD_PASS=${DASHBOARD_PASS:-}
+      - SUPERADMIN_USER=${SUPERADMIN_USER:-superadmin}
+      - SUPERADMIN_PASS=${SUPERADMIN_PASS:-}
+      - AUTH_SECRET=${AUTH_SECRET:-}
+      - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
       - BOT_DOMAIN=${BOT_DOMAIN:-bot.craveycrust.com}
       - SERVER_IP=${SERVER_IP:-localhost}
       # ── Database Connection (Auto-matched with cravey-postgres container) ─
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-cravey}:${POSTGRES_PASSWORD:-cravey_secure_pass_2026}@cravey-postgres:5432/${POSTGRES_DB:-cravey_crust}?schema=public}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-cravey}:${POSTGRES_PASSWORD}@cravey-postgres:5432/${POSTGRES_DB:-cravey_crust}?schema=public}
       - REDIS_URL=${REDIS_URL:-}
       # ── Feature Flags ────────────────────────────────────────────────────
       - RESTAURANT_DB_ENABLED=${RESTAURANT_DB_ENABLED:-true}
       - CORE_ORDER_ENGINE_ENABLED=${CORE_ORDER_ENGINE_ENABLED:-true}
       - CUSTOM_AI_ENABLED=${CUSTOM_AI_ENABLED:-false}
       - REALTIME_DASHBOARD_ENABLED=${REALTIME_DASHBOARD_ENABLED:-true}
-      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-bot-internal-secret-phase2}
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-}
       - N8N_ENABLED=${N8N_ENABLED:-false}
       - N8N_INTEGRATION_ENABLED=${N8N_INTEGRATION_ENABLED:-false}
-      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-https://n8n.srv2029678.hstgr.cloud/webhook/whatsapp-incoming}
-      - N8N_BOT_SECRET=${N8N_BOT_SECRET:-my-test-secret-123}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
+      - N8N_BOT_SECRET=${N8N_BOT_SECRET:-}
       - N8N_TIMEOUT=${N8N_TIMEOUT:-10000}
       - KNOWLEDGE_BASE_ENABLED=${KNOWLEDGE_BASE_ENABLED:-true}
       - WHATSAPP_ORDERING_ENABLED=${WHATSAPP_ORDERING_ENABLED:-true}
