@@ -379,15 +379,39 @@ async function initAuth() {
 
 // ─── Theme Switcher (Dark / Light) ─────────────────────────
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-const savedTheme = localStorage.getItem('wa_bot_theme') || 'dark';
+const savedTheme = localStorage.getItem('wa_bot_theme') || 'light';
 document.documentElement.setAttribute('data-theme', savedTheme);
+if (document.body) {
+  document.body.setAttribute('data-theme', savedTheme);
+}
+
+function updateThemeUI(theme) {
+  const current = theme || document.documentElement.getAttribute('data-theme') || 'light';
+  const label = current === 'dark' ? 'Switch to Light mode' : 'Switch to Dark mode';
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) {
+    btn.setAttribute('title', label);
+    btn.setAttribute('aria-label', label);
+  }
+  const authBtn = document.getElementById('authThemeToggleBtn');
+  if (authBtn) {
+    authBtn.setAttribute('title', label);
+    authBtn.setAttribute('aria-label', label);
+  }
+}
 
 function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
   const nextTheme = currentTheme === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', nextTheme);
+  if (document.body) {
+    document.body.setAttribute('data-theme', nextTheme);
+  }
   localStorage.setItem('wa_bot_theme', nextTheme);
+  updateThemeUI(nextTheme);
+  console.log('[THEME] Toggled theme to:', nextTheme);
 }
+window.toggleTheme = toggleTheme;
 
 if (themeToggleBtn) {
   themeToggleBtn.addEventListener('click', toggleTheme);
@@ -395,6 +419,7 @@ if (themeToggleBtn) {
 if (authThemeToggleBtn) {
   authThemeToggleBtn.addEventListener('click', toggleTheme);
 }
+updateThemeUI(savedTheme);
 
 // ─── State Variables ───────────────────────────────────────
 let activeSection = phoneSection;

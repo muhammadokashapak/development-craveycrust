@@ -34,7 +34,7 @@
           <h2 id="authBrandName">Admin</h2>
           <span class="auth-badge">Admin Panel</span>
         </div>
-        <button id="authThemeToggleBtn" class="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+        <button id="authThemeToggleBtn" class="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme" onclick="window.toggleTheme && window.toggleTheme()">
           <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="5"></circle>
             <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -258,7 +258,7 @@
         </div>
 
         <div class="header-actions">
-          <button id="themeToggleBtn" class="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+          <button id="themeToggleBtn" class="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme" onclick="window.toggleTheme && window.toggleTheme()">
             <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="5"></circle>
               <line x1="12" y1="1" x2="12" y2="3"></line>
@@ -2158,6 +2158,6 @@
     <div id="toastMessage" class="toast-message">Notification</div>
   </div>
 
-  <script src="app.js?v=8.4.2"></script>
+  <script src="app.js?v=8.4.3"></script>
 </body>
 </html>
