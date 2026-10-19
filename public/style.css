@@ -8209,5 +8209,196 @@ body.is-superadmin[data-theme="dark"] #chatMessageInput {
   color: #f8fafc !important;
 }
 
+/* ==========================================================================
+   UNIVERSAL HIGH-CONTRAST DATA TABLES & METRICS VISIBILITY FIX
+   Applies to both regular Admin & Super Admin, in Light & Dark modes.
+   Ensures 100% crisp legibility: no invisible text, no yellow on white.
+   ========================================================================== */
+
+/* 1. Light Mode (Default & Explicit [data-theme="light"]) */
+.data-table,
+table.data-table,
+#viewDashboard .data-table {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  width: 100% !important;
+  border-collapse: collapse !important;
+}
+
+.data-table thead th,
+table.data-table th,
+#viewDashboard .data-table th {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  font-weight: 700 !important;
+  font-size: 11px !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  border-bottom: 2px solid #cbd5e1 !important;
+  padding: 10px 14px !important;
+}
+
+.data-table tbody td,
+table.data-table td,
+#viewDashboard .data-table td {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  font-size: 13px !important;
+  padding: 10px 14px !important;
+  vertical-align: middle !important;
+}
+
+.data-table tbody tr:hover td,
+table.data-table tbody tr:hover td,
+#viewDashboard .data-table tbody tr:hover td {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.data-table td strong,
+table.data-table td strong,
+.order-customer-name {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+.order-number-text,
+.data-table td strong[style*="accent"],
+.data-table td strong[style*="var(--accent)"],
+table.data-table td strong[style*="accent"] {
+  color: #059669 !important;
+  font-weight: 800 !important;
+}
+
+.order-total-amount {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+.order-phone,
+.order-time,
+.data-table td .subtext,
+table.data-table td .subtext {
+  color: #475569 !important;
+  font-weight: 500 !important;
+}
+
+.order-items-summary,
+.data-table td span:not(.badge-order-status) {
+  color: #1e293b !important;
+}
+
+/* Light Mode Cards */
+.metric-card,
+#viewDashboard .metric-card {
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03) !important;
+}
+
+.metric-card .metric-val,
+#viewDashboard .metric-val {
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+.metric-card .metric-label,
+#viewDashboard .metric-label {
+  color: #64748b !important;
+  font-weight: 700 !important;
+}
+
+.metric-card .metric-sub,
+#viewDashboard .metric-sub {
+  color: #64748b !important;
+}
+
+/* 2. Dark Mode Override ([data-theme="dark"]) */
+[data-theme="dark"] .data-table,
+[data-theme="dark"] table.data-table,
+[data-theme="dark"] #viewDashboard .data-table {
+  background: #111827 !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .data-table thead th,
+[data-theme="dark"] table.data-table th,
+[data-theme="dark"] #viewDashboard .data-table th {
+  background: #0f172a !important;
+  color: #94a3b8 !important;
+  border-bottom: 2px solid #1e293b !important;
+}
+
+[data-theme="dark"] .data-table tbody td,
+[data-theme="dark"] table.data-table td,
+[data-theme="dark"] #viewDashboard .data-table td {
+  background: #111827 !important;
+  color: #f8fafc !important;
+  border-bottom: 1px solid #1f2937 !important;
+}
+
+[data-theme="dark"] .data-table tbody tr:hover td,
+[data-theme="dark"] table.data-table tbody tr:hover td,
+[data-theme="dark"] #viewDashboard .data-table tbody tr:hover td {
+  background: #1e293b !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .data-table td strong,
+[data-theme="dark"] table.data-table td strong,
+[data-theme="dark"] .order-customer-name {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="dark"] .order-number-text,
+[data-theme="dark"] .data-table td strong[style*="accent"],
+[data-theme="dark"] .data-table td strong[style*="var(--accent)"],
+[data-theme="dark"] table.data-table td strong[style*="accent"] {
+  color: #34d399 !important;
+  font-weight: 800 !important;
+}
+
+[data-theme="dark"] .order-total-amount {
+  color: #34d399 !important;
+  font-weight: 800 !important;
+}
+
+[data-theme="dark"] .order-phone,
+[data-theme="dark"] .order-time,
+[data-theme="dark"] .data-table td .subtext,
+[data-theme="dark"] table.data-table td .subtext {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .order-items-summary,
+[data-theme="dark"] .data-table td span:not(.badge-order-status) {
+  color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .metric-card,
+[data-theme="dark"] #viewDashboard .metric-card {
+  background: #111827 !important;
+  border: 1px solid #1f2937 !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+}
+
+[data-theme="dark"] .metric-card .metric-val,
+[data-theme="dark"] #viewDashboard .metric-val {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .metric-card .metric-label,
+[data-theme="dark"] #viewDashboard .metric-label {
+  color: #94a3b8 !important;
+}
+
+[data-theme="dark"] .metric-card .metric-sub,
+[data-theme="dark"] #viewDashboard .metric-sub {
+  color: #64748b !important;
+}
+
+
 
 

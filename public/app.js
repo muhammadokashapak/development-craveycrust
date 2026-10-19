@@ -1538,15 +1538,15 @@ async function loadDashboardStats() {
               const timeStr = new Date(ord.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
               const dateStr = new Date(ord.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' });
               tr.innerHTML = `
-                <td><strong style="color: var(--accent); font-family: var(--f-mono);">${escapeHtml(ord.orderNumber)}</strong></td>
-                <td><strong>${escapeHtml(ord.customerName)}</strong></td>
-                <td><span class="subtext">${escapeHtml(ord.phone)}</span></td>
+                <td><strong class="order-number-text" style="font-family: var(--f-mono); font-weight: 700;">${escapeHtml(ord.orderNumber)}</strong></td>
+                <td><strong class="order-customer-name" style="font-weight: 600;">${escapeHtml(ord.customerName)}</strong></td>
+                <td><span class="subtext order-phone">${escapeHtml(ord.phone)}</span></td>
                 <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(ord.itemsSummary || '')}">
-                  <span>${ord.itemCount} items (${escapeHtml(ord.itemsSummary || '')})</span>
+                  <span class="order-items-summary">${ord.itemCount} items (${escapeHtml(ord.itemsSummary || '')})</span>
                 </td>
-                <td><strong>Rs. ${Number(ord.total).toLocaleString()}</strong></td>
+                <td><strong class="order-total-amount" style="font-weight: 700;">Rs. ${Number(ord.total).toLocaleString()}</strong></td>
                 <td><span class="badge-order-status ${ord.orderStatus}">${ord.orderStatus}</span></td>
-                <td><span class="subtext">${dateStr} ${timeStr}</span></td>
+                <td><span class="subtext order-time">${dateStr} ${timeStr}</span></td>
                 <td style="text-align: right;">
                   <button class="btn btn-secondary btn-xs" onclick="window.openOrderDetailModal('${ord.orderNumber}')">View</button>
                 </td>
