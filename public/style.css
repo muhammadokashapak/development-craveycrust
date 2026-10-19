@@ -81,6 +81,41 @@
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
   --surface-3: var(--surface-2);
+
+  /* Super Admin Unified Theme Tokens (Default Light) */
+  --sa-bg: #f4f6fa;
+  --sa-bg-2: #eef2f6;
+  --sa-card: #ffffff;
+  --sa-secondary: #f8fafc;
+  --sa-hover: #f1f5f9;
+  --sa-border: #e2e8f0;
+  --sa-border-subtle: #cbd5e1;
+  --sa-text: #0f172a;
+  --sa-text-muted: #64748b;
+  --sa-text-faint: #94a3b8;
+  --sa-accent: #059669;
+  --sa-accent-soft: rgba(5, 150, 105, 0.1);
+  --sa-accent-line: rgba(5, 150, 105, 0.28);
+  --sa-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"],
+html[data-theme="dark"],
+body[data-theme="dark"] {
+  --sa-bg: #0b0f19;
+  --sa-bg-2: #111827;
+  --sa-card: #111827;
+  --sa-secondary: #1e293b;
+  --sa-hover: #27354a;
+  --sa-border: #1f2937;
+  --sa-border-subtle: #334155;
+  --sa-text: #f8fafc;
+  --sa-text-muted: #94a3b8;
+  --sa-text-faint: #64748b;
+  --sa-accent: #10b981;
+  --sa-accent-soft: rgba(16, 185, 129, 0.15);
+  --sa-accent-line: rgba(16, 185, 129, 0.35);
+  --sa-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="light"] {
@@ -6664,36 +6699,49 @@ html, body {
 
 /* 1. Global Background & Shell */
 body.is-superadmin {
-  background: #f4f6fa !important;
-  color: #0f172a !important;
   padding: 0 !important;
   margin: 0 !important;
 
-  /* Theme tokens for Super Admin light workspace */
-  --bg: #f4f6fa;
-  --bg-2: #eef2f6;
-  --bg-surface: #ffffff;
-  --bg-card: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-hover: #f1f5f9;
-  --surface: #ffffff;
-  --surface-solid: #ffffff;
-  --surface-2: #f8fafc;
-  --surface-3: #f1f5f9;
-  --border: #e2e8f0;
-  --border-subtle: #cbd5e1;
-  --hairline: #e2e8f0;
-  --hairline-2: #cbd5e1;
+  /* Theme tokens for Super Admin light workspace (Default) */
+  --sa-bg: #f4f6fa;
+  --sa-bg-2: #eef2f6;
+  --sa-card: #ffffff;
+  --sa-secondary: #f8fafc;
+  --sa-hover: #f1f5f9;
+  --sa-border: #e2e8f0;
+  --sa-border-subtle: #cbd5e1;
+  --sa-text: #0f172a;
+  --sa-text-muted: #64748b;
+  --sa-text-faint: #94a3b8;
+  --sa-accent: #059669;
+  --sa-accent-soft: rgba(5, 150, 105, 0.1);
+  --sa-accent-line: rgba(5, 150, 105, 0.28);
+  --sa-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
 
-  --fg: #0f172a;
-  --fg-dim: #334155;
-  --fg-muted: #64748b;
-  --fg-faint: #94a3b8;
+  background: var(--sa-bg) !important;
+  color: var(--sa-text) !important;
+}
 
-  --accent: #059669;
-  --accent-2: #10b981;
-  --accent-soft: rgba(5, 150, 105, 0.1);
-  --accent-line: rgba(5, 150, 105, 0.28);
+[data-theme="dark"] body.is-superadmin,
+body.is-superadmin[data-theme="dark"],
+html[data-theme="dark"] body.is-superadmin {
+  --sa-bg: #0b0f19;
+  --sa-bg-2: #111827;
+  --sa-card: #111827;
+  --sa-secondary: #1e293b;
+  --sa-hover: #27354a;
+  --sa-border: #1f2937;
+  --sa-border-subtle: #334155;
+  --sa-text: #f8fafc;
+  --sa-text-muted: #94a3b8;
+  --sa-text-faint: #64748b;
+  --sa-accent: #10b981;
+  --sa-accent-soft: rgba(16, 185, 129, 0.15);
+  --sa-accent-line: rgba(16, 185, 129, 0.35);
+  --sa-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+  background: var(--sa-bg) !important;
+  color: var(--sa-text) !important;
 }
 
 body.is-superadmin .bg-fx,
@@ -6713,14 +6761,14 @@ body.is-superadmin .dashboard-shell {
   box-sizing: border-box !important;
 }
 
-/* 2. Floating White Sidebar */
+/* 2. Floating Sidebar (Theme Aware) */
 body.is-superadmin .app-sidebar {
   width: 250px !important;
   min-width: 250px !important;
-  background: #ffffff !important;
-  border: 1px solid #eef2f6 !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
   border-radius: 20px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03) !important;
+  box-shadow: var(--sa-shadow) !important;
   padding: 16px 12px 14px 12px !important;
   height: calc(100vh - 28px) !important;
   max-height: calc(100vh - 28px) !important;
@@ -6743,8 +6791,8 @@ body.is-superadmin .sidebar-logo {
   width: 42px !important;
   height: 42px !important;
   border-radius: 50% !important;
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
+  background: var(--sa-secondary) !important;
+  border: 1px solid var(--sa-border) !important;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
   display: flex !important;
   align-items: center !important;
@@ -7485,119 +7533,119 @@ body.is-superadmin .orders-card,
 body.is-superadmin .catalog-card,
 body.is-superadmin .settings-card,
 body.is-superadmin .deal-card {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  color: #0f172a !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
+  color: var(--sa-text) !important;
+  box-shadow: var(--sa-shadow) !important;
 }
 
 body.is-superadmin .card h3,
 body.is-superadmin .card h4,
 body.is-superadmin h3,
 body.is-superadmin h4 {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
 }
 
 body.is-superadmin .subtext,
 body.is-superadmin .card .subtext,
 body.is-superadmin .page-subtitle {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
 }
 
 /* 3. Metric Cards (Dashboard Overview & Detail Views) */
 body.is-superadmin .metric-card,
 body.is-superadmin #viewDashboard .metric-card {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  color: #0f172a !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
+  color: var(--sa-text) !important;
+  box-shadow: var(--sa-shadow) !important;
 }
 
 body.is-superadmin .metric-card .metric-icon,
 body.is-superadmin #viewDashboard .metric-icon {
-  background: #f8fafc !important;
-  border: 1px solid #e2e8f0 !important;
+  background: var(--sa-secondary) !important;
+  border: 1px solid var(--sa-border) !important;
 }
 
 body.is-superadmin .metric-card .metric-label,
 body.is-superadmin #viewDashboard .metric-label {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
   font-weight: 700 !important;
   letter-spacing: 0.05em !important;
 }
 
 body.is-superadmin .metric-card .metric-val,
 body.is-superadmin #viewDashboard .metric-val {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
   font-weight: 800 !important;
 }
 
 body.is-superadmin .metric-card .metric-sub,
 body.is-superadmin #viewDashboard .metric-sub {
-  color: #94a3b8 !important;
+  color: var(--sa-text-faint) !important;
 }
 
 /* 4. Data Tables (Recent Live Orders, Orders, Customers, Menu, Deals, FAQs) */
 body.is-superadmin .table-scroll-area {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
   border-radius: 12px !important;
 }
 
 body.is-superadmin .data-table,
 body.is-superadmin table {
-  background: #ffffff !important;
-  color: #0f172a !important;
+  background: var(--sa-card) !important;
+  color: var(--sa-text) !important;
   width: 100% !important;
 }
 
 body.is-superadmin .data-table th,
 body.is-superadmin table th {
-  background: #f8fafc !important;
-  color: #475569 !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  background: var(--sa-secondary) !important;
+  color: var(--sa-text-muted) !important;
+  border-bottom: 2px solid var(--sa-border) !important;
   font-weight: 700 !important;
   font-size: 11px !important;
 }
 
 body.is-superadmin .data-table td,
 body.is-superadmin table td {
-  background: #ffffff !important;
-  color: #1e293b !important;
-  border-bottom: 1px solid #f1f5f9 !important;
+  background: var(--sa-card) !important;
+  color: var(--sa-text) !important;
+  border-bottom: 1px solid var(--sa-border) !important;
   font-size: 13px !important;
 }
 
 body.is-superadmin .data-table tr:hover td,
 body.is-superadmin table tr:hover td {
-  background: #f8fafc !important;
-  color: #0f172a !important;
+  background: var(--sa-hover) !important;
+  color: var(--sa-text) !important;
 }
 
 body.is-superadmin .data-table td strong,
 body.is-superadmin table td strong {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
   font-weight: 600 !important;
 }
 
 body.is-superadmin .data-table td .subtext,
 body.is-superadmin table td .subtext {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
 }
 
 body.is-superadmin .data-table td a,
 body.is-superadmin table td a {
-  color: #059669 !important;
+  color: var(--sa-accent) !important;
 }
 
 body.is-superadmin .data-table td strong[style*="var(--accent)"],
 body.is-superadmin td strong[style*="var(--accent)"] {
-  color: #059669 !important;
+  color: var(--sa-accent) !important;
 }
 
 body.is-superadmin .table-empty {
-  color: #64748b !important;
-  background: #ffffff !important;
+  color: var(--sa-text-muted) !important;
+  background: var(--sa-card) !important;
 }
 
 /* Action View Buttons in Table Rows */
@@ -7605,9 +7653,9 @@ body.is-superadmin .data-table .btn,
 body.is-superadmin .data-table .btn-secondary,
 body.is-superadmin .data-table .btn-xs,
 body.is-superadmin .data-table button.btn {
-  background: #0f172a !important;
-  color: #ffffff !important;
-  border: 1px solid #0f172a !important;
+  background: var(--sa-secondary) !important;
+  color: var(--sa-text) !important;
+  border: 1px solid var(--sa-border) !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
   padding: 5px 14px !important;
@@ -7619,9 +7667,9 @@ body.is-superadmin .data-table .btn:hover,
 body.is-superadmin .data-table .btn-secondary:hover,
 body.is-superadmin .data-table .btn-xs:hover,
 body.is-superadmin .data-table button.btn:hover {
-  background: #334155 !important;
-  border-color: #334155 !important;
-  color: #ffffff !important;
+  background: var(--sa-hover) !important;
+  border-color: var(--sa-accent) !important;
+  color: var(--sa-text) !important;
 }
 
 /* 5. High-Contrast Status Badges */
@@ -7689,22 +7737,22 @@ body.is-superadmin .catalog-toolbar {
 }
 
 body.is-superadmin .toolbar-search {
-  background: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
 }
 
 body.is-superadmin .toolbar-search input,
 body.is-superadmin .toolbar-search input[type="text"] {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
 }
 
 body.is-superadmin .toolbar-search input::placeholder {
-  color: #94a3b8 !important;
+  color: var(--sa-text-muted) !important;
 }
 
 body.is-superadmin .toolbar-search svg {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
 }
 
 body.is-superadmin .filter-select,
@@ -7713,37 +7761,37 @@ body.is-superadmin input[type="date"],
 body.is-superadmin input[type="text"],
 body.is-superadmin input[type="number"],
 body.is-superadmin textarea {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid #cbd5e1 !important;
+  background: var(--sa-secondary) !important;
+  color: var(--sa-text) !important;
+  border: 1px solid var(--sa-border) !important;
 }
 
 /* 8. Modals & Dialogs */
 body.is-superadmin .modal-card {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.12) !important;
+  background: var(--sa-card) !important;
+  color: var(--sa-text) !important;
+  border: 1px solid var(--sa-border) !important;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.25) !important;
 }
 
 body.is-superadmin .modal-header h3,
 body.is-superadmin .modal-confirm h3 {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
 }
 
 body.is-superadmin .modal-card label,
 body.is-superadmin .form-label {
-  color: #334155 !important;
+  color: var(--sa-text-muted) !important;
   font-weight: 600 !important;
 }
 
 body.is-superadmin .modal-close-btn {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
 }
 
 body.is-superadmin .modal-close-btn:hover {
-  color: #0f172a !important;
-  background: #f1f5f9 !important;
+  color: var(--sa-text) !important;
+  background: var(--sa-hover) !important;
 }
 
 /* ==========================================================================
@@ -8215,12 +8263,12 @@ body.is-superadmin[data-theme="dark"] #chatMessageInput {
    Ensures 100% crisp legibility: no invisible text, no yellow on white.
    ========================================================================== */
 
-/* 1. Light Mode (Default & Explicit [data-theme="light"]) */
+/* 1. Dynamic Unified Table & Card Styling */
 .data-table,
 table.data-table,
 #viewDashboard .data-table {
-  background: #ffffff !important;
-  color: #0f172a !important;
+  background: var(--sa-card) !important;
+  color: var(--sa-text) !important;
   width: 100% !important;
   border-collapse: collapse !important;
 }
@@ -8228,22 +8276,22 @@ table.data-table,
 .data-table thead th,
 table.data-table th,
 #viewDashboard .data-table th {
-  background: #f1f5f9 !important;
-  color: #334155 !important;
+  background: var(--sa-secondary) !important;
+  color: var(--sa-text-muted) !important;
   font-weight: 700 !important;
   font-size: 11px !important;
   letter-spacing: 0.05em !important;
   text-transform: uppercase !important;
-  border-bottom: 2px solid #cbd5e1 !important;
+  border-bottom: 2px solid var(--sa-border) !important;
   padding: 10px 14px !important;
 }
 
 .data-table tbody td,
 table.data-table td,
 #viewDashboard .data-table td {
-  background: #ffffff !important;
-  color: #0f172a !important;
-  border-bottom: 1px solid #e2e8f0 !important;
+  background: var(--sa-card) !important;
+  color: var(--sa-text) !important;
+  border-bottom: 1px solid var(--sa-border) !important;
   font-size: 13px !important;
   padding: 10px 14px !important;
   vertical-align: middle !important;
@@ -8252,14 +8300,14 @@ table.data-table td,
 .data-table tbody tr:hover td,
 table.data-table tbody tr:hover td,
 #viewDashboard .data-table tbody tr:hover td {
-  background: #f8fafc !important;
-  color: #0f172a !important;
+  background: var(--sa-hover) !important;
+  color: var(--sa-text) !important;
 }
 
 .data-table td strong,
 table.data-table td strong,
 .order-customer-name {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
   font-weight: 700 !important;
 }
 
@@ -8267,12 +8315,12 @@ table.data-table td strong,
 .data-table td strong[style*="accent"],
 .data-table td strong[style*="var(--accent)"],
 table.data-table td strong[style*="accent"] {
-  color: #059669 !important;
+  color: var(--sa-accent) !important;
   font-weight: 800 !important;
 }
 
 .order-total-amount {
-  color: #0f172a !important;
+  color: var(--sa-accent) !important;
   font-weight: 800 !important;
 }
 
@@ -8280,38 +8328,38 @@ table.data-table td strong[style*="accent"] {
 .order-time,
 .data-table td .subtext,
 table.data-table td .subtext {
-  color: #475569 !important;
+  color: var(--sa-text-muted) !important;
   font-weight: 500 !important;
 }
 
 .order-items-summary,
 .data-table td span:not(.badge-order-status) {
-  color: #1e293b !important;
+  color: var(--sa-text) !important;
 }
 
-/* Light Mode Cards */
+/* Metric Cards (Dynamic & Theme-Aware) */
 .metric-card,
 #viewDashboard .metric-card {
-  background: #ffffff !important;
-  border: 1px solid #e2e8f0 !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.03) !important;
+  background: var(--sa-card) !important;
+  border: 1px solid var(--sa-border) !important;
+  box-shadow: var(--sa-shadow) !important;
 }
 
 .metric-card .metric-val,
 #viewDashboard .metric-val {
-  color: #0f172a !important;
+  color: var(--sa-text) !important;
   font-weight: 800 !important;
 }
 
 .metric-card .metric-label,
 #viewDashboard .metric-label {
-  color: #64748b !important;
+  color: var(--sa-text-muted) !important;
   font-weight: 700 !important;
 }
 
 .metric-card .metric-sub,
 #viewDashboard .metric-sub {
-  color: #64748b !important;
+  color: var(--sa-text-faint) !important;
 }
 
 /* 2. Dark Mode Override ([data-theme="dark"]) */
