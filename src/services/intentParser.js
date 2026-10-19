@@ -55,21 +55,31 @@ export function clearLastDiscussedItem(sessionKey) {
 export function isDeliveryAreaInquiry(text) {
     if (!text || typeof text !== 'string') return false;
     const lower = text.toLowerCase().trim();
-    return /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|hai|he|hy|h|\?)\b/i.test(lower) ||
+    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|zone)\b/i.test(lower) ||
+           /\b(?:range|area|zone)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|hai|he|hy|h|\?)\b/i.test(lower) ||
            /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|available|possible)\s*(?:hai|he|hy|h|\?)?/i.test(lower) ||
            /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|range|zone)\b/i.test(lower) ||
            /\b(?:delivery|deliver)\s*(?:area|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|\?)/i.test(lower) ||
            /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?delivery\b/i.test(lower) ||
-           /\b(?:area\s*(?:mein|me|mai|pe|par)\s*(?:aati|aata|ata|ati|hoti|hota))\b/i.test(lower);
+           /\b(?:area|range)\s*(?:mein|me|mai|pe|par)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
+           /\b(?:area\s*of\s*radius|delivery\s*radius|radius)\b/i.test(lower);
 }
 
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
     let cleaned = text.trim();
 
-    // 0. Do not treat delivery inquiries/questions as delivery address
-    if (isDeliveryAreaInquiry(cleaned)) {
+    // 0. Do not treat delivery inquiries/questions/arguments as delivery address
+    if (isDeliveryAreaInquiry(cleaned) || isDeliveryAreaInquiry(text)) {
         return null;
+    }
+
+    // 0b. Reject questions, complaints, radius discussions, or conversational disputes
+    if (text.includes('?') || /\b(?:kese|kaise|kaisy|kyun|kyu|why|how|kia|kya|kab|kis|kisko|kahn|kahan|door|radius|km|bakwas|galat|wrong|theek\s*nahi|mujh\s*se|galti|ghalti|batao|btao)\b/i.test(text)) {
+        if (/\b(?:kese|kaise|kaisy|kyun|kyu|why|radius|aati|aata|hoti|hota|door|bakwas|galat|wrong)\b/i.test(text) || text.includes('?')) {
+            return null;
+        }
     }
 
     // 1. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
@@ -278,9 +288,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         } else if (locExplicit) {
             address = cleanExtractedAddress(locExplicit[1]);
         } else if (!paymentMethod && (!name || knownDetails.name) && ADDRESS_INDICATORS.test(lower)) {
-            const potentialAddr = cleanExtractedAddress(textForAddr);
-            if (potentialAddr && (ADDRESS_INDICATORS.test(potentialAddr) || potentialAddr.length >= 4) && potentialAddr.length <= 120) {
-                address = potentialAddr;
+            if (!isDeliveryAreaInquiry(raw) && !raw.includes('?') && !/\b(?:kese|kaise|kaisy|kyun|kyu|why|radius|door|bakwas|galat)\b/i.test(raw)) {
+                const potentialAddr = cleanExtractedAddress(textForAddr);
+                if (potentialAddr && (ADDRESS_INDICATORS.test(potentialAddr) || potentialAddr.length >= 4) && potentialAddr.length <= 120) {
+                    address = potentialAddr;
+                }
             }
         } else if (knownDetails.name && (knownDetails.phoneConfirmed || knownDetails.phone) && !knownDetails.address && !paymentMethod && !phone) {
             // Customer is actively at Step 3 (awaiting delivery address).

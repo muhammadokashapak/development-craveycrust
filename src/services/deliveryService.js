@@ -585,6 +585,18 @@ export async function checkDeliveryAvailability(params) {
         ? Math.round(calculateHaversineDistance(lat, lng, centerLat, centerLng) * 10) / 10
         : null;
 
+    // Strict circular radius enforcement across ALL matched areas and text lookups
+    if (distToRest != null && distToRest > maxRadiusKm) {
+        const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, distToRest, maxRadiusKm);
+        return {
+            available: false,
+            code: 'DELIVERY_OUT_OF_RANGE',
+            message: outOfDeliveryMsg,
+            distanceKm: distToRest,
+            maxRadiusKm,
+        };
+    }
+
     return {
         available: true,
         area: {
