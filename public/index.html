@@ -402,10 +402,16 @@
         </div>
 
         <!-- Order Status Tabs Strip -->
-        <div class="orders-filter-strip" style="margin-bottom: 14px;">
-          <button class="filter-pill active" data-status="ALL" onclick="window.filterOrdersByStatus('ALL')">All Orders</button>
-          <button class="filter-pill" data-status="CONFIRMED" onclick="window.filterOrdersByStatus('CONFIRMED')">Confirmed</button>
-          <button class="filter-pill" data-status="CANCELLED" onclick="window.filterOrdersByStatus('CANCELLED')">Cancelled</button>
+        <div class="orders-filter-strip" style="margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; gap: 8px;">
+            <button class="filter-pill active" data-status="ALL" onclick="window.filterOrdersByStatus('ALL')">All Orders</button>
+            <button class="filter-pill" data-status="CONFIRMED" onclick="window.filterOrdersByStatus('CONFIRMED')">Confirmed</button>
+            <button class="filter-pill" data-status="CANCELLED" onclick="window.filterOrdersByStatus('CANCELLED')">Cancelled</button>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4); font-weight: 500; display: inline-flex; align-items: center; gap: 6px;" onclick="window.purgeAllOrdersAndCustomersUI()">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            Clean All Orders &amp; Customers
+          </button>
         </div>
 
         <div class="table-container">
@@ -2072,7 +2078,10 @@
         <div id="modalStatusActionButtons" class="modal-status-buttons">
           <!-- Dynamically populated buttons for valid state transitions -->
         </div>
-        <button type="button" class="btn btn-secondary" onclick="window.closeOrderDetailModal()">Close</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-secondary" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" onclick="window.deleteCurrentOrderFromModal()">Delete Order</button>
+          <button type="button" class="btn btn-secondary" onclick="window.closeOrderDetailModal()">Close</button>
+        </div>
       </div>
     </div>
   </div>

@@ -4501,6 +4501,49 @@ async function deleteOrderAction(orderNumber, triggerBtn = null) {
 }
 window.deleteOrderAction = deleteOrderAction;
 
+async function deleteCurrentOrderFromModal() {
+  const orderNumber = document.getElementById('modalOrderNumber')?.textContent?.trim();
+  if (!orderNumber) {
+    showToast('Order number not found', 'error');
+    return;
+  }
+  await deleteOrderAction(orderNumber);
+}
+window.deleteCurrentOrderFromModal = deleteCurrentOrderFromModal;
+
+async function purgeAllOrdersAndCustomersUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to completely clean all orders and customers?\n\n" +
+    "• All orders, order history, and customer records will be permanently deleted from the database.\n" +
+    "• Customer WhatsApp Chats will NOT be touched (100% intact).\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Cleaning orders and customers...', 'info');
+    const res = await fetch('/api/admin/orders/purge-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All orders & customers successfully cleaned!', 'success');
+      activeOrdersList = [];
+      cachedCustomersList = [];
+      if (typeof renderOrdersTable === 'function') renderOrdersTable(true);
+      if (typeof loadOrders === 'function') await loadOrders(true);
+      if (typeof loadCustomers === 'function') await loadCustomers(true);
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to purge database records', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.purgeAllOrdersAndCustomersUI = purgeAllOrdersAndCustomersUI;
+
 // ─── Customers Controller ───────────────────────────────────
 let cachedCustomersList = [];
 let customersPageState = { page: 1, pageSize: 10, search: '' };

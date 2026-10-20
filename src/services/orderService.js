@@ -1325,3 +1325,43 @@ export async function deleteOrderByNumber({ restaurantId, orderNumber }) {
 
     return deleted;
 }
+
+/**
+ * Permanently purge all orders, order items, status history, and customers
+ * Preserves customer_chats.json untouched.
+ */
+export async function purgeAllOrdersAndCustomers({ restaurantId = null } = {}) {
+    const prisma = getDbClient();
+    if (!prisma) throw new Error('Database client not available');
+
+    return await prisma.$transaction(async (tx) => {
+        // 1. Unlink customer from carts to avoid FK constraint
+        await tx.cart.updateMany({
+            data: { customer_id: null },
+        });
+
+        // 2. Clear order references in conversation sessions
+        await tx.conversationSession.updateMany({
+            data: {
+                pending_order_id: null,
+                pending_cancel_order_id: null,
+                stage: 'START',
+            },
+        });
+
+        // 3. Delete order items & status history
+        await tx.orderItem.deleteMany({});
+        await tx.orderStatusHistory.deleteMany({});
+
+        // 4. Delete all orders
+        const ordersDeleted = await tx.order.deleteMany({});
+
+        // 5. Delete all customers
+        const customersDeleted = await tx.customer.deleteMany({});
+
+        return {
+            ordersCount: ordersDeleted.count,
+            customersCount: customersDeleted.count,
+        };
+    });
+}

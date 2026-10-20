@@ -5,6 +5,7 @@ import {
     getOrderByNumber,
     updateOrderStatus,
     deleteOrderByNumber,
+    purgeAllOrdersAndCustomers,
 } from '../../src/services/orderService.js';
 import { registerSseClient } from '../../src/services/realtimeService.js';
 import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
@@ -189,6 +190,29 @@ router.post('/:orderNumber/cancel', async (req, res) => {
             success: false,
             error: {
                 code: err.code || 'CANCEL_ERROR',
+                message: err.message,
+            },
+        });
+    }
+});
+
+/**
+ * POST /api/admin/orders/purge-all
+ * Completely purge all orders and customers from DB (leaves customer_chats.json untouched)
+ */
+router.post('/purge-all', async (req, res) => {
+    try {
+        const result = await purgeAllOrdersAndCustomers();
+        return res.json({
+            success: true,
+            message: `Successfully purged all ${result.ordersCount} orders and ${result.customersCount} customers.`,
+            data: result,
+        });
+    } catch (err) {
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: 'PURGE_ERROR',
                 message: err.message,
             },
         });
