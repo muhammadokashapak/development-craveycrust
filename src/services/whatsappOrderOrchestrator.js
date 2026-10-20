@@ -23,6 +23,7 @@ import { getOrCreateSession, updateSessionStage, touchSession } from './sessionS
 import { parseIntent, isPaymentQuery } from './intentParser.js';
 import { getActiveMenu, getActiveCategories, getCategoryWithItems, getActiveDeals, resolveMenuItemOrDeal } from './menuService.js';
 import { getActiveCart, addItemToCart, updateCartItem, removeCartItem, clearCart, calculateCartTotals } from './cartService.js';
+import { calculateDiscount, getGlobalDiscountSettings } from './discountService.js';
 import { checkDeliveryAvailability, getOutOfDeliveryMessage } from './deliveryService.js';
 import { createOrder, getOrderByNumber, requestOrderCancellation, confirmOrderCancellation } from './orderService.js';
 import { searchKnowledge } from './knowledgeService.js';
@@ -133,21 +134,57 @@ export function extractQuantityAndQuery(input) {
 }
 
 /**
- * Format category items dynamically from PostgreSQL
+ * Format category items dynamically from PostgreSQL with discount strikethrough
  */
-export function formatCategoryResponse(category) {
-    let catMsg = `${category.name}\n\n`;
+export function formatCategoryResponse(category, globalDiscount = null, dealsContext = null) {
+    let banner = '';
+    if (globalDiscount && globalDiscount.enabled) {
+        const valStr = globalDiscount.type === 'FIXED' ? `Rs. ${globalDiscount.value} OFF` : `${globalDiscount.value}% OFF`;
+        banner = `🏷️ *SPECIAL OFFER: ${globalDiscount.title.toUpperCase()} (${valStr} ON ALL ITEMS)* 🏷️\n\n`;
+    }
+
+    const lowerName = (category.name || '').toLowerCase();
+
+    // Check if this is a deals category with rich deals context available from catalog cache
+    if (dealsContext) {
+        if (/pi[z]+a\s*deals?/i.test(lowerName) && dealsContext.customerPizzaDeals) {
+            return `${banner}${dealsContext.customerPizzaDeals}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Deal 2* ya *Pizza Meal For 1*)!`;
+        }
+        if (/burger\s*deals?/i.test(lowerName) && dealsContext.customerBurgerDeals) {
+            return `${banner}${dealsContext.customerBurgerDeals}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Burger Meal For 1* ya *Deal 4*)!`;
+        }
+    }
+
+    let catMsg = `${banner}*${category.name.toUpperCase()}*\n━━━━━━━━━━━━━━━━━━━━━\n\n`;
     if (!category.menu_items || category.menu_items.length === 0) {
         catMsg += 'Is category mein filhal koi items dastiyab nahi hain.\n';
     } else {
         category.menu_items.forEach((item) => {
-            const priceStr = item.variants && item.variants.length > 0 
-                ? `from Rs.${Number(item.variants[0].price)}` 
-                : `Rs.${Number(item.base_price)}`;
-            catMsg += `${item.name}: ${priceStr}\n`;
+            const hasVariants = item.variants && item.variants.length > 0;
+            const rawPrice = hasVariants ? Number(item.variants[0].price) : Number(item.base_price);
+            const vPct = hasVariants ? item.variants[0].discount_percent : null;
+            const vFixed = hasVariants ? item.variants[0].discount_fixed : null;
+            const disc = calculateDiscount(rawPrice, vPct ?? item.discount_percent, vFixed ?? item.discount_fixed, globalDiscount);
+
+            let priceStr = '';
+            if (disc.hasDiscount) {
+                priceStr = hasVariants ? `from ${disc.formattedFull}` : disc.formattedFull;
+            } else {
+                priceStr = hasVariants ? `from Rs. ${rawPrice}` : `Rs. ${rawPrice}`;
+            }
+            catMsg += `• *${item.name}*: ${priceStr}\n`;
+            if (item.description) {
+                catMsg += `   _${item.description}_\n`;
+            }
         });
     }
-    catMsg += `\nOrder karne ke liye likhein: quantity item_name (e.g. 2 ${category.menu_items?.[0]?.name || 'item'}).`;
+
+    const isDeals = /deals?/i.test(lowerName);
+    if (isDeals) {
+        catMsg += `\nOrder karne ke liye kisi bhi deal ka naam bata dein!`;
+    } else {
+        catMsg += `\nOrder karne ke liye likhein: quantity item_name (e.g. 2 ${category.menu_items?.[0]?.name || 'item'}).`;
+    }
     return catMsg;
 }
 
@@ -232,10 +269,26 @@ Reply cart to view cart ya checkout to proceed.`,
                 quantity,
             };
 
-            let varMsg = `${resolved.item.name}\n\n`;
+            const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+
+            let varMsg = `*${resolved.item.name}*\n\n`;
             resolved.variants.forEach((v) => {
-                varMsg += `${v.name}: Rs.${Number(v.price)}\n`;
+                const vPrice = Number(v.price);
+                const disc = calculateDiscount(
+                    vPrice,
+                    v.discount_percent ?? resolved.item.discount_percent,
+                    v.discount_fixed ?? resolved.item.discount_fixed,
+                    globalDiscount
+                );
+
+                if (disc.hasDiscount) {
+                    varMsg += `• ${v.name}: ~Rs. ${vPrice}~ Rs. ${disc.discountedPrice} (${disc.label})\n`;
+                } else {
+                    varMsg += `• ${v.name}: Rs. ${vPrice}\n`;
+                }
             });
+
+            varMsg += `\nApna size select karein (jaise *Small*, *Medium*, ya *Large*).`;
 
             return { text: varMsg.trimEnd(), intent: 'ADD_ITEM' };
         }
@@ -250,13 +303,24 @@ Reply cart to view cart ya checkout to proceed.`,
 
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
         const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+        const disc = calculateDiscount(
+            resolved.item.base_price,
+            resolved.item.discount_percent,
+            resolved.item.discount_fixed,
+            globalDiscount
+        );
+        const unitPriceStr = disc.hasDiscount
+            ? `~Rs. ${Number(resolved.item.base_price) * quantity}~ Rs. ${disc.discountedPrice * quantity} (${disc.label})`
+            : `Rs. ${Number(resolved.item.base_price) * quantity}`;
 
+        const discountLine = cartTotals.discountTotal > 0 ? `\nDiscount: -Rs. ${cartTotals.discountTotal}\nTotal: Rs. ${cartTotals.total}` : '';
         return {
             text: 
 `Added to Cart!
 
-${quantity}x ${resolved.item.name}: Rs.${Number(resolved.item.base_price) * quantity}
-Subtotal: Rs.${cartTotals.subtotal}
+${quantity}x ${resolved.item.name}: ${unitPriceStr}
+Subtotal: Rs. ${cartTotals.subtotal}${discountLine}
 
 Reply cart to view cart ya checkout to proceed.`,
             intent: 'ADD_ITEM',
@@ -384,12 +448,25 @@ export async function handleIncomingOrderMessage({ sock, session: baileysSession
             await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
             const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
 
+            const qty = pending.quantity || 1;
+            const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+            const disc = calculateDiscount(
+                chosenVariant.price,
+                chosenVariant.discount_percent ?? pending.item.discount_percent,
+                chosenVariant.discount_fixed ?? pending.item.discount_fixed,
+                globalDiscount
+            );
+            const unitPriceStr = disc.hasDiscount
+                ? `~Rs. ${Number(chosenVariant.price) * qty}~ Rs. ${disc.discountedPrice * qty} (${disc.label})`
+                : `Rs. ${Number(chosenVariant.price) * qty}`;
+
+            const discountLine = cartTotals.discountTotal > 0 ? `\nDiscount: -Rs. ${cartTotals.discountTotal}\nTotal: Rs. ${cartTotals.total}` : '';
             return {
                 text: 
 `Added to Cart!
 
-${pending.quantity}x ${pending.item.name} (${chosenVariant.name}): Rs.${Number(chosenVariant.price) * (pending.quantity || 1)}
-Subtotal: Rs.${cartTotals.subtotal}
+${qty}x ${pending.item.name} (${chosenVariant.name}): ${unitPriceStr}
+Subtotal: Rs. ${cartTotals.subtotal}${discountLine}
 
 Reply cart to view cart ya checkout to continue.`,
                 intent: 'ADD_ITEM',
@@ -505,12 +582,14 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
 
     if (matchedCategory) {
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BROWSING_MENU' });
-        let catText = formatCategoryResponse(matchedCategory);
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+        let catText = formatCategoryResponse(matchedCategory, globalDiscount);
         if (/\b(?:discount|discounts|deals?)\b/i.test(cleanText) && !matchedCategory.name.toLowerCase().includes('deal')) {
             catText += `\n\n💡 Special discount packages dekhne ke liye "deals" reply karein.`;
         }
         return {
             text: catText,
+            imageUrl: null,
             intent: 'SHOW_CATEGORY',
             stage: 'BROWSING_MENU',
         };
@@ -654,12 +733,21 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         let cartMsg = `Your Cart\n\n`;
         cartTotals.items.forEach(it => {
             const varStr = it.variantName ? ` (${it.variantName})` : '';
-            cartMsg += `${it.quantity}x ${it.name}${varStr}: Rs.${it.lineTotal || it.totalPrice}\n`;
+            if (it.hasDiscount) {
+                cartMsg += `${it.quantity}x ${it.name}${varStr}: ~Rs.${it.originalLineTotal}~ Rs.${it.lineTotal} (${it.discountLabel || (it.discountPercent + '% OFF')})\n`;
+            } else {
+                cartMsg += `${it.quantity}x ${it.name}${varStr}: Rs.${it.lineTotal || it.totalPrice}\n`;
+            }
         });
         cartTotals.deals.forEach(d => {
             cartMsg += `${d.quantity}x ${d.name}: Rs.${d.lineTotal || d.totalPrice}\n`;
         });
-        cartMsg += `\nSubtotal: Rs.${cartTotals.subtotal}\n\n`;
+        const discountAmt = Number(cartTotals.discountTotal ?? cartTotals.discount ?? 0);
+        if (discountAmt > 0) {
+            cartMsg += `\nSubtotal: Rs.${cartTotals.subtotal}\nDiscount: -Rs.${discountAmt}\nTotal: Rs.${cartTotals.total}\n\n`;
+        } else {
+            cartMsg += `\nSubtotal: Rs.${cartTotals.subtotal}\n\n`;
+        }
         cartMsg += `Reply checkout to order, clear cart to empty, ya mazeed items add karein.`;
 
         return { text: cartMsg, intent };
@@ -1068,14 +1156,19 @@ Aap aaj kya order karna chahenge? Hamare paas Mazedar Pizzas, Burgers aur Deals 
         let summaryMsg = `Order Summary\n\nItems:\n`;
         cartTotals.items.forEach(it => {
             const varStr = it.variantName ? ` (${it.variantName})` : '';
-            summaryMsg += `${it.quantity}x ${it.name}${varStr}: Rs.${it.totalPrice}\n`;
+            if (it.hasDiscount) {
+                summaryMsg += `${it.quantity}x ${it.name}${varStr}: ~Rs.${it.originalLineTotal}~ Rs.${it.lineTotal} (${it.discountLabel || (it.discountPercent + '% OFF')})\n`;
+            } else {
+                summaryMsg += `${it.quantity}x ${it.name}${varStr}: Rs.${it.lineTotal || it.totalPrice}\n`;
+            }
         });
         cartTotals.deals.forEach(d => {
-            summaryMsg += `${d.quantity}x ${d.name}: Rs.${d.totalPrice}\n`;
+            summaryMsg += `${d.quantity}x ${d.name}: Rs.${d.lineTotal || d.totalPrice}\n`;
         });
         summaryMsg += `\nSubtotal: Rs.${cartTotals.subtotal}\n`;
-        if (cartTotals.discount > 0) {
-            summaryMsg += `Discount: -Rs.${cartTotals.discount}\n`;
+        const discountAmt = Number(cartTotals.discountTotal ?? cartTotals.discount ?? 0);
+        if (discountAmt > 0) {
+            summaryMsg += `Discount: -Rs.${discountAmt}\n`;
         }
         summaryMsg += `Delivery Fee: Rs.${cartTotals.deliveryFee}\n`;
         summaryMsg += `Final Total: Rs.${cartTotals.total}\n\n`;
@@ -1132,13 +1225,15 @@ Aap aaj kya order karna chahenge? Hamare paas Mazedar Pizzas, Burgers aur Deals 
                 const ordTotal = ord.pricing?.total != null
                     ? Number(ord.pricing.total)
                     : (ord.final_total != null ? Number(ord.final_total) : Number(ord.total || 0));
+                const ordDiscount = Number(ord.pricing?.discountTotal ?? ord.discount_total ?? 0);
+                const discountText = ordDiscount > 0 ? `\nDiscount Applied: -Rs.${ordDiscount.toFixed(2)}` : '';
                 clearDraft(convSession.id);
 
                 return {
                     text: 
 `Order Confirmed
 
-Order #${ordNumber}
+Order #${ordNumber}${discountText}
 Total: Rs.${ordTotal.toFixed(2)}
 Status: Confirmed
 
@@ -1355,8 +1450,10 @@ Direct order: likhein 2 zinger ya 1 pizza`,
 
     if (category) {
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BROWSING_MENU' });
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
         return {
-            text: formatCategoryResponse(category),
+            text: formatCategoryResponse(category, globalDiscount),
+            imageUrl: null,
             intent: 'SHOW_CATEGORY',
             stage: 'BROWSING_MENU',
         };

@@ -91,6 +91,7 @@ import { handleIncomingOrderMessage } from './src/services/whatsappOrderOrchestr
 import { registerSocketResolver } from './src/services/whatsappNotificationService.js';
 import { resolveSenderIdentity } from './utils/senderIdentity.js';
 import { extractLocation } from './utils/location.js';
+import { sendWhatsAppMediaOrText } from './utils/media.js';
 
 // ─── ESM __dirname polyfill ──────────────────────────────
 const __filename = fileURLToPath(import.meta.url);
@@ -124,6 +125,7 @@ class WhatsAppSession {
         this.name = name;
         this.sock = null;
         this.mode = 'restore';
+        this.isNewLogin = false;
         this.state = 'idle'; // 'idle' | 'starting' | 'pairing_code' | 'qr' | 'connected' | 'disconnected'
         this.pairingCode = null;
         this.qrDataUrl = null;
@@ -361,34 +363,26 @@ app.use('/api', (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized', requireLogin: true });
 });
 
-// ─── Multi-Session API Endpoints ──────────────────────────
+// ─── Single WhatsApp Session API Endpoints ──────────────────
 
-// List all sessions
+// List sessions (Single WhatsApp session mode)
 app.get('/api/sessions', (req, res) => {
-    const list = Array.from(activeSessions.values()).map(s => s.toJSON());
-    res.json({ sessions: list });
+    let primary = activeSessions.get('primary');
+    if (!primary) {
+        primary = new WhatsAppSession('primary', 'Primary Account');
+        activeSessions.set('primary', primary);
+    }
+    res.json({ sessions: [primary.toJSON()] });
 });
 
-// Create a new session slot (reuses existing idle if available)
+// Create a new session slot - Disabled in single account mode
 app.post('/api/sessions/create', (req, res) => {
-    try {
-        // Reuse an existing idle account if one is already waiting for login
-        const existingIdle = Array.from(activeSessions.values()).find(s => s.state === 'idle' && !s.user && s.id !== 'primary');
-        if (existingIdle) {
-            console.log(`ℹ️ Reusing existing idle session: ${existingIdle.id}`);
-            return res.json({ success: true, session: existingIdle.toJSON(), reused: true });
-        }
-
-        const count = activeSessions.size + 1;
-        const id = `account_${Date.now().toString(36)}`;
-        const name = req.body.name || `Account ${count}`;
-        const session = new WhatsAppSession(id, name);
-        activeSessions.set(id, session);
-        console.log(`➕ Created new session slot: ${id} (${name})`);
-        res.json({ success: true, session: session.toJSON() });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+    let primary = activeSessions.get('primary');
+    if (!primary) {
+        primary = new WhatsAppSession('primary', 'Primary Account');
+        activeSessions.set('primary', primary);
     }
+    return res.json({ success: true, session: primary.toJSON(), singleSessionMode: true });
 });
 
 // Get specific session status
@@ -415,6 +409,7 @@ app.post('/api/sessions/:id/auth/pairing-code', async (req, res) => {
         session.qrDataUrl = null;
         await session.cleanup();
         session.clearAuth();
+        session.isNewLogin = true;
 
         await startSession(session, { mode: 'pairing', phoneNumber: cleanNumber });
 
@@ -449,6 +444,7 @@ app.post('/api/sessions/:id/auth/start-qr', async (req, res) => {
         session.qrDataUrl = null;
         await session.cleanup();
         session.clearAuth();
+        session.isNewLogin = true;
 
         await startSession(session, { mode: 'qr' });
 
@@ -488,6 +484,50 @@ app.post('/api/sessions/:id/auth/cancel', async (req, res) => {
     }
 });
 
+// Helper to send a graceful disconnect alert before tearing down session
+async function sendDisconnectAlertBeforeTeardown(session) {
+    if (!session || !session.sock) return;
+    try {
+        const userPhone = session.user?.number || session.sock.user?.id?.split(':')[0]?.split('@')[0];
+        if (userPhone && session.state === 'connected') {
+            const selfJid = `${userPhone}@s.whatsapp.net`;
+            console.log(`📤 [${session.id}] Sending disconnect alert to connected number: ${userPhone}...`);
+            await session.sock.sendMessage(selfJid, {
+                text: `⚠️ *Cravey Crust Bot Notification*\n\nAap ka WhatsApp account (${userPhone}) dashboard se disconnect kiya ja raha hai.\n\n• Is number par bot ke automated replies ab band ho gaye hain.\n• Agar kisi doosre number (company WhatsApp) ko connect karna chahein toh Dashboard par ja kar naya QR scan karein ya Pairing Code enter karein.\n\nShukriya! 🍕`
+            }).catch(err => {
+                console.error(`[${session.id}] Failed to send disconnect alert message:`, err.message);
+            });
+            console.log(`✅ [${session.id}] Disconnect alert sent to ${userPhone}.`);
+            // Brief 2-second grace period for WhatsApp network packet dispatch before socket is killed
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+    } catch (err) {
+        console.error(`[${session.id}] Error in sendDisconnectAlertBeforeTeardown:`, err.message);
+    }
+}
+
+// Helper to send a connection alert when WhatsApp is linked via QR scan or Pairing Code
+async function sendConnectAlertAfterLink(session) {
+    if (!session || !session.sock) return;
+    try {
+        const userPhone = session.user?.number || session.sock.user?.id?.split(':')[0]?.split('@')[0];
+        if (userPhone && session.state === 'connected') {
+            const selfJid = `${userPhone}@s.whatsapp.net`;
+            console.log(`📤 [${session.id}] Sending connect alert to scanned number: ${userPhone}...`);
+            // Brief 1.5-second grace period for socket handshake and encryption keys to settle
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            await session.sock.sendMessage(selfJid, {
+                text: `✅ *Cravey Crust Bot Notification*\n\nAap ka WhatsApp account (${userPhone}) Cravey Crust Bot ke sath kamyabi se connect ho gaya hai! 🎉\n\n• Ab is number par aane wale customer orders aur messages ko bot automatically handle karega.\n• Agar aap kisi bhi waqt is account ko disconnect karna chahein toh Dashboard par ja kar disconnect kar sakte hain.\n\nShukriya! 🍕`
+            }).catch(err => {
+                console.error(`[${session.id}] Failed to send connect alert message:`, err.message);
+            });
+            console.log(`✅ [${session.id}] Connect alert sent to ${userPhone}.`);
+        }
+    } catch (err) {
+        console.error(`[${session.id}] Error in sendConnectAlertAfterLink:`, err.message);
+    }
+}
+
 // Logout specific session
 app.post('/api/sessions/:id/logout', async (req, res) => {
     const session = activeSessions.get(req.params.id);
@@ -495,6 +535,10 @@ app.post('/api/sessions/:id/logout', async (req, res) => {
 
     try {
         console.log(`🚪 [${session.id}] Logout requested...`);
+
+        // Send alert to the connected WhatsApp number before logging out
+        await sendDisconnectAlertBeforeTeardown(session);
+
         if (session.sock) {
             try { await session.sock.logout(); } catch (_) {
                 try { session.sock.end(new Error('Manual logout')); } catch (_2) {}
@@ -526,6 +570,10 @@ async function deleteSessionHandler(req, res) {
 
     try {
         console.log(`🗑️ Deleting session: ${session.id}...`);
+
+        // Send alert to the connected WhatsApp number before disconnecting
+        await sendDisconnectAlertBeforeTeardown(session);
+
         if (session.sock) {
             try { await session.sock.logout(); } catch (_) {
                 try { session.sock.end(new Error('Manual delete')); } catch (_2) {}
@@ -830,10 +878,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     const displayHost = process.env.SERVER_IP || process.env.PUBLIC_IP || 'localhost';
     console.log(`🌐 Dashboard web server running at http://${displayHost}:${PORT}`);
 
-    // Ensure database delivery areas are seeded on boot
-    import('./src/services/deliveryService.js').then(({ ensureDeliveryAreasSeeded }) => {
-        ensureDeliveryAreasSeeded().catch(() => {});
-    }).catch(() => {});
 });
 
 server.on('error', (err) => {
@@ -1079,6 +1123,13 @@ async function startSession(session, options = {}) {
             console.log('╚══════════════════════════════════════════╝');
             console.log(`📱 Number: ${session.user.number}`);
             console.log(`🔄 Session is now listening for messages...\n`);
+
+            // If newly linked via QR scan or pairing code, dispatch alert to scanned number
+            if (session.isNewLogin || session.mode === 'qr' || session.mode === 'pairing') {
+                session.isNewLogin = false;
+                session.mode = 'restore';
+                sendConnectAlertAfterLink(session);
+            }
         }
 
         if (connection === 'close') {
@@ -1459,19 +1510,24 @@ async function handleMessage(sock, msg, session) {
                     identity,
                     locationData: loc || null,
                 });
-                if (aiReply && aiReply.trim()) {
-                    await sock.sendMessage(jid, { text: aiReply }).catch(err => {
-                        console.error(`[AI] Failed to send reply to ${jid}:`, err.message);
-                    });
+                if (aiReply) {
+                    const textToSend = typeof aiReply === 'object' ? aiReply.text : aiReply;
+                    const imgToSend = typeof aiReply === 'object' ? aiReply.imageUrl : null;
 
-                    // Record outgoing bot chat reply
-                    recordChatMessage({
-                        chatId: jid,
-                        phone: customerPhone,
-                        customerName: customerName,
-                        sender: 'bot',
-                        message: aiReply,
-                    }).catch(() => {});
+                    if (textToSend && textToSend.trim()) {
+                        await sendWhatsAppMediaOrText(sock, jid, { text: textToSend, imageUrl: imgToSend }, { quoted: msg }).catch(err => {
+                            console.error(`[AI] Failed to send reply to ${jid}:`, err.message);
+                        });
+
+                        // Record outgoing bot chat reply
+                        recordChatMessage({
+                            chatId: jid,
+                            phone: customerPhone,
+                            customerName: customerName,
+                            sender: 'bot',
+                            message: textToSend,
+                        }).catch(() => {});
+                    }
                 }
             } catch (agentErr) {
                 console.error(`[AI] Agent error for ${jid}:`, agentErr.message);
@@ -1559,7 +1615,7 @@ async function handleMessage(sock, msg, session) {
             });
 
             if (orderResponse && orderResponse.text) {
-                await sock.sendMessage(jid, { text: orderResponse.text }, { quoted: msg });
+                await sendWhatsAppMediaOrText(sock, jid, { text: orderResponse.text, imageUrl: orderResponse.imageUrl }, { quoted: msg });
                 // Record outgoing bot order reply
                 recordChatMessage({
                     chatId: jid,
@@ -1903,36 +1959,35 @@ async function initAllSessions() {
         }
     }
 
-    const sessionFolders = fs.existsSync(sessionsBaseDir)
-        ? fs.readdirSync(sessionsBaseDir).filter(f => {
-            try { return fs.statSync(path.join(sessionsBaseDir, f)).isDirectory(); } catch (_) { return false; }
-        })
-        : [];
-
-    if (sessionFolders.length === 0) {
-        console.log(`📱 No saved sessions. Created 'primary' session in idle state.`);
-        const primary = new WhatsAppSession('primary', 'Primary Account');
-        activeSessions.set('primary', primary);
-        return;
+    if (!fs.existsSync(primaryDir)) {
+        fs.mkdirSync(primaryDir, { recursive: true });
     }
 
-    console.log(`🔄 Found ${sessionFolders.length} session(s). Booting in parallel...`);
-    for (const folder of sessionFolders) {
-        const sessionPath = path.join(sessionsBaseDir, folder);
-        const credsPath = path.join(sessionPath, 'creds.json');
-        const session = new WhatsAppSession(folder, folder === 'primary' ? 'Primary Account' : `Account (${folder})`);
-        activeSessions.set(folder, session);
-
-        if (fs.existsSync(credsPath)) {
-            console.log(`🔄 Booting saved session '${folder}'...`);
-            startSession(session, { mode: 'restore' }).catch(err => {
-                console.error(`Failed to restore session '${folder}':`, err.message);
-                session.state = 'idle';
-            });
-        } else {
-            session.clearAuth();
-            session.state = 'idle';
+    // Clean up any old unused session folders
+    if (fs.existsSync(sessionsBaseDir)) {
+        const extraFolders = fs.readdirSync(sessionsBaseDir).filter(f => f !== 'primary');
+        for (const extra of extraFolders) {
+            try {
+                fs.rmSync(path.join(sessionsBaseDir, extra), { recursive: true, force: true });
+                console.log(`🧹 Removed unused session folder: ${extra}`);
+            } catch (_) {}
         }
+    }
+
+    const primary = new WhatsAppSession('primary', 'Primary Account');
+    activeSessions.set('primary', primary);
+
+    const credsPath = path.join(primaryDir, 'creds.json');
+    if (fs.existsSync(credsPath)) {
+        console.log(`🔄 Booting WhatsApp session 'primary'...`);
+        startSession(primary, { mode: 'restore' }).catch(err => {
+            console.error(`Failed to restore session 'primary':`, err.message);
+            primary.state = 'idle';
+        });
+    } else {
+        primary.clearAuth();
+        primary.state = 'idle';
+        console.log(`📱 Ready to link single WhatsApp account ('primary') in idle state.`);
     }
 }
 

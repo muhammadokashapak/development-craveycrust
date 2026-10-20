@@ -3,6 +3,7 @@ import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
 import { matchVariant } from './cartService.js';
+import { getGlobalDiscountSettings, calculateDiscount } from './discountService.js';
 
 const Decimal = Prisma.Decimal;
 
@@ -54,7 +55,11 @@ export async function calculatePricing(params) {
     const dealsInput = params.deals || [];
     const promoCode = params.promoCode?.trim();
 
+    // Fetch global store discount settings (if any)
+    const globalDiscountSettings = await getGlobalDiscountSettings(restaurantId);
+
     let subtotal = new Decimal(0);
+    let totalMenuDiscount = new Decimal(0);
     const resolvedItems = [];
     const resolvedDeals = [];
 
@@ -83,7 +88,7 @@ export async function calculatePricing(params) {
             throw err;
         }
 
-        let unitPrice = new Decimal(item.base_price);
+        let originalUnitPrice = new Decimal(item.base_price);
         let selectedVariant = null;
 
         if (itemReq.variantId) {
@@ -98,12 +103,25 @@ export async function calculatePricing(params) {
                 err.code = 'VARIANT_UNAVAILABLE';
                 throw err;
             }
-            unitPrice = new Decimal(selectedVariant.price);
+            originalUnitPrice = new Decimal(selectedVariant.price);
         }
 
+        // Calculate discount: variant discount overrides item discount; fallback to global discount
+        const variantPct = selectedVariant ? selectedVariant.discount_percent : null;
+        const variantFixed = selectedVariant ? selectedVariant.discount_fixed : null;
+        const itemPct = variantPct !== null && variantPct !== undefined ? variantPct : item.discount_percent;
+        const itemFixed = variantFixed !== null && variantFixed !== undefined ? variantFixed : item.discount_fixed;
+
+        const disc = calculateDiscount(originalUnitPrice.toNumber(), itemPct, itemFixed, globalDiscountSettings);
+        const effectiveUnitPrice = new Decimal(disc.discountedPrice);
+
         const quantity = Math.max(1, parseInt(itemReq.quantity, 10) || 1);
-        const lineTotal = unitPrice.times(quantity);
-        subtotal = subtotal.plus(lineTotal);
+        const originalLineTotal = originalUnitPrice.times(quantity);
+        const lineTotal = effectiveUnitPrice.times(quantity);
+        const itemDiscountTotal = originalLineTotal.minus(lineTotal);
+
+        subtotal = subtotal.plus(originalLineTotal);
+        totalMenuDiscount = totalMenuDiscount.plus(itemDiscountTotal);
 
         resolvedItems.push({
             itemId: item.id,
@@ -112,9 +130,18 @@ export async function calculatePricing(params) {
             categoryName: item.category?.name || '',
             variantId: selectedVariant?.id || null,
             variantName: selectedVariant?.name || null,
-            unitPrice: roundMoney(unitPrice),
-            unitPriceDecimal: unitPrice,
+            originalUnitPrice: roundMoney(originalUnitPrice),
+            unitPrice: roundMoney(effectiveUnitPrice),
+            unitPriceDecimal: effectiveUnitPrice,
+            originalPriceDecimal: originalUnitPrice,
+            discountAmount: roundMoney(disc.discountAmount),
+            discountAmountDecimal: new Decimal(disc.discountAmount),
+            discountPercent: disc.discountPercent,
+            hasDiscount: disc.hasDiscount,
+            discountLabel: disc.label,
+            discountSource: disc.source,
             quantity,
+            originalLineTotal: roundMoney(originalLineTotal),
             lineTotal: roundMoney(lineTotal),
             lineTotalDecimal: lineTotal,
         });
@@ -196,6 +223,19 @@ export async function calculatePricing(params) {
     const appliedDiscounts = [];
     const appliedPromotionIds = [];
     let discountTotal = new Decimal(0);
+
+    // Add item & global menu discounts if any items were discounted
+    if (totalMenuDiscount.greaterThan(0)) {
+        appliedDiscounts.push({
+            id: 'menu_discount',
+            name: globalDiscountSettings?.title || 'Special Menu Discount',
+            code: null,
+            type: 'MENU_DISCOUNT',
+            amount: roundMoney(totalMenuDiscount),
+            amountDecimal: totalMenuDiscount,
+        });
+        discountTotal = discountTotal.plus(totalMenuDiscount);
+    }
 
     if (promoCode) {
         const promotions = await prisma.promotion.findMany({
@@ -315,13 +355,14 @@ export async function calculatePricing(params) {
 
     if (params.deliveryFee !== undefined && params.deliveryFee !== null) {
         deliveryFee = new Decimal(params.deliveryFee);
-    } else if (params.deliveryAreaId || params.deliveryAreaName || (params.latitude != null && params.longitude != null)) {
+    } else if (params.deliveryAreaId || params.deliveryAreaName || params.deliveryAddress || params.address || (params.latitude != null && params.longitude != null) || (params.deliveryLatitude != null && params.deliveryLongitude != null)) {
         const deliveryCheck = await checkDeliveryAvailability({
             restaurantId,
             areaId: params.deliveryAreaId,
             areaName: params.deliveryAreaName,
-            latitude: params.latitude,
-            longitude: params.longitude,
+            address: params.deliveryAddress || params.address,
+            latitude: params.latitude ?? params.deliveryLatitude,
+            longitude: params.longitude ?? params.deliveryLongitude,
             subtotal: roundMoney(subtotal),
         });
 
@@ -350,6 +391,7 @@ export async function calculatePricing(params) {
         discounts: appliedDiscounts,
         discountTotal: roundMoney(discountTotal),
         discountTotalDecimal: discountTotal,
+        discount: roundMoney(discountTotal),
         deliveryFee: roundMoney(deliveryFee),
         deliveryFeeDecimal: deliveryFee,
         total: roundMoney(finalTotal),

@@ -15,6 +15,7 @@
 import { getActiveMenu, getActiveDeals } from './menuService.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { getDbClient } from '../db/client.js';
+import { getGlobalDiscountSettings, calculateDiscount } from './discountService.js';
 
 // ─── Sync Epoch (bumped by admin sync + catalog updates) ──────────────────
 let _syncEpoch = 1;
@@ -81,7 +82,7 @@ async function fetchAllCatalog() {
         const restId = await getDefaultRestaurantId();
         const prisma = getDbClient();
 
-        const [categories, rawDeals, restaurant, faqs] = await Promise.all([
+        const [categories, rawDeals, restaurant, faqs, globalDiscount] = await Promise.all([
             getActiveMenu(restId),
             getActiveDeals(restId),
             prisma ? prisma.restaurant.findUnique({ where: { id: restId }, include: { settings: true } }) : null,
@@ -90,6 +91,7 @@ async function fetchAllCatalog() {
                 orderBy: { sort_order: 'asc' },
                 take: 50,
             }) : [],
+            getGlobalDiscountSettings(restId),
         ]);
 
         // ── 1. Filter out test categories (aleem, test, demo) ──
@@ -107,11 +109,16 @@ async function fetchAllCatalog() {
                 const basePrice = Number(item.base_price || 0);
                 const variants = item.variants || [];
                 if (variants.length > 1) {
-                    const vStr = variants.map(v => `${v.name}:${Number(v.price || basePrice)}`).join(', ');
+                    const vStr = variants.map(v => {
+                        const vDisc = calculateDiscount(v.price || basePrice, v.discount_percent ?? item.discount_percent, v.discount_fixed ?? item.discount_fixed, globalDiscount);
+                        return `${v.name}:${vDisc.hasDiscount ? vDisc.discountedPrice : Number(v.price || basePrice)}`;
+                    }).join(', ');
                     return `• ${item.name} (${vStr})`;
                 }
+                const disc = calculateDiscount(basePrice, item.discount_percent, item.discount_fixed, globalDiscount);
                 const desc = item.description ? ` - ${item.description}` : '';
-                return `• ${item.name} (Rs. ${basePrice})${desc}`;
+                const pText = disc.hasDiscount ? `Rs. ${disc.discountedPrice} (${disc.label})` : `Rs. ${basePrice}`;
+                return `• ${item.name} (${pText})${desc}`;
             });
             menuCatalogParts.push(`[${cat.name}]\n${items.join('\n')}`);
         }
@@ -140,26 +147,41 @@ async function fetchAllCatalog() {
 
                 // A. Deal Items (or single variant items with description)
                 if (isDealsCategory || (variants.length <= 1 && item.description)) {
-                    const price = variants.length > 0 ? Number(variants[0].price || basePrice) : basePrice;
+                    const rawPrice = variants.length > 0 ? Number(variants[0].price || basePrice) : basePrice;
+                    const vPct = variants.length > 0 ? variants[0].discount_percent : null;
+                    const vFixed = variants.length > 0 ? variants[0].discount_fixed : null;
+                    const disc = calculateDiscount(rawPrice, vPct ?? item.discount_percent, vFixed ?? item.discount_fixed, globalDiscount);
+                    const priceText = disc.hasDiscount ? disc.formattedFull : `Rs. ${rawPrice}`;
                     const desc = item.description ? `\n   _${item.description}_` : '';
-                    return `• *${item.name}* — Rs. ${price}${desc}`;
+                    return `• *${item.name}* — ${priceText}${desc}`;
                 }
 
                 // B. Multi-variant Pizza / Food Items (e.g. Small, Medium, Large, Party Size)
                 if (variants.length > 1) {
-                    const sizesStr = variants.map(v => `${v.name}: Rs. ${Number(v.price || basePrice)}`).join(' | ');
+                    const sizesStr = variants.map(v => {
+                        const vDisc = calculateDiscount(v.price || basePrice, v.discount_percent ?? item.discount_percent, v.discount_fixed ?? item.discount_fixed, globalDiscount);
+                        const vPriceText = vDisc.hasDiscount ? vDisc.formattedFull : `Rs. ${Number(v.price || basePrice)}`;
+                        return `${v.name}: ${vPriceText}`;
+                    }).join(' | ');
                     const spicyTag = (item.spicy_level && item.spicy_level !== 'NONE') ? ` _(${item.spicy_level === 'HOT' ? 'Spicy' : 'Medium'})_` : '';
                     const desc = item.description ? `\n   _${item.description}_` : '';
                     return `• *${item.name}*${spicyTag}\n   ${sizesStr}${desc}`;
                 }
 
                 // C. Single standard item
-                return `• *${item.name}* — Rs. ${basePrice}`;
+                const disc = calculateDiscount(basePrice, item.discount_percent, item.discount_fixed, globalDiscount);
+                const priceText = disc.hasDiscount ? disc.formattedFull : `Rs. ${basePrice}`;
+                return `• *${item.name}* — ${priceText}`;
             });
 
             customerMenuParts.push(`${headerEmoji} *${cat.name.toUpperCase()}*\n━━━━━━━━━━━━━━━━━━━━━\n${itemLines.join('\n\n')}`);
         }
-        const customerMenuCatalog = customerMenuParts.join('\n\n\n') || cachedCategoriesSummary;
+
+        const discountBanner = (globalDiscount && globalDiscount.enabled)
+            ? `🏷️ *SPECIAL OFFER: ${globalDiscount.title.toUpperCase()} (${globalDiscount.type === 'FIXED' ? 'Rs. ' + globalDiscount.value : globalDiscount.value + '%'} OFF ON ALL ITEMS)* 🏷️\n\n`
+            : '';
+
+        const customerMenuCatalog = (discountBanner + customerMenuParts.join('\n\n\n')) || cachedCategoriesSummary;
 
         // ── 3. Classify Deals strictly into sections ──
         const dealBuckets = {
@@ -296,6 +318,7 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             restaurantMapUrl,
             rawCategories: validCategories,
             rawDeals,
+            globalDiscount,
         };
     } catch (err) {
         console.error('[CATALOG] Cache fetch error:', err.message);

@@ -3,6 +3,8 @@ import { getDbClient } from '../../src/db/client.js';
 import { createMenuItemSchema, updateMenuItemSchema } from '../../src/validators/menuSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
+import { bumpSyncEpoch } from '../../src/services/catalogCacheService.js';
+import { calculateDiscount, getGlobalDiscountSettings, bulkApplyDiscountToAllItems } from '../../src/services/discountService.js';
 
 const router = express.Router();
 
@@ -69,31 +71,62 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const formatted = items.map(item => ({
-            id: item.id,
-            name: item.name,
-            slug: item.slug,
-            description: item.description,
-            base_price: Number(item.base_price),
-            image_url: item.image_url,
-            spicy_level: item.spicy_level,
-            is_available: item.is_available,
-            is_active: item.is_active,
-            category: item.category || { id: item.category_id, name: 'Uncategorized', slug: 'uncategorized' },
-            category_id: item.category_id,
-            variants_count: Array.isArray(item.variants) ? item.variants.length : 0,
-            variants: (item.variants || []).map(v => ({
-                id: v.id,
-                name: v.name,
-                price: Number(v.price),
-                is_available: v.is_available,
-                sort_order: v.sort_order,
-            })),
-            created_at: item.created_at,
-            updated_at: item.updated_at,
-        }));
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
 
-        return res.json({ success: true, data: formatted });
+        const formatted = items.map(item => {
+            const itemDiscount = calculateDiscount(
+                item.base_price,
+                item.discount_percent,
+                item.discount_fixed,
+                globalDiscount
+            );
+
+            return {
+                id: item.id,
+                name: item.name,
+                slug: item.slug,
+                description: item.description,
+                base_price: Number(item.base_price),
+                image_url: item.image_url,
+                spicy_level: item.spicy_level,
+                is_available: item.is_available,
+                is_active: item.is_active,
+                discount_percent: item.discount_percent !== null ? Number(item.discount_percent) : null,
+                discount_fixed: item.discount_fixed !== null ? Number(item.discount_fixed) : null,
+                discount_info: itemDiscount,
+                category: item.category || { id: item.category_id, name: 'Uncategorized', slug: 'uncategorized' },
+                category_id: item.category_id,
+                variants_count: Array.isArray(item.variants) ? item.variants.length : 0,
+                variants: (item.variants || []).map(v => {
+                    const variantDiscount = calculateDiscount(
+                        v.price,
+                        v.discount_percent || item.discount_percent,
+                        v.discount_fixed || item.discount_fixed,
+                        globalDiscount
+                    );
+                    return {
+                        id: v.id,
+                        name: v.name,
+                        price: Number(v.price),
+                        discount_percent: v.discount_percent !== null ? Number(v.discount_percent) : null,
+                        discount_fixed: v.discount_fixed !== null ? Number(v.discount_fixed) : null,
+                        discount_info: variantDiscount,
+                        is_available: v.is_available,
+                        sort_order: v.sort_order,
+                    };
+                }),
+                created_at: item.created_at,
+                updated_at: item.updated_at,
+            };
+        });
+
+        return res.json({
+            success: true,
+            data: formatted,
+            meta: {
+                global_discount: globalDiscount,
+            },
+        });
     } catch (err) {
         console.error('[ADMIN] Error listing menu items:', err);
         return res.status(500).json({
@@ -132,14 +165,33 @@ router.get('/:id', async (req, res) => {
             });
         }
 
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+        const itemDiscount = calculateDiscount(
+            item.base_price,
+            item.discount_percent,
+            item.discount_fixed,
+            globalDiscount
+        );
+
         return res.json({
             success: true,
             data: {
                 ...item,
                 base_price: Number(item.base_price),
+                discount_percent: item.discount_percent !== null ? Number(item.discount_percent) : null,
+                discount_fixed: item.discount_fixed !== null ? Number(item.discount_fixed) : null,
+                discount_info: itemDiscount,
                 variants: item.variants.map(v => ({
                     ...v,
                     price: Number(v.price),
+                    discount_percent: v.discount_percent !== null ? Number(v.discount_percent) : null,
+                    discount_fixed: v.discount_fixed !== null ? Number(v.discount_fixed) : null,
+                    discount_info: calculateDiscount(
+                        v.price,
+                        v.discount_percent || item.discount_percent,
+                        v.discount_fixed || item.discount_fixed,
+                        globalDiscount
+                    ),
                 })),
             },
         });
@@ -187,6 +239,8 @@ router.post('/', async (req, res) => {
             spicy_level,
             is_available,
             is_active,
+            discount_percent,
+            discount_fixed,
         } = parseResult.data;
 
         // Verify category exists
@@ -245,6 +299,8 @@ router.post('/', async (req, res) => {
                 spicy_level,
                 is_available,
                 is_active,
+                discount_percent: discount_percent !== undefined ? discount_percent : null,
+                discount_fixed: discount_fixed !== undefined ? discount_fixed : null,
             },
             include: {
                 category: { select: { id: true, name: true, slug: true } },
@@ -252,13 +308,25 @@ router.post('/', async (req, res) => {
             },
         });
 
+        bumpSyncEpoch();
         notifyN8nSync('menu_item_created');
+
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+        const itemDiscount = calculateDiscount(
+            created.base_price,
+            created.discount_percent,
+            created.discount_fixed,
+            globalDiscount
+        );
 
         return res.status(201).json({
             success: true,
             data: {
                 ...created,
                 base_price: Number(created.base_price),
+                discount_percent: created.discount_percent !== null ? Number(created.discount_percent) : null,
+                discount_fixed: created.discount_fixed !== null ? Number(created.discount_fixed) : null,
+                discount_info: itemDiscount,
             },
         });
     } catch (err) {
@@ -315,6 +383,8 @@ router.put('/:id', async (req, res) => {
             spicy_level,
             is_available,
             is_active,
+            discount_percent,
+            discount_fixed,
         } = parseResult.data;
 
         if (category_id !== undefined && category_id !== existing.category_id) {
@@ -356,10 +426,12 @@ router.put('/:id', async (req, res) => {
 
         if (description !== undefined) updateData.description = description;
         if (base_price !== undefined) updateData.base_price = base_price;
-        if (image_url !== undefined) updateData.image_url = image_url;
+        if (image_url !== undefined) updateData.image_url = (image_url && typeof image_url === 'string' && image_url.trim()) ? image_url.trim() : null;
         if (spicy_level !== undefined) updateData.spicy_level = spicy_level;
         if (is_available !== undefined) updateData.is_available = is_available;
         if (is_active !== undefined) updateData.is_active = is_active;
+        if (discount_percent !== undefined) updateData.discount_percent = discount_percent;
+        if (discount_fixed !== undefined) updateData.discount_fixed = discount_fixed;
 
         const updated = await prisma.menuItem.update({
             where: { id: itemId },
@@ -370,13 +442,25 @@ router.put('/:id', async (req, res) => {
             },
         });
 
+        bumpSyncEpoch();
         notifyN8nSync('menu_item_updated');
+
+        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+        const itemDiscount = calculateDiscount(
+            updated.base_price,
+            updated.discount_percent,
+            updated.discount_fixed,
+            globalDiscount
+        );
 
         return res.json({
             success: true,
             data: {
                 ...updated,
                 base_price: Number(updated.base_price),
+                discount_percent: updated.discount_percent !== null ? Number(updated.discount_percent) : null,
+                discount_fixed: updated.discount_fixed !== null ? Number(updated.discount_fixed) : null,
+                discount_info: itemDiscount,
             },
         });
     } catch (err) {
@@ -421,6 +505,7 @@ router.patch('/:id/availability', async (req, res) => {
             data: { is_available: newAvailability },
         });
 
+        bumpSyncEpoch();
         notifyN8nSync('menu_item_availability_changed');
 
         return res.json({
@@ -467,6 +552,7 @@ router.delete('/:id', async (req, res) => {
             where: { id: itemId },
         });
 
+        bumpSyncEpoch();
         notifyN8nSync('menu_item_deleted');
 
         return res.json({
@@ -475,6 +561,54 @@ router.delete('/:id', async (req, res) => {
         });
     } catch (err) {
         console.error('[ADMIN] Delete menu item error:', err);
+        return res.status(500).json({
+            success: false,
+            error: { code: 'INTERNAL_ERROR', message: err.message },
+        });
+    }
+});
+
+/**
+ * POST /api/admin/menu/bulk-discount
+ * Apply or clear discount across all menu items
+ */
+router.post('/bulk-discount', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({
+                success: false,
+                error: { code: 'DB_UNAVAILABLE', message: 'Database not available' },
+            });
+        }
+
+        const restaurantId = req.user?.restaurantId;
+        const discount_percent = req.body.discount_percent !== undefined ? req.body.discount_percent : req.body.discountPercent;
+        const discount_fixed = req.body.discount_fixed !== undefined ? req.body.discount_fixed : req.body.discountFixed;
+        const category_id = req.body.category_id !== undefined ? req.body.category_id : req.body.categoryId;
+
+        const count = await bulkApplyDiscountToAllItems(restaurantId, {
+            discountPercent: (discount_percent !== undefined && discount_percent !== '' && discount_percent !== null)
+                ? Number(discount_percent)
+                : null,
+            discountFixed: (discount_fixed !== undefined && discount_fixed !== '' && discount_fixed !== null)
+                ? Number(discount_fixed)
+                : null,
+            categoryId: category_id || null,
+        });
+
+        bumpSyncEpoch();
+        notifyN8nSync('menu_items_bulk_discount');
+
+        return res.json({
+            success: true,
+            data: {
+                message: `Discount successfully applied to ${count} menu items`,
+                updatedCount: count,
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Bulk discount error:', err);
         return res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: err.message },

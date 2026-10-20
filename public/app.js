@@ -550,28 +550,7 @@ window.cleanInactiveAccounts = async function() {
 };
 
 window.createNewAccount = async function() {
-  const btn = document.getElementById('addAccountBtn');
-  try {
-    if (btn) btn.disabled = true;
-    const res = await fetch('/api/sessions/create', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({})
-    });
-    const data = await res.json();
-    if (data.success && data.session) {
-      currentSessionId = data.session.id;
-      showSection(phoneSection);
-      setStatus('loading', 'Ready to Link');
-      phoneInput.value = '';
-      clearPhoneError();
-      await checkStatus();
-    }
-  } catch (err) {
-    alert('Error adding account: ' + err.message);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+  console.log('[WHATSAPP] Multiple accounts are disabled. Operating in single WhatsApp mode.');
 };
 
 if (addAccountBtn) {
@@ -1713,6 +1692,66 @@ const catName = document.getElementById('catName');
 const catDescription = document.getElementById('catDescription');
 const catSortOrder = document.getElementById('catSortOrder');
 const catIsActive = document.getElementById('catIsActive');
+const catImageFile = document.getElementById('catImageFile');
+const catImageUrl = document.getElementById('catImageUrl');
+const catImagePreview = document.getElementById('catImagePreview');
+const catImageActionBtn = document.getElementById('catImageActionBtn');
+const catImageStatus = document.getElementById('catImageStatus');
+
+function updateCatImageUI(hasImage, previewUrl = '', fileName = '') {
+  if (hasImage) {
+    if (catImageActionBtn) {
+      catImageActionBtn.className = 'btn btn-danger-outline btn-sm image-toggle-btn is-remove';
+      catImageActionBtn.innerHTML = '<span class="btn-icon">🗑️</span> <span class="btn-text">Remove Image</span>';
+    }
+    if (catImagePreview) {
+      if (previewUrl) catImagePreview.style.backgroundImage = `url("${previewUrl}")`;
+      catImagePreview.classList.remove('hidden');
+    }
+    if (catImageStatus) {
+      catImageStatus.textContent = fileName || 'Image attached';
+    }
+  } else {
+    if (catImageActionBtn) {
+      catImageActionBtn.className = 'btn btn-secondary btn-sm image-toggle-btn';
+      catImageActionBtn.innerHTML = '<span class="btn-icon">📷</span> <span class="btn-text">Add Image</span>';
+    }
+    if (catImagePreview) {
+      catImagePreview.style.backgroundImage = '';
+      catImagePreview.classList.add('hidden');
+    }
+    if (catImageStatus) {
+      catImageStatus.textContent = 'No image selected';
+    }
+  }
+}
+
+if (catImageActionBtn && catImageFile) {
+  catImageActionBtn.addEventListener('click', () => {
+    const hasImage = (catImageUrl && catImageUrl.value) || (catImageFile.files && catImageFile.files[0]);
+    if (hasImage) {
+      // User clicked "Remove Image" -> Clear and switch back to Add
+      catImageFile.value = '';
+      if (catImageUrl) catImageUrl.value = '';
+      updateCatImageUI(false);
+    } else {
+      // User clicked "Add Image" -> Open file browser
+      catImageFile.click();
+    }
+  });
+}
+
+if (catImageFile) {
+  catImageFile.addEventListener('change', () => {
+    if (catImageFile.files && catImageFile.files[0]) {
+      const file = catImageFile.files[0];
+      const previewUrl = URL.createObjectURL(file);
+      updateCatImageUI(true, previewUrl, file.name);
+    } else {
+      updateCatImageUI(Boolean(catImageUrl && catImageUrl.value), catImageUrl?.value || '');
+    }
+  });
+}
 
 if (openAddCategoryBtn) {
   openAddCategoryBtn.addEventListener('click', () => {
@@ -1721,6 +1760,9 @@ if (openAddCategoryBtn) {
     if (catDescription) catDescription.value = '';
     if (catSortOrder) catSortOrder.value = '0';
     if (catIsActive) catIsActive.checked = true;
+    if (catImageUrl) catImageUrl.value = '';
+    if (catImageFile) catImageFile.value = '';
+    updateCatImageUI(false);
     if (categoryModalTitle) categoryModalTitle.textContent = 'Add Category';
     if (categoryModal) categoryModal.classList.remove('hidden');
   });
@@ -1747,6 +1789,13 @@ window.openEditCategory = async function(id) {
       if (catDescription) catDescription.value = c.description || '';
       if (catSortOrder) catSortOrder.value = c.sort_order;
       if (catIsActive) catIsActive.checked = c.is_active;
+      if (catImageUrl) catImageUrl.value = c.image_url || '';
+      if (catImageFile) catImageFile.value = '';
+      if (c.image_url) {
+        updateCatImageUI(true, c.image_url, 'Current Image');
+      } else {
+        updateCatImageUI(false);
+      }
       if (categoryModalTitle) categoryModalTitle.textContent = 'Edit Category';
       if (categoryModal) categoryModal.classList.remove('hidden');
     }
@@ -1760,9 +1809,34 @@ if (categoryForm) {
   categoryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = catEditId ? catEditId.value : '';
+
+    // Upload category image if a new file is chosen
+    let uploadedUrl = catImageUrl ? catImageUrl.value : '';
+    if (catImageFile && catImageFile.files && catImageFile.files[0]) {
+      const formData = new FormData();
+      formData.append('image', catImageFile.files[0]);
+      try {
+        const uploadRes = await fetch('/api/admin/upload/image', {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadData.success && uploadData.data?.url) {
+          uploadedUrl = uploadData.data.url;
+        } else {
+          showToast(uploadData.error?.message || 'Category image upload failed', 'error');
+          return;
+        }
+      } catch (err) {
+        showToast('Image upload failed: ' + err.message, 'error');
+        return;
+      }
+    }
+
     const payload = {
       name: catName.value.trim(),
       description: catDescription.value.trim() || null,
+      image_url: uploadedUrl || null,
       sort_order: parseInt(catSortOrder.value, 10) || 0,
       is_active: catIsActive.checked,
     };
@@ -1849,10 +1923,31 @@ async function loadCategoriesForDropdown() {
 
 let cachedMenuItemsList = [];
 let menuPageState = { page: 1, pageSize: 50 };
+let currentGlobalDiscount = null;
 
 function renderMenuItemsTable() {
   const tbody = document.getElementById('menuItemsTableBody');
   if (!tbody) return;
+
+  // Update Global Discount Alert Banner
+  const bannerEl = document.getElementById('menuGlobalDiscountBanner');
+  if (bannerEl) {
+    if (currentGlobalDiscount && currentGlobalDiscount.enabled) {
+      const typeStr = currentGlobalDiscount.type === 'FIXED' ? `Rs. ${currentGlobalDiscount.value} OFF` : `${currentGlobalDiscount.value}% OFF`;
+      bannerEl.innerHTML = `
+        <div class="banner-content">
+          <span class="banner-tag">ACTIVE STORE DISCOUNT</span>
+          <span><strong>${escapeHtml(currentGlobalDiscount.title)}:</strong> ${typeStr} applied across all menu items!</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm btn-secondary" onclick="switchView('settings')" style="font-size: 11.5px; padding: 4px 10px;">Edit in Settings</button>
+        </div>
+      `;
+      bannerEl.classList.remove('hidden');
+    } else {
+      bannerEl.classList.add('hidden');
+    }
+  }
 
   const items = cachedMenuItemsList || [];
   if (items.length === 0) {
@@ -1887,6 +1982,23 @@ function renderMenuItemsTable() {
       ? `<span class="badge-spicy ${item.spicy_level}">${item.spicy_level}</span>`
       : '';
 
+    // Format Price with Discount (Strikethrough if discounted)
+    let priceCellHtml = `<span class="price-tag">Rs.${item.base_price}</span>`;
+    const disc = item.discount_info;
+    if (disc && disc.hasDiscount) {
+      priceCellHtml = `
+        <div class="price-discount-box">
+          <div class="price-row">
+            <span class="price-tag discounted">Rs.${disc.discountedPrice}</span>
+            <span class="price-original">Rs.${disc.originalPrice}</span>
+          </div>
+          <span class="badge-discount ${disc.source === 'GLOBAL' ? 'badge-global' : 'badge-item'}">
+            ${disc.source === 'GLOBAL' ? '🌐 ' : '🏷️ '}${escapeHtml(disc.label)}
+          </span>
+        </div>
+      `;
+    }
+
     tr.innerHTML = `
       <td>${thumbHtml}</td>
       <td>
@@ -1894,7 +2006,7 @@ function renderMenuItemsTable() {
         <div class="subtext">${escapeHtml(item.description || '—')}</div>
       </td>
       <td><span class="badge-tag badge-category">${escapeHtml(item.category?.name || 'Uncategorized')}</span></td>
-      <td><span class="price-tag">Rs.${item.base_price}</span></td>
+      <td>${priceCellHtml}</td>
       <td>
         <span class="badge-variant-count" title="Click to manage variants" onclick="window.openVariantsModal('${item.id}', '${escapeHtml(item.name)}')">
           ${item.variants_count} variant(s)
@@ -1990,6 +2102,7 @@ async function loadMenuItems(resetPage = false) {
       return;
     }
 
+    currentGlobalDiscount = data.meta?.global_discount || null;
     const items = data.data || [];
     cachedMenuItemsList = items;
     renderMenuItemsTable();
@@ -2059,9 +2172,68 @@ const itemDescription = document.getElementById('itemDescription');
 const itemPrice = document.getElementById('itemPrice');
 const itemSpicyLevel = document.getElementById('itemSpicyLevel');
 const itemIsAvailable = document.getElementById('itemIsAvailable');
+const itemDiscountPercent = document.getElementById('itemDiscountPercent');
+const itemDiscountFixed = document.getElementById('itemDiscountFixed');
 const itemImageFile = document.getElementById('itemImageFile');
 const itemImageUrl = document.getElementById('itemImageUrl');
 const itemImagePreview = document.getElementById('itemImagePreview');
+const itemImageActionBtn = document.getElementById('itemImageActionBtn');
+const itemImageStatus = document.getElementById('itemImageStatus');
+
+function updateItemImageUI(hasImage, previewUrl = '', fileName = '') {
+  if (hasImage) {
+    if (itemImageActionBtn) {
+      itemImageActionBtn.className = 'btn btn-danger-outline btn-sm image-toggle-btn is-remove';
+      itemImageActionBtn.innerHTML = '<span class="btn-icon">🗑️</span> <span class="btn-text">Remove Image</span>';
+    }
+    if (itemImagePreview) {
+      if (previewUrl) itemImagePreview.style.backgroundImage = `url("${previewUrl}")`;
+      itemImagePreview.classList.remove('hidden');
+    }
+    if (itemImageStatus) {
+      itemImageStatus.textContent = fileName || 'Image attached';
+    }
+  } else {
+    if (itemImageActionBtn) {
+      itemImageActionBtn.className = 'btn btn-secondary btn-sm image-toggle-btn';
+      itemImageActionBtn.innerHTML = '<span class="btn-icon">📷</span> <span class="btn-text">Add Image</span>';
+    }
+    if (itemImagePreview) {
+      itemImagePreview.style.backgroundImage = '';
+      itemImagePreview.classList.add('hidden');
+    }
+    if (itemImageStatus) {
+      itemImageStatus.textContent = 'No image selected';
+    }
+  }
+}
+
+if (itemImageActionBtn && itemImageFile) {
+  itemImageActionBtn.addEventListener('click', () => {
+    const hasImage = (itemImageUrl && itemImageUrl.value) || (itemImageFile.files && itemImageFile.files[0]);
+    if (hasImage) {
+      // User clicked "Remove Image" -> Clear and switch back to Add
+      itemImageFile.value = '';
+      if (itemImageUrl) itemImageUrl.value = '';
+      updateItemImageUI(false);
+    } else {
+      // User clicked "Add Image" -> Open file browser
+      itemImageFile.click();
+    }
+  });
+}
+
+if (itemImageFile) {
+  itemImageFile.addEventListener('change', () => {
+    if (itemImageFile.files && itemImageFile.files[0]) {
+      const file = itemImageFile.files[0];
+      const previewUrl = URL.createObjectURL(file);
+      updateItemImageUI(true, previewUrl, file.name);
+    } else {
+      updateItemImageUI(Boolean(itemImageUrl && itemImageUrl.value), itemImageUrl?.value || '');
+    }
+  });
+}
 
 if (openAddMenuItemBtn) {
   openAddMenuItemBtn.addEventListener('click', () => {
@@ -2072,11 +2244,11 @@ if (openAddMenuItemBtn) {
     if (itemPrice) itemPrice.value = '';
     if (itemSpicyLevel) itemSpicyLevel.value = 'NONE';
     if (itemIsAvailable) itemIsAvailable.checked = true;
+    if (itemDiscountPercent) itemDiscountPercent.value = '';
+    if (itemDiscountFixed) itemDiscountFixed.value = '';
     if (itemImageUrl) itemImageUrl.value = '';
-    if (itemImagePreview) {
-      itemImagePreview.style.backgroundImage = '';
-      itemImagePreview.classList.add('hidden');
-    }
+    if (itemImageFile) itemImageFile.value = '';
+    updateItemImageUI(false);
     if (menuItemModalTitle) menuItemModalTitle.textContent = 'Add Menu Item';
     if (menuItemModal) menuItemModal.classList.remove('hidden');
   });
@@ -2102,14 +2274,14 @@ window.openEditMenuItem = async function(id) {
       if (itemPrice) itemPrice.value = it.base_price;
       if (itemSpicyLevel) itemSpicyLevel.value = it.spicy_level || 'NONE';
       if (itemIsAvailable) itemIsAvailable.checked = it.is_available;
+      if (itemDiscountPercent) itemDiscountPercent.value = (it.discount_percent !== null && it.discount_percent !== undefined) ? it.discount_percent : '';
+      if (itemDiscountFixed) itemDiscountFixed.value = (it.discount_fixed !== null && it.discount_fixed !== undefined) ? it.discount_fixed : '';
       if (itemImageUrl) itemImageUrl.value = it.image_url || '';
-      if (itemImagePreview) {
-        if (it.image_url) {
-          itemImagePreview.style.backgroundImage = `url('${it.image_url}')`;
-          itemImagePreview.classList.remove('hidden');
-        } else {
-          itemImagePreview.classList.add('hidden');
-        }
+      if (itemImageFile) itemImageFile.value = '';
+      if (it.image_url) {
+        updateItemImageUI(true, it.image_url, 'Current Image');
+      } else {
+        updateItemImageUI(false);
       }
       if (menuItemModalTitle) menuItemModalTitle.textContent = 'Edit Menu Item';
       if (menuItemModal) menuItemModal.classList.remove('hidden');
@@ -2148,6 +2320,9 @@ if (menuItemForm) {
       }
     }
 
+    const discPct = itemDiscountPercent && itemDiscountPercent.value.trim() !== '' ? parseFloat(itemDiscountPercent.value) : null;
+    const discFixed = itemDiscountFixed && itemDiscountFixed.value.trim() !== '' ? parseFloat(itemDiscountFixed.value) : null;
+
     const payload = {
       name: itemName.value.trim(),
       category_id: itemCategorySelect.value,
@@ -2155,6 +2330,8 @@ if (menuItemForm) {
       base_price: parseFloat(itemPrice.value) || 0,
       spicy_level: itemSpicyLevel.value,
       is_available: itemIsAvailable.checked,
+      discount_percent: discPct,
+      discount_fixed: discFixed,
       image_url: uploadedUrl || null,
     };
 
@@ -2179,6 +2356,133 @@ if (menuItemForm) {
       }
     } catch (err) {
       showToast(err.message, 'error');
+    }
+  });
+}
+
+// ─── Bulk Discount Modal Handling ─────────────────────────────────────────
+const bulkDiscountModal = document.getElementById('bulkDiscountModal');
+const openBulkDiscountBtn = document.getElementById('openBulkDiscountBtn');
+const bulkDiscountCloseBtn = document.getElementById('bulkDiscountCloseBtn');
+const bulkDiscountCancelBtn = document.getElementById('bulkDiscountCancelBtn');
+const bulkDiscountForm = document.getElementById('bulkDiscountForm');
+const bulkDiscountCategory = document.getElementById('bulkDiscountCategory');
+const bulkDiscountAction = document.getElementById('bulkDiscountAction');
+const bulkDiscountValue = document.getElementById('bulkDiscountValue');
+const bulkDiscountValueRow = document.getElementById('bulkDiscountValueRow');
+const bulkDiscountValueLabel = document.getElementById('bulkDiscountValueLabel');
+const bulkDiscountValueHint = document.getElementById('bulkDiscountValueHint');
+
+function closeBulkDiscountModal() {
+  if (bulkDiscountModal) bulkDiscountModal.classList.add('hidden');
+}
+
+if (openBulkDiscountBtn) {
+  openBulkDiscountBtn.addEventListener('click', async () => {
+    if (bulkDiscountCategory) {
+      bulkDiscountCategory.innerHTML = '<option value="">All Categories (Every Menu Item)</option>';
+      try {
+        const catRes = await fetch('/api/admin/categories');
+        const catData = await catRes.json();
+        if (catData.success && Array.isArray(catData.data)) {
+          catData.data.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = `${c.name} (${c._count?.menu_items || 0} items)`;
+            bulkDiscountCategory.appendChild(opt);
+          });
+        }
+      } catch (_) {}
+    }
+    if (bulkDiscountAction) bulkDiscountAction.value = 'PERCENTAGE';
+    if (bulkDiscountValue) {
+      bulkDiscountValue.value = '';
+      bulkDiscountValue.placeholder = 'e.g. 10, 15, 20...';
+      bulkDiscountValue.required = true;
+    }
+    if (bulkDiscountValueRow) bulkDiscountValueRow.style.display = 'block';
+    if (bulkDiscountValueLabel) bulkDiscountValueLabel.textContent = 'Discount Percentage (%) *';
+    if (bulkDiscountValueHint) bulkDiscountValueHint.textContent = 'Enter discount percentage to apply to all target items.';
+    if (bulkDiscountModal) bulkDiscountModal.classList.remove('hidden');
+  });
+}
+
+if (bulkDiscountCloseBtn) bulkDiscountCloseBtn.addEventListener('click', closeBulkDiscountModal);
+if (bulkDiscountCancelBtn) bulkDiscountCancelBtn.addEventListener('click', closeBulkDiscountModal);
+
+if (bulkDiscountAction) {
+  bulkDiscountAction.addEventListener('change', () => {
+    const act = bulkDiscountAction.value;
+    if (act === 'CLEAR') {
+      if (bulkDiscountValueRow) bulkDiscountValueRow.style.display = 'none';
+      if (bulkDiscountValue) {
+        bulkDiscountValue.required = false;
+        bulkDiscountValue.value = '';
+      }
+    } else if (act === 'FIXED') {
+      if (bulkDiscountValueRow) bulkDiscountValueRow.style.display = 'block';
+      if (bulkDiscountValue) {
+        bulkDiscountValue.required = true;
+        bulkDiscountValue.placeholder = 'e.g. 100 for Rs. 100 OFF';
+      }
+      if (bulkDiscountValueLabel) bulkDiscountValueLabel.textContent = 'Discount Rupee Amount (Rs. OFF) *';
+      if (bulkDiscountValueHint) bulkDiscountValueHint.textContent = 'Enter flat rupee amount to deduct from every target item price.';
+    } else {
+      if (bulkDiscountValueRow) bulkDiscountValueRow.style.display = 'block';
+      if (bulkDiscountValue) {
+        bulkDiscountValue.required = true;
+        bulkDiscountValue.placeholder = 'e.g. 15 for 15% OFF';
+      }
+      if (bulkDiscountValueLabel) bulkDiscountValueLabel.textContent = 'Discount Percentage (%) *';
+      if (bulkDiscountValueHint) bulkDiscountValueHint.textContent = 'Enter discount percentage to apply to all target items.';
+    }
+  });
+}
+
+if (bulkDiscountForm) {
+  bulkDiscountForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const act = bulkDiscountAction ? bulkDiscountAction.value : 'PERCENTAGE';
+    const catId = bulkDiscountCategory ? bulkDiscountCategory.value || null : null;
+    let discPct = null;
+    let discFixed = null;
+
+    if (act === 'PERCENTAGE') {
+      const val = parseFloat(bulkDiscountValue.value);
+      if (isNaN(val) || val < 0 || val > 100) {
+        showToast('Please enter a valid percentage between 0 and 100', 'error');
+        return;
+      }
+      discPct = val;
+    } else if (act === 'FIXED') {
+      const val = parseFloat(bulkDiscountValue.value);
+      if (isNaN(val) || val < 0) {
+        showToast('Please enter a valid rupee amount', 'error');
+        return;
+      }
+      discFixed = val;
+    }
+
+    try {
+      const res = await fetch('/api/admin/menu/bulk-discount', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: catId,
+          discountPercent: discPct,
+          discountFixed: discFixed,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Bulk discount updated on ${data.data?.updatedCount || 0} menu items!`, 'success');
+        closeBulkDiscountModal();
+        loadMenuItems(true);
+      } else {
+        showToast(data.error?.message || 'Failed to apply bulk discount', 'error');
+      }
+    } catch (err) {
+      showToast('Bulk discount failed: ' + err.message, 'error');
     }
   });
 }
@@ -2432,6 +2736,31 @@ async function loadSettings() {
         setRestaurantLng.value = custom.restaurant_lng || '73.1398525';
       }
 
+      // Store-wide Global Discount
+      const setGlobalDiscountEnabled = document.getElementById('setGlobalDiscountEnabled');
+      const setGlobalDiscountType = document.getElementById('setGlobalDiscountType');
+      const setGlobalDiscountValue = document.getElementById('setGlobalDiscountValue');
+      const setGlobalDiscountTitle = document.getElementById('setGlobalDiscountTitle');
+      const setDiscountStatusBadge = document.getElementById('setDiscountStatusBadge');
+
+      const isGlobalEnabled = custom.global_discount_enabled === 'true';
+      if (setGlobalDiscountEnabled) setGlobalDiscountEnabled.checked = isGlobalEnabled;
+      if (setGlobalDiscountType) setGlobalDiscountType.value = custom.global_discount_type || 'PERCENTAGE';
+      if (setGlobalDiscountValue) setGlobalDiscountValue.value = custom.global_discount_value || '0';
+      if (setGlobalDiscountTitle) setGlobalDiscountTitle.value = custom.global_discount_title || 'Special Discount';
+      updateGlobalDiscountInputState();
+      if (setDiscountStatusBadge) {
+        if (isGlobalEnabled && parseFloat(custom.global_discount_value || '0') > 0) {
+          setDiscountStatusBadge.textContent = 'Active on All Items';
+          setDiscountStatusBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+          setDiscountStatusBadge.style.color = '#10b981';
+        } else {
+          setDiscountStatusBadge.textContent = 'Inactive';
+          setDiscountStatusBadge.style.background = 'rgba(234, 67, 53, 0.15)';
+          setDiscountStatusBadge.style.color = '#ff6b6b';
+        }
+      }
+
       if (s.name) updateBrandDisplay(s.name);
     }
   } catch (err) {
@@ -2492,6 +2821,31 @@ if (setRestaurantMapUrlEl) {
   });
 }
 
+function updateGlobalDiscountInputState() {
+  const setGlobalDiscountTypeEl = document.getElementById('setGlobalDiscountType');
+  const lbl = document.getElementById('setGlobalDiscountValueLabel');
+  const valInput = document.getElementById('setGlobalDiscountValue');
+  if (!setGlobalDiscountTypeEl) return;
+  if (setGlobalDiscountTypeEl.value === 'FIXED') {
+    if (lbl) lbl.textContent = 'Discount Value (Rs. OFF) *';
+    if (valInput) {
+      valInput.placeholder = 'e.g. 50, 100, 200';
+      valInput.removeAttribute('max');
+    }
+  } else {
+    if (lbl) lbl.textContent = 'Discount Value (%) *';
+    if (valInput) {
+      valInput.placeholder = 'e.g. 10, 15, 20';
+      valInput.max = '100';
+    }
+  }
+}
+
+const setGlobalDiscountTypeEl = document.getElementById('setGlobalDiscountType');
+if (setGlobalDiscountTypeEl) {
+  setGlobalDiscountTypeEl.addEventListener('change', updateGlobalDiscountInputState);
+}
+
 const settingsForm = document.getElementById('settingsForm');
 if (settingsForm) {
   settingsForm.addEventListener('submit', async (e) => {
@@ -2520,6 +2874,10 @@ if (settingsForm) {
     const setRestaurantMapUrl = document.getElementById('setRestaurantMapUrl');
     const setRestaurantLat = document.getElementById('setRestaurantLat');
     const setRestaurantLng = document.getElementById('setRestaurantLng');
+    const setGlobalDiscountEnabled = document.getElementById('setGlobalDiscountEnabled');
+    const setGlobalDiscountType = document.getElementById('setGlobalDiscountType');
+    const setGlobalDiscountValue = document.getElementById('setGlobalDiscountValue');
+    const setGlobalDiscountTitle = document.getElementById('setGlobalDiscountTitle');
 
     const supportPhoneVal = setHumanHandoffPhone ? setHumanHandoffPhone.value.trim() : '';
 
@@ -2549,6 +2907,10 @@ if (settingsForm) {
         restaurant_map_url: setRestaurantMapUrl ? setRestaurantMapUrl.value.trim() : 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9',
         restaurant_lat: setRestaurantLat && setRestaurantLat.value.trim() ? setRestaurantLat.value.trim() : '33.6180334',
         restaurant_lng: setRestaurantLng && setRestaurantLng.value.trim() ? setRestaurantLng.value.trim() : '73.1398525',
+        global_discount_enabled: setGlobalDiscountEnabled ? String(setGlobalDiscountEnabled.checked) : 'false',
+        global_discount_type: setGlobalDiscountType ? setGlobalDiscountType.value : 'PERCENTAGE',
+        global_discount_value: setGlobalDiscountValue && setGlobalDiscountValue.value.trim() ? setGlobalDiscountValue.value.trim() : '0',
+        global_discount_title: setGlobalDiscountTitle ? setGlobalDiscountTitle.value.trim() : 'Special Discount',
       },
     };
 

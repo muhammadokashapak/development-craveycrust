@@ -614,7 +614,7 @@ async function seed() {
         {
             category: 'Payments',
             question: 'Payment Methods & EasyPaisa Details',
-            answer: 'Payment options: Cash on Delivery (COD) ya advance EasyPaisa. Customer se poocho: "Aap Cash on Delivery karenge ya Easypaisa se advance? EasyPaisa number hai: 03434919319 (Muhammad Shoaib)."',
+            answer: 'Hamare paas Cash on Delivery (COD) aur advance EasyPaisa dono options mojood hain. EasyPaisa Account: 03434919319 (Muhammad Shoaib).',
             keywords: ['payment', 'payment methods', 'easypaisa', 'cod', 'cash on delivery', 'advance payment', '03434919319', 'muhammad shoaib'],
             alternative_questions: ['Payment kaise karein?', 'EasyPaisa number kya hai?', 'Do you accept Cash on Delivery?'],
             sort_order: 7,

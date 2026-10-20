@@ -218,6 +218,7 @@ export async function sendAdminNewOrderNotification({ order, restaurantId, sock 
         }
 
         const subtotal = Number(order.pricing?.subtotal ?? order.subtotal ?? 0).toLocaleString('en-PK');
+        const discountTotal = Number(order.pricing?.discountTotal ?? order.discount_total ?? 0);
         const deliveryFee = Number(order.pricing?.deliveryFee ?? order.delivery_fee ?? 0).toLocaleString('en-PK');
         const total = Number(order.pricing?.total ?? order.total ?? order.final_total ?? 0).toLocaleString('en-PK');
         const rawPayment = order.payment?.method || order.payment_method || 'COD';
@@ -243,7 +244,7 @@ Customer Phone: ${customerPhone}
 Items:
 ${itemsLines || '• 1x Order'}
 Subtotal: Rs. ${subtotal}
-Delivery Charges: Rs. ${deliveryFee}
+${discountTotal > 0 ? `Discount: -Rs. ${discountTotal.toLocaleString('en-PK')}\n` : ''}Delivery Charges: Rs. ${deliveryFee}
 Total: Rs. ${total}
 Payment Method: ${paymentMethod}
 ${locationBlock}

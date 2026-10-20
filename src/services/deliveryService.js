@@ -127,7 +127,8 @@ export const SUB_AREA_TO_PRIMARY = {
  * @param {string} [restaurantId]
  * @returns {Promise<number>} Number of areas seeded/confirmed
  */
-export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantId = null) {
+export async function ensureDeliveryAreasSeeded(prismaClient = null, restaurantId = null, force = false) {
+    if (!force) return 0;
     const prisma = prismaClient || getDbClient();
     if (!prisma) return 0;
 
@@ -447,7 +448,21 @@ export async function checkDeliveryAvailability(params) {
     // 4. Match by name or address if coordinates were not provided or did not resolve
     const rawAddressText = `${areaName || ''} ${address || ''}`.trim();
     if (!matchedArea && rawAddressText) {
-        const textFound = findAreaByText(allAreas, rawAddressText);
+        let textFound = findAreaByText(allAreas, rawAddressText);
+        if (!textFound) {
+            const fallbackAreas = Object.entries(DELIVERY_AREA_COORDINATES).map(([slug, item]) => ({
+                id: 'radius-zone',
+                name: item.name,
+                slug,
+                latitude: item.lat,
+                longitude: item.lng,
+                radius_km: item.radiusKm,
+                delivery_fee: 0,
+                minimum_order: 0,
+                is_active: true,
+            }));
+            textFound = findAreaByText(fallbackAreas, rawAddressText);
+        }
         if (textFound && textFound.is_active) {
             matchedArea = textFound;
         }
@@ -487,7 +502,8 @@ export async function checkDeliveryAvailability(params) {
     // 6. Phase 3: Automated Geocoding fallback when text is not in static DB areas
     if (!matchedArea && (lat == null || lng == null) && rawAddressText.length >= 3) {
         try {
-            const geocodeResult = await geocodeAddress(rawAddressText, {
+            const queryText = /islamabad|rawalpindi/i.test(rawAddressText) ? rawAddressText : `${rawAddressText}, Islamabad`;
+            const geocodeResult = await geocodeAddress(queryText, {
                 centerLat,
                 centerLng,
             });
@@ -537,22 +553,33 @@ export async function checkDeliveryAvailability(params) {
         } catch (_) {}
     }
 
-    // 7. If still not matched, area is not in approved coverage
+    // 7. If still not matched, check if DB has no areas configured -> allow open delivery
     if (!matchedArea) {
-        if (areaName || address) {
-            const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, null, maxRadiusKm);
+        if (allAreas.length === 0 && rawAddressText.length >= 5) {
+            matchedArea = {
+                id: 'radius-zone',
+                name: 'Standard Delivery',
+                slug: 'standard-delivery',
+                delivery_fee: 0,
+                minimum_order: 0,
+                is_active: true,
+            };
+        } else {
+            if (areaName || address) {
+                const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, null, maxRadiusKm);
+                return {
+                    available: false,
+                    code: 'DELIVERY_NOT_AVAILABLE',
+                    message: outOfDeliveryMsg,
+                    maxRadiusKm,
+                };
+            }
             return {
                 available: false,
-                code: 'DELIVERY_NOT_AVAILABLE',
-                message: outOfDeliveryMsg,
-                maxRadiusKm,
+                code: 'INVALID_DELIVERY_REQUEST',
+                message: 'Delivery check karne ke liye barah-e-karam apna area ya WhatsApp location pin share karein.',
             };
         }
-        return {
-            available: false,
-            code: 'INVALID_DELIVERY_REQUEST',
-            message: 'Delivery check karne ke liye barah-e-karam apna area ya WhatsApp location pin share karein.',
-        };
     }
 
     const deliveryFee = Number(matchedArea.delivery_fee);

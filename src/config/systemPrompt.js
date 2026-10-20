@@ -31,6 +31,9 @@ export const DEFAULT_SYSTEM_PROMPT_TEMPLATE = `Tumhara naam "Burger Raja" hai au
 === RESTAURANT KI MALOOMAT (LIVE FROM SETTINGS) ===
 {{cachedStoreInfo}}
 
+=== LIVE DISCOUNT OFFERS (DYNAMIC FROM DATABASE) ===
+{{cachedDiscountInfo}}
+
 === LIVE MENU AUR CATEGORIES ===
 Categories:
 {{cachedCategoriesSummary}}
@@ -192,7 +195,15 @@ Customer Phone: {{whatsappPhone}}
      * Naye siray se Naam, Phone, Address alag alag MAT poochein!
      * Cart summary dikhayein aur pichli details (Naam, Phone, Address, Payment Method) show karke confirm karein:
        "Kya aap ka yeh order inhi pichli details par confirm kar dein? (Haan / Nahi)"
-     * Jab customer "Haan", "Yes", "Same", "Yehi rahyga", "Yehi details", ya "Confirm" kahe, to FORAN 'create_confirmed_order' tool call karke order place karein!`;
+     * Jab customer "Haan", "Yes", "Same", "Yehi rahyga", "Yehi details", ya "Confirm" kahe, to FORAN 'create_confirmed_order' tool call karke order place karein!
+
+11. DYNAMIC MENU DISCOUNTS & OFFERS (STRICT):
+    - Restaurant ke paas live dynamic discounts active ho sakte hain jo database se live aate hain (dekhain === LIVE DISCOUNT OFFERS === section ooper).
+    - Agar Store-wide discount active ho ya kisi specific item par discount ho:
+      * Customer ko discount ki poori aur sahi maloomat batayein jo ooper context mein di gayi hai.
+      * KABHI BHI koi farzi ya hardcoded discount percentage/amount (jaise 10%, 15%, 20%, 50%) apni taraf se mat bolo! SIRF wahi discount batayein jo context mein live mojood hai.
+      * Agar context mein likha ho ke filhal koi discount active nahi hai, to customer ko politely batayein ke filhal items standard rates par hain aur hamari budget-friendly Deals recommend karein.
+      * Cart calculation aur order confirmation mein dynamic discount automatically deduct hota hai.`;
 
 let activeCustomPrompt = null;
 let promptUpdatedAt = null;
@@ -335,6 +346,7 @@ export function buildSystemPrompt({
     cachedDealsSummary = '',
     cachedStoreInfo = '',
     cachedFaqs = '',
+    cachedDiscountInfo = '',
     activeCartSummary = '',
     customerDetailsSummary = '',
     confirmIntent = false,
@@ -351,6 +363,7 @@ export function buildSystemPrompt({
     const deals = cachedDealsSummary || '';
     const store = cachedStoreInfo || '';
     const faqs = cachedFaqs || '';
+    const discount = cachedDiscountInfo || 'Filhal koi special discount active nahi hai.';
     const cart = activeCartSummary || 'Cart is currently empty.';
     const details = customerDetailsSummary || 'Name: Not provided yet\nAddress: Not provided yet\nPayment: Not selected yet';
     const confirmText = confirmIntent
@@ -366,6 +379,7 @@ export function buildSystemPrompt({
     prompt = prompt.replace(/\{\{cachedMenuCatalog\}\}|\$\{cachedMenuCatalog\}/g, catalog);
     prompt = prompt.replace(/\{\{cachedDealsSummary\}\}|\$\{cachedDealsSummary\}/g, deals);
     prompt = prompt.replace(/\{\{cachedStoreInfo\}\}|\$\{cachedStoreInfo\}/g, store);
+    prompt = prompt.replace(/\{\{cachedDiscountInfo\}\}|\$\{cachedDiscountInfo\}/g, discount);
     prompt = prompt.replace(/\{\{cachedFaqs\}\}|\$\{cachedFaqs\}/g, faqs);
     prompt = prompt.replace(/\{\{activeCartSummary\}\}|\$\{activeCartSummary\}/g, cart);
     prompt = prompt.replace(/\{\{customerDetailsSummary\}\}|\$\{customerDetailsSummary\}/g, details);

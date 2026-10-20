@@ -107,6 +107,7 @@ model Category {
   name          String
   slug          String
   description   String?
+  image_url     String?
   is_active     Boolean  @default(true)
   sort_order    Int      @default(0)
   created_at    DateTime @default(now())
@@ -135,6 +136,10 @@ model MenuItem {
   spicy_level   SpicyLevel @default(NONE)
   is_available  Boolean    @default(true)
   is_active     Boolean    @default(true)
+
+  discount_percent Decimal? @db.Decimal(5, 2)
+  discount_fixed   Decimal? @db.Decimal(10, 2)
+
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 
@@ -160,6 +165,10 @@ model MenuVariant {
   price        Decimal  @db.Decimal(10, 2)
   is_available Boolean  @default(true)
   sort_order   Int      @default(0)
+
+  discount_percent Decimal? @db.Decimal(5, 2)
+  discount_fixed   Decimal? @db.Decimal(10, 2)
+
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

@@ -89,3 +89,55 @@ export function cleanOldDownloads() {
         // Silently ignore cleanup errors
     }
 }
+
+/**
+ * Safely send an image (local file or URL) or text message to a WhatsApp chat
+ * Handles 1024 caption limit and disk file resolution automatically
+ */
+export async function sendWhatsAppMediaOrText(sock, jid, { text, imageUrl }, options = {}) {
+    if (!sock || !jid) return null;
+
+    if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim()) {
+        try {
+            let imagePayload = null;
+            const trimmed = imageUrl.trim();
+
+            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                imagePayload = { url: trimmed };
+            } else {
+                const relPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+                const absPath = path.resolve(process.cwd(), relPath);
+                if (fs.existsSync(absPath)) {
+                    imagePayload = fs.readFileSync(absPath);
+                }
+            }
+
+            if (imagePayload) {
+                const cleanText = (text || '').trim();
+                // WhatsApp caption limit is 1024 characters
+                if (cleanText.length <= 1000) {
+                    return await sock.sendMessage(jid, {
+                        image: imagePayload,
+                        caption: cleanText,
+                    }, options);
+                } else {
+                    await sock.sendMessage(jid, {
+                        image: imagePayload,
+                    }, options);
+                    return await sock.sendMessage(jid, {
+                        text: cleanText,
+                    }, options);
+                }
+            }
+        } catch (mediaErr) {
+            console.error('[MEDIA] Failed to send image message, falling back to text:', mediaErr.message);
+        }
+    }
+
+    // Fallback or plain text message
+    if (text && text.trim()) {
+        return await sock.sendMessage(jid, { text: text.trim() }, options);
+    }
+    return null;
+}
+

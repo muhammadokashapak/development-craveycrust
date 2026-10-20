@@ -12,6 +12,8 @@
  *   Returns { intent, entities, confidence }
  */
 
+import fs from 'fs';
+import path from 'path';
 import { extractGoogleMapsUrl } from '../../utils/location.js';
 
 // Session memory for zero-token deal follow-ups
@@ -450,17 +452,23 @@ export async function getNextCheckoutStepResponse({
     details.awaitingFinalConfirmation = true;
     details.readyForConfirmation = true;
 
-    const orderItems = (cart?.items || []).map(i => {
-        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-        const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-        return `${i.quantity}x ${n}${v}`;
-    }).join('\n');
-    const orderBlock = (cart?.items || []).length === 1 ? `Order: ${orderItems}` : `Order:\n${orderItems}`;
-
-    const subtotal = (cart?.items || []).reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+    // Calculate dynamic pricing & discounts using central pricingService
+    const { calculatePricing } = await import('./pricingService.js');
+    const itemsForPricing = (cart?.items || []).filter(i => i.menu_item_id).map(i => ({
+        menuItemId: i.menu_item_id,
+        variantId: i.menu_variant_id || undefined,
+        quantity: i.quantity,
+    }));
+    const dealsForPricing = (cart?.items || []).filter(i => i.deal_id).map(i => ({
+        dealId: i.deal_id,
+        quantity: i.quantity,
+    }));
 
     let deliveryFee = 0;
     let deliveryFeeKnown = false;
+    let isOutOfRange = false;
+    let outOfRangeMessage = '';
+
     if (cache?.restId && (details.address || details.location)) {
         try {
             const { checkDeliveryAvailability } = await import('./deliveryService.js');
@@ -469,23 +477,68 @@ export async function getNextCheckoutStepResponse({
                 address: details.address || details.location?.address,
                 latitude: details.location?.latitude,
                 longitude: details.location?.longitude,
-                subtotal,
             });
             if (dCheck && !dCheck.available) {
-                return {
-                    handled: true,
-                    routeName: 'final_order_out_of_range',
-                    reply: `${dCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
-                };
-            }
-            if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
+                isOutOfRange = true;
+                outOfRangeMessage = dCheck.message;
+            } else if (dCheck?.available && typeof dCheck.deliveryFee === 'number') {
                 deliveryFee = dCheck.deliveryFee;
                 deliveryFeeKnown = true;
             }
         } catch (_) {}
     }
-    const total = subtotal + deliveryFee;
+
+    if (isOutOfRange) {
+        return {
+            handled: true,
+            routeName: 'final_order_out_of_range',
+            reply: `${outOfRangeMessage}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+        };
+    }
+
+    const pricing = await calculatePricing({
+        restaurantId: cache?.restId,
+        items: itemsForPricing,
+        deals: dealsForPricing,
+        deliveryFee,
+    }).catch(() => null);
+
+    const subtotal = pricing ? pricing.subtotal : (cart?.items || []).reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+    const discountTotal = pricing ? Number(pricing.discountTotal || 0) : 0;
+    const total = pricing ? pricing.total : (subtotal + deliveryFee);
+
+    // Build order items block with discount display
+    const orderLines = [];
+    if (pricing?.breakdown?.items?.length > 0 || pricing?.breakdown?.deals?.length > 0) {
+        for (const it of (pricing.breakdown.items || [])) {
+            const v = it.variantName ? ` (${it.variantName})` : '';
+            if (it.hasDiscount) {
+                orderLines.push(`• ${it.quantity}x ${it.name}${v} — ~Rs. ${it.originalLineTotal.toLocaleString('en-PK')}~ *Rs. ${it.lineTotal.toLocaleString('en-PK')}* (${it.discountLabel || (it.discountPercent + '% OFF')})`);
+            } else {
+                orderLines.push(`• ${it.quantity}x ${it.name}${v} — Rs. ${it.lineTotal.toLocaleString('en-PK')}`);
+            }
+        }
+        for (const d of (pricing.breakdown.deals || [])) {
+            orderLines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
+        }
+    } else {
+        for (const i of (cart?.items || [])) {
+            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+            const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
+            orderLines.push(`• ${i.quantity}x ${n}${v}`);
+        }
+    }
+    const orderBlock = orderLines.length > 0 ? (orderLines.length === 1 ? `Order: ${orderLines[0]}` : `Order:\n${orderLines.join('\n')}`) : 'Order: 1x Item';
+
     const cleanLocation = formatLocationDisplay(details);
+
+    let billLines = '';
+    if (discountTotal > 0) {
+        billLines += `Subtotal: Rs. ${subtotal.toLocaleString('en-PK')}\n`;
+        billLines += `Discount: -Rs. ${discountTotal.toLocaleString('en-PK')}\n`;
+    }
+    billLines += `Delivery Charges: ${deliveryFee === 0 ? 'Free' : 'Rs. ' + deliveryFee.toLocaleString('en-PK')}\n`;
+    billLines += `Total: Rs. ${total.toLocaleString('en-PK')}`;
 
     return {
         handled: true,
@@ -493,9 +546,8 @@ export async function getNextCheckoutStepResponse({
         step: 'CONFIRMATION',
         reply: (introMessage ? `${introMessage}\n\n` : '') +
 `${customerName ? customerName + ' bhai, ' : ''}aap ke order ki final details ye hain:
-${orderBlock || 'Order: 1x Item'}
-Total: Rs. ${total.toLocaleString('en-PK')}
-Delivery Charges: ${deliveryFee === 0 ? 'Free' : 'Rs. ' + deliveryFee.toLocaleString('en-PK')}
+${orderBlock}
+${billLines}
 Payment: ${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}
 Contact: ${displayPhone}
 Delivery Location: ${cleanLocation}
@@ -1098,6 +1150,7 @@ export function parseIntent(context) {
 
 import { muteChatForHandover, unmuteChat } from './handoverService.js';
 import { getCatalogCache } from './catalogCacheService.js';
+import { calculateDiscount } from './discountService.js';
 
 const FAST_HANDOVER_REGEX = /\b(bot\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|ai\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|(ap|aap|tum)\s*(se|sai|sy)?\s*(baat\s*)?(nahi|nh|nai|nhi|mat)|baat\s*(nahi|nh|nai|nhi)\s*k(a)?rni|bat\s*(nahi|nh|nai|nhi)\s*k(a)?rni|agent|human|person|real\s*person|live\s*agent|representative|operator|manager|owner|malik|maalik|complaint|shikayat|shikayet|service\s*achi\s*nahi|service\s*achhi\s*nahi|call\s*me|call\s*karo|call\s*karein|phone\s*karo|bande\s*(se|sai|sy)\s*baat|banda|insan\s*(se|sai|sy)\s*baat|insan|talk\s*to\s*(human|agent|person|someone))\b/i;
 const FAST_BOT_START_REGEX = /^((\.)?bot\s*(start|on|activate|active|resume|shuru|chalao)|start\s*bot|resume\s*bot|unmute|bot|\.bot)$/i;
@@ -2024,16 +2077,26 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     });
                     const orderNum = res.order?.orderNumber || res.order?.order_number;
                     const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                    const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
                     if (orderNum) {
                         clearSessionOrderDetails(userSessionId, cleanPhone);
                         _lastDiscussedDealBySession.delete(userSessionId);
                         const customerName = details.name ? details.name.trim() : 'Customer';
+                        const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
                         return {
                             handled: true,
                             routeName: 'fast_order_confirm',
-                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
+                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}${discountMsg}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
                         };
                     }
+                } else if (cart?.items && cart.items.length > 0) {
+                    // Customer said "confirm / confirm kr do" but details are not yet complete: start checkout!
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart,
+                        cache,
+                    });
                 }
             }
         } catch (err) {
@@ -2050,7 +2113,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Checkout Request (Zero Tokens) ──
-    const isCheckoutRequest = /^(?:checkout|check\s*out|order\s*(?:karna\s*hai|karwana\s*hai|krna\s*hai|krwana\s*hai|book\s*karna\s*hai|book\s*krna\s*hai|please|karein|kar\s*dein|karo)|place\s*order|done\s*ordering|proceed)$/i.test(lower.trim());
+    const isCheckoutRequest = /^(?:(?:haan|han|jee|ji|g|ok|okay)?\s*(?:checkout|check\s*out|continue|proceed|next|aage\s*(?:chalo|barho)|done\s*ordering|place\s*order|order\s*(?:karna\s*hai|karwana\s*hai|krna\s*hai|krwana\s*hai|book\s*karna\s*hai|book\s*krna\s*hai|please|karein|kar\s*dein|kr\s*dein|karo|kro|krdo|kardo)|book\s*(?:karna\s*hai|krna\s*hai|karo|kro|krdo|kardo))(?:\s+(?:karo|kro|krdo|kardo|kar\s*do|kr\s*do|karein|kar\s*dein|kr\s*dein|please|bhai))?)$/i.test(lower.trim());
     if (isCheckoutRequest && userSessionId) {
         try {
             const { getActiveCart } = await import('./cartService.js');
@@ -2151,6 +2214,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const variantName = matchedVariant.name;
                     const price = Number(matchedVariant.price);
 
+                    const { calculateDiscount, getGlobalDiscountSettings } = await import('./discountService.js');
+                    const globalDiscount = await getGlobalDiscountSettings(cache.restId).catch(() => null);
+                    const disc = calculateDiscount(matchedVariant.price, matchedVariant.discount_percent ?? item.discount_percent, matchedVariant.discount_fixed ?? item.discount_fixed, globalDiscount);
+                    const pDisplay = disc.hasDiscount ? `~Rs. ${price}~ Rs. ${disc.discountedPrice}` : `Rs. ${price}`;
+
                     const { getSessionOrderDetails } = await import('./sessionService.js');
                     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                     const details = getSessionOrderDetails(userSessionId, cleanPhone);
@@ -2161,7 +2229,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         whatsappPhone,
                         cart: cartNow,
                         cache,
-                        introMessage: `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (Rs. ${price})`,
+                        introMessage: `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (${pDisplay})`,
                     });
                 }
             } catch (err) {
@@ -2230,20 +2298,60 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                const itemsList = cart.items.map(i => {
-                    const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                    const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                    const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                    return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
-                }).join('\n');
-                const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+                const { calculatePricing } = await import('./pricingService.js');
+                const itemsForPricing = (cart.items || []).filter(i => i.menu_item_id).map(i => ({
+                    menuItemId: i.menu_item_id,
+                    variantId: i.menu_variant_id || undefined,
+                    quantity: i.quantity,
+                }));
+                const dealsForPricing = (cart.items || []).filter(i => i.deal_id).map(i => ({
+                    dealId: i.deal_id,
+                    quantity: i.quantity,
+                }));
+                const pricing = await calculatePricing({
+                    restaurantId: cache.restId,
+                    items: itemsForPricing,
+                    deals: dealsForPricing,
+                }).catch(() => null);
+
+                let itemsList = '';
+                let billText = '';
+                if (pricing) {
+                    const lines = [];
+                    for (const it of (pricing.breakdown.items || [])) {
+                        const v = it.variantName ? ` (${it.variantName})` : '';
+                        if (it.hasDiscount) {
+                            lines.push(`• ${it.quantity}x ${it.name}${v} — ~Rs. ${it.originalLineTotal.toLocaleString('en-PK')}~ *Rs. ${it.lineTotal.toLocaleString('en-PK')}* (${it.discountLabel || (it.discountPercent + '% OFF')})`);
+                        } else {
+                            lines.push(`• ${it.quantity}x ${it.name}${v} — Rs. ${it.lineTotal.toLocaleString('en-PK')}`);
+                        }
+                    }
+                    for (const d of (pricing.breakdown.deals || [])) {
+                        lines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
+                    }
+                    itemsList = lines.join('\n');
+                    if (pricing.discountTotal > 0) {
+                        billText = `Ji, aap ke cart ka subtotal *Rs. ${pricing.subtotal.toLocaleString('en-PK')}* hai, aur *Rs. ${pricing.discountTotal.toLocaleString('en-PK')}* discount ke baad total *Rs. ${pricing.total.toLocaleString('en-PK')}* bana hai. 🎉`;
+                    } else {
+                        billText = `Ji, aap ke cart ka subtotal *Rs. ${pricing.subtotal.toLocaleString('en-PK')}* bana hai.`;
+                    }
+                } else {
+                    itemsList = cart.items.map(i => {
+                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                        const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
+                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+                        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
+                    }).join('\n');
+                    const rawSubtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+                    billText = `Ji, aap ke cart ka subtotal *Rs. ${rawSubtotal.toLocaleString('en-PK')}* bana hai.`;
+                }
 
                 return await getNextCheckoutStepResponse({
                     details,
                     whatsappPhone,
                     cart,
                     cache,
-                    introMessage: `Ji, aap ke cart ka subtotal *Rs. ${subtotal}* bana hai.\n\n📋 *Items:*\n${itemsList}`,
+                    introMessage: `${billText}\n\n📋 *Items:*\n${itemsList}`,
                 });
             }
         } catch (err) {
@@ -2523,8 +2631,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|apna|kr\s*du|kar\s*du)\s+/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
-    const isNotNameCandidate = isGreetingName || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri)\b/i.test(nameCandidate);
-    if (nameMatch && !isNotNameCandidate && userSessionId && wordCount <= 4 && !hasCartOrOrderAction) {
+    const isActionOrStatusWord = /^(?:confirm|comfirm|konfirm|checkout|continue|proceed|next|book|booking|order|final|done|bill|billing|deliver|delivery|address|location|pin|yes|haan|han|jee|ji|theek|thk|ok|okay|nahi|nhi|no|menu|deal|deals)$/i.test(nameCandidate);
+    const isNotNameCandidate = isGreetingName || isActionOrStatusWord || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nhi|nh|nai|na|mat|cancel|cancle|kansil|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri)\b/i.test(nameCandidate);
+    if (nameMatch && !isNotNameCandidate && userSessionId && wordCount <= 4) {
         try {
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
@@ -2726,14 +2835,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     if (isDealsKeyword && wordCount <= 8 && !hasSpecificDealNumber && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
+            const { getActiveCategories } = await import('./menuService.js');
+            const { getDefaultRestaurantId } = await import('./restaurantService.js');
+            const restId = await getDefaultRestaurantId().catch(() => null);
+            const allCats = await getActiveCategories(restId).catch(() => []);
+
             let dealsReply = '';
+            let targetCatImage = null;
             // Detect category preference — expanded keywords
             const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
             const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
             if (isBurger && !isPizza) {
-                dealsReply = `Active Burger Deals:\n\n${cache.customerBurgerDeals || 'Burger deals abhi available nahi hain.'}\n\nOrder karne ke liye deal ka naam bata dein!`;
+                const bCat = allCats.find(c => /burger\s*deals?/i.test(c.name));
+                targetCatImage = bCat?.image_url || null;
+                dealsReply = `${cache.customerBurgerDeals || 'Burger deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Burger Meal For 1* ya *Deal 4*)!`;
             } else if (isPizza && !isBurger) {
-                dealsReply = `Active Pizza Deals:\n\n${cache.customerPizzaDeals || 'Pizza deals abhi available nahi hain.'}\n\nOrder karne ke liye deal ka naam bata dein!`;
+                const pCat = allCats.find(c => /pi[z]+a\s*deals?/i.test(c.name));
+                targetCatImage = pCat?.image_url || null;
+                dealsReply = `${cache.customerPizzaDeals || 'Pizza deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Deal 2* ya *Pizza Meal For 1*)!`;
             } else {
                 dealsReply = `Active Deals:\n\n${cache.customerAllDeals || 'Deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein!`;
             }
@@ -2741,6 +2860,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 handled: true,
                 routeName: 'live_deals',
                 reply: dealsReply,
+                imageUrl: null,
             };
         } catch (err) {
             console.error('[FAST_ROUTE] Deals cache error:', err.message);
@@ -2748,21 +2868,150 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── 3b. Live Dynamic Discount Inquiries (Zero Tokens, live from DB) ──
+    const isDiscountKeyword = /\b(discount|discounts|discont|riayat|kam\s*karo|kuch\s*kam|discount\s*hai|koi\s*discount|offers?|sale|promo|promotion)\b/i.test(lower);
+    if (isDiscountKeyword && wordCount <= 9 && !hasCartOrOrderAction) {
+        try {
+            const cache = await getCatalogCache();
+            const gDisc = cache.globalDiscount;
+            let discountReply = '';
+
+            if (gDisc && gDisc.enabled && gDisc.value > 0) {
+                const discText = gDisc.type === 'FIXED' ? `Rs. ${gDisc.value} OFF` : `${gDisc.value}% OFF`;
+                discountReply = `🎉 *LATEST DISCOUNT OFFER!*\n\n🏷️ *${gDisc.title.toUpperCase()}*\nHamare tamam menu items par *${discText}* active hai! Har single item par yeh discount dynamically apply ho raha hai.\n\n📋 Discounted Menu dekhne ke liye 'menu' likhein ya budget-friendly deals dekhne ke liye 'deals' likhein!`;
+            } else {
+                // Check if any specific items have individual discounts
+                const discountedItems = [];
+                (cache.rawCategories || []).forEach(cat => {
+                    (cat.menu_items || []).forEach(it => {
+                        const itemDisc = calculateDiscount(it.base_price, it.discount_percent, it.discount_fixed, null);
+                        if (itemDisc.hasDiscount) {
+                            discountedItems.push(`• *${it.name}*: ${itemDisc.formattedFull}`);
+                        }
+                    });
+                });
+
+                if (discountedItems.length > 0) {
+                    discountReply = `🎉 *SPECIAL DISCOUNTED ITEMS!*\n\nIn items par special discount chal raha hai:\n${discountedItems.slice(0, 5).join('\n')}\n\n📋 Mukammal menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`;
+                } else {
+                    discountReply = `Filhal menu items standard rates par hain, lekin hamare paas bohot zabardast aur discounted *Deals* dastiyab hain! 🎁\n\nDeals dekhne ke liye 'deals' ya menu dekhne ke liye 'menu' likhein!`;
+                }
+            }
+
+            return {
+                handled: true,
+                routeName: 'live_discount',
+                reply: discountReply,
+            };
+        } catch (err) {
+            console.error('[FAST_ROUTE] Discount error:', err.message);
+        }
+    }
+
     // ── 4. Live Categories / Menu (<= 8 words) ──
     const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal'));
     if (isMenuKeyword && wordCount <= 8 && !hasCartOrOrderAction) {
         try {
+            const { getActiveCategories } = await import('./menuService.js');
+            const { getDefaultRestaurantId } = await import('./restaurantService.js');
+            const restId = await getDefaultRestaurantId().catch(() => null);
+            const allCats = await getActiveCategories(restId).catch(() => []);
             const cache = await getCatalogCache();
-            const catalogText = cache.customerMenuCatalog || cache.cachedMenuCatalog || cache.cachedCategoriesSummary;
-            const cleanCatalog = (catalogText || '').replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '').trim();
-            const menuReply = `📋 *HAMARA MENU*\n\n${cleanCatalog}\n\nKisi bhi item ya deal ka order karne ke liye uska naam bata dein!`;
+            const store = cache.storeName || 'Cravey Crust';
+
+            let menuReply = `📋 *${store.toUpperCase()} MENU*\n\nCategory select karein (Number ya Name reply karein):\n\n`;
+            allCats.forEach((c, idx) => {
+                menuReply += `${idx + 1}️⃣ *${c.name}* (${c.itemCount} items)\n`;
+            });
+            menuReply += `\nKisi bhi category ka number (jaise *1* ya *2*) ya naam reply karein uski items dekhne ke liye!\n(Direct item order karne ke liye item ka naam bata dein)`;
+
             return {
                 handled: true,
                 routeName: 'live_categories',
                 reply: menuReply,
+                imageUrl: null,
             };
         } catch (_) {}
     }
+
+    // ── 4b. Category-Specific Menu with Picture (On-Demand) ──
+    try {
+        const { getCategoryWithItems, getActiveCategories } = await import('./menuService.js');
+        const { getDefaultRestaurantId } = await import('./restaurantService.js');
+        const restId = await getDefaultRestaurantId().catch(() => null);
+        const allCats = await getActiveCategories(restId).catch(() => []);
+
+        let targetCat = null;
+        if (/^\d{1,2}$/.test(raw) && !hasCartOrOrderAction) {
+            const num = parseInt(raw, 10);
+            if (num >= 1 && num <= allCats.length) {
+                targetCat = await getCategoryWithItems(allCats[num - 1].id, restId);
+            }
+        } else if (wordCount <= 6 && !hasCartOrOrderAction) {
+            // Strip filler words: me, mai, mein, ka, ke, ki, dikhao, bhejo, options, list, items, kya, hai, hy, dekhna, btao, batao, menu
+            const stripped = lower
+                .replace(/\b(?:me|mai|mein|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|hai|hy|dekhna|dein|btao|batao|chahiye|menu)\b/gi, '')
+                .replace(/[^\w\s]/g, '')
+                .trim();
+
+            if (stripped) {
+                const strippedSingular = stripped.replace(/s$/, '');
+
+                // 1. Exact match against category name or slug
+                for (const c of allCats) {
+                    const cName = c.name.toLowerCase();
+                    const cSlug = c.slug.toLowerCase();
+                    const cSingular = cName.replace(/s$/, '');
+                    if (stripped === cName || stripped === cSlug || stripped === cSingular || strippedSingular === cSingular) {
+                        targetCat = await getCategoryWithItems(c.id, restId);
+                        break;
+                    }
+                }
+
+                // 2. Substring match: e.g. "pizza" matches "Premium Pizzas", "Classic Pizzas", "Pizza Deals"
+                if (!targetCat) {
+                    const matches = allCats.filter(c => {
+                        const cName = c.name.toLowerCase();
+                        const cSlug = c.slug.toLowerCase();
+                        return cName.includes(stripped) || cName.includes(strippedSingular) || cSlug.includes(stripped);
+                    });
+
+                    if (matches.length > 0) {
+                        // Prioritize category that has an uploaded image!
+                        const withImg = matches.find(c => Boolean(c.image_url));
+                        targetCat = await getCategoryWithItems((withImg || matches[0]).id, restId);
+                    }
+                }
+
+                // 3. Reverse substring match: e.g. text contains category name
+                if (!targetCat) {
+                    for (const c of allCats) {
+                        const cName = c.name.toLowerCase();
+                        const cSingular = cName.replace(/s$/, '');
+                        if (lower.includes(cName) || lower.includes(cSingular)) {
+                            targetCat = await getCategoryWithItems(c.id, restId);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (targetCat) {
+            const { formatCategoryResponse } = await import('./whatsappOrderOrchestrator.js');
+            const { getGlobalDiscountSettings } = await import('./discountService.js');
+            const cache = await getCatalogCache();
+            const globalDiscount = await getGlobalDiscountSettings(restId).catch(() => null);
+            const catReply = formatCategoryResponse(targetCat, globalDiscount, cache);
+
+            return {
+                handled: true,
+                routeName: 'category_menu_display',
+                reply: catReply,
+                imageUrl: null,
+            };
+        }
+    } catch (_) {}
 
     // ── 5. Operating Timings (Zero Tokens, live from Settings) ──
     const isTimingQuery = (FAST_TIMING_REGEX.test(lower) || FAST_TIMING_CONTAINS.test(lower)) && wordCount <= 8;

@@ -180,7 +180,7 @@ export async function createOrder(params) {
         }
     }
 
-    const hasDeliveryInfo = !!(delivery?.areaId || delivery?.areaName || (delivery?.latitude != null && delivery?.longitude != null));
+    const hasDeliveryInfo = !!(delivery?.areaId || delivery?.areaName || delivery?.address || (delivery?.latitude != null && delivery?.longitude != null));
 
     const pricing = await calculatePricing({
         restaurantId: restId,
@@ -189,6 +189,7 @@ export async function createOrder(params) {
         promoCode,
         deliveryAreaId: delivery?.areaId,
         deliveryAreaName: delivery?.areaName,
+        deliveryAddress: delivery?.address,
         latitude: delivery?.latitude,
         longitude: delivery?.longitude,
         deliveryFee: hasDeliveryInfo ? undefined : 0,
@@ -286,6 +287,18 @@ export async function createOrder(params) {
             throw err;
         }
 
+        let validDeliveryAreaId = null;
+        const candidateAreaId = pricing.deliveryArea?.id || delivery?.areaId;
+        if (candidateAreaId && candidateAreaId !== 'radius-zone') {
+            const areaExists = await tx.deliveryArea.findUnique({
+                where: { id: candidateAreaId },
+                select: { id: true },
+            }).catch(() => null);
+            if (areaExists) {
+                validDeliveryAreaId = candidateAreaId;
+            }
+        }
+
         const createdOrder = await tx.order.create({
             data: {
                 order_number: orderNumber,
@@ -295,8 +308,8 @@ export async function createOrder(params) {
                 phone: finalPhone,
                 whatsapp_phone: session.verified_phone || customer.whatsapp_phone || null,
                 delivery_address: finalDeliveryAddress || null,
-                delivery_area_id: pricing.deliveryArea?.id || delivery?.areaId || null,
-                delivery_area_name: pricing.deliveryArea?.name || delivery?.areaName || null,
+                delivery_area_id: validDeliveryAreaId,
+                delivery_area_name: pricing.deliveryArea?.name || delivery?.areaName || (delivery?.latitude != null ? 'Delivery Zone' : 'Standard Delivery'),
                 latitude: delivery?.latitude != null ? Number(delivery.latitude) : null,
                 longitude: delivery?.longitude != null ? Number(delivery.longitude) : null,
                 google_maps_url: googleMapsUrl,
@@ -327,7 +340,7 @@ export async function createOrder(params) {
                     variant_name_snapshot: item.variantName || null,
                     unit_price: item.unitPriceDecimal,
                     quantity: item.quantity,
-                    discount_amount: new Decimal(0),
+                    discount_amount: item.discountAmountDecimal || new Decimal(item.discountAmount || 0),
                     line_total: item.lineTotalDecimal,
                     notes: rawCartItem?.notes || null,
                 },

@@ -19,6 +19,7 @@ import { getDefaultRestaurantId } from './restaurantService.js';
 import { searchKnowledge } from './knowledgeService.js';
 import { getCategoryWithItems, resolveMenuItemOrDeal, getActiveDeals } from './menuService.js';
 import { isPaymentQuery } from './intentParser.js';
+import { checkDeliveryAvailability } from './deliveryService.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -161,7 +162,7 @@ export function isDeliveryInfoQuery(text) {
         return true;
     }
 
-    if (/\b(?:deliver|delivery)\b/i.test(raw) && /\b(?:areas?|locations?|ilaqon?|ilaqe|jagah|kahan|kidhar|charges?|fee|charge|free|covered|coverage|list|possible)\b/i.test(raw)) {
+    if (/\b(?:deliver|delivery)\b/i.test(raw) && /\b(?:areas?|locations?|ilaqon?|ilaqe|jagah|kahan|kidhar|charges?|fee|charge|free|covered|coverage|list|possible|available|avail|hoti|hogi|krty|karte|karoge|karega|karein|karwa)\b/i.test(raw)) {
         return true;
     }
 
@@ -169,8 +170,8 @@ export function isDeliveryInfoQuery(text) {
         return true;
     }
 
-    // Specific known areas: e.g. "ghori vvip me delivery hai", "dhoke kala khan delivery"
-    if (/\b(?:ghori\s*vvip|ghauri\s*vip|dhoke\s*kala\s*khan|is\s*ilaqe\s*me)\b/i.test(raw)) {
+    // Specific known areas or location queries with delivery keyword
+    if (/\b(?:ghori|ghauri|khana|khanna|tarlai|taramari|burma|gulberg|dhoke|saddar|islamabad|rawalpindi)\b/i.test(raw) && /\b(?:deliver|delivery)\b/i.test(raw)) {
         return true;
     }
 
@@ -422,14 +423,56 @@ export async function resolveBusinessAnswer({
             }
         }
 
-        const restName = restaurant?.name && !/cravey/i.test(restaurant.name) ? restaurant.name : 'Store';
+        const restName = restaurant?.name || 'Cravey Crust';
+
+        // Check if query mentions a specific area/landmark via geocoding or coordinate resolver first
+        const isAreaListQuery = /\b(?:kon\s*kon|kahan\s*kahan|list|areas?\s*(?:kon|kya|batao|dikhao)|coverage\s*areas?)\b/i.test(cleanQuery);
+        const candidateAreaQuery = cleanQuery
+            .replace(/\b(?:kya|kia|delivery|deliver|available|charges|fee|hai|h|hega|hoti|hogi|ho\s*sakti|possible|karein|karoge|karty|karte|batao|mein|me|par|pe|kon\s*se|konse|areas?|locations?|ilaqe|ilaqon?)\b/gi, '')
+            .replace(/[?.,!]/g, '')
+            .trim();
+
+        if (!isAreaListQuery && candidateAreaQuery.length >= 3) {
+            const delCheck = await checkDeliveryAvailability({
+                restaurantId,
+                address: candidateAreaQuery,
+            }).catch(() => null);
+
+            if (delCheck && delCheck.area?.name !== 'Standard Delivery') {
+                if (!delCheck.available && delCheck.code === 'DELIVERY_OUT_OF_RANGE') {
+                    return {
+                        source: 'DELIVERY',
+                        type: 'DELIVERY_AREAS',
+                        data: { area: candidateAreaQuery },
+                        text: delCheck.message,
+                    };
+                }
+                if (delCheck.available && delCheck.area) {
+                    const feeInfo = delCheck.deliveryFee === 0 ? 'delivery bilkul FREE hai!' : `delivery fee Rs. ${delCheck.deliveryFee} hai.`;
+                    const distInfo = delCheck.distanceKm ? ` (Yeh hamare restaurant se taqreeban ${delCheck.distanceKm} km door hai aur hamari ${delCheck.maxRadiusKm || 5} km range mein shamil hai).` : '';
+                    return {
+                        source: 'DELIVERY',
+                        type: 'DELIVERY_AREAS',
+                        data: { area: delCheck.area },
+                        text: `Ji bilkul! ${restName} *${delCheck.area.name}* mein deliver karta hai aur yahan ${feeInfo}${distInfo}`,
+                    };
+                }
+            }
+        }
 
         if (activeAreas.length === 0) {
+            let maxRadiusKm = 5;
+            try {
+                const { getCatalogCache } = await import('./catalogCacheService.js');
+                const cache = await getCatalogCache();
+                if (cache && typeof cache.maxDeliveryRadiusKm === 'number') maxRadiusKm = cache.maxDeliveryRadiusKm;
+            } catch (_) {}
+
             return {
                 source: 'DELIVERY',
                 type: 'DELIVERY_AREAS',
                 data: { areas: [], count: 0 },
-                text: `Filhal delivery coverage areas configure nahi hain. Barah-e-karam ${restName} team se rabta karein.`,
+                text: `${restName} apne restaurant se ${maxRadiusKm} km ke radius mein delivery provide karta hai (jaise Ghauri Town, Khanna Pul, Tarlai, Burma Town, wagheira). Aap apna mukammal address ya location pin share kar ke delivery confirm kar sakte hain!`,
             };
         }
 
@@ -468,7 +511,6 @@ export async function resolveBusinessAnswer({
         }
 
         if (matchedAreas.length > 0) {
-            const { checkDeliveryAvailability } = await import('./deliveryService.js');
             const matchedNames = matchedAreas.map(m => m.name).join(', ');
 
             // Check if this matched area is within current max delivery radius
@@ -507,6 +549,7 @@ export async function resolveBusinessAnswer({
             };
         }
 
+
         // If user mentioned a specific unlisted area
         if (qLower.includes('dhoke') || qLower.includes('rawalpindi') || qLower.includes('saddar') || qLower.includes('bahria')) {
             const areaList = activeAreas.slice(0, 6).map(a => a.name).join(', ');
@@ -530,7 +573,6 @@ export async function resolveBusinessAnswer({
             }
         } catch (_) {}
 
-        const { checkDeliveryAvailability } = await import('./deliveryService.js');
         const deliverableAreas = [];
         for (const a of activeAreas) {
             const check = await checkDeliveryAvailability({

@@ -30,8 +30,9 @@ import { getDefaultRestaurantId } from './restaurantService.js';
 import { searchKnowledge } from './knowledgeService.js';
 import { getActiveCategories, resolveMenuItemOrDeal, getActiveDeals } from './menuService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
-import { getActiveCart, addToCart, updateCartItem, removeCartItem, clearCart as clearCartService, matchVariant } from './cartService.js';
+import { getActiveCart, addToCart, updateCartItem, removeCartItem, clearCart as clearCartService, matchVariant, calculateCartTotals } from './cartService.js';
 import { calculatePricing } from './pricingService.js';
+import { calculateDiscount, getGlobalDiscountSettings } from './discountService.js';
 import { muteChatForHandover, isChatMuted } from './handoverService.js';
 import { getDbClient } from '../db/client.js';
 
@@ -186,7 +187,38 @@ async function executeTool(toolName, args, context) {
             // 8. get_cart
             case 'get_cart': {
                 const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
-                const items = (cart.items || []).map(i => {
+                if (!cart || !cart.items || cart.items.length === 0) {
+                    return { cartId: null, items: [], itemCount: 0, total: 0, subtotal: 0, discountTotal: 0, message: 'Cart is empty' };
+                }
+                const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId }).catch(() => null);
+                if (totals && totals.items) {
+                    return {
+                        cartId: cart.id,
+                        items: totals.items.map(it => ({
+                            id: it.itemId,
+                            name: it.name,
+                            variant: it.variantName,
+                            quantity: it.quantity,
+                            originalUnitPrice: it.originalUnitPrice,
+                            unitPrice: it.unitPrice,
+                            hasDiscount: it.hasDiscount,
+                            discountLabel: it.discountLabel,
+                            lineTotal: it.lineTotal,
+                        })),
+                        deals: (totals.deals || []).map(d => ({
+                            id: d.dealId,
+                            name: d.name,
+                            quantity: d.quantity,
+                            unitPrice: d.unitPrice,
+                            lineTotal: d.lineTotal,
+                        })),
+                        subtotal: totals.subtotal,
+                        discountTotal: totals.discountTotal,
+                        total: totals.total,
+                        itemCount: cart.items.length,
+                    };
+                }
+                const items = cart.items.map(i => {
                     const price = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
                     return {
                         id: i.id,
@@ -286,11 +318,26 @@ async function executeTool(toolName, args, context) {
                                             variantId = matchedVariant.id;
                                         } else {
                                             setLastDiscussedItem(sessionKey, resolved.item);
-                                            const variantOptions = resolved.variants.map(v => `${v.name} (Rs. ${Number(v.price)})`).join(', ');
+                                            const globalDiscount = await getGlobalDiscountSettings(restId).catch(() => null);
+                                            const variantOptions = resolved.variants.map(v => {
+                                                const disc = calculateDiscount(v.price, v.discount_percent ?? resolved.item.discount_percent, v.discount_fixed ?? resolved.item.discount_fixed, globalDiscount);
+                                                const pStr = disc.hasDiscount ? `~Rs. ${Number(v.price)}~ Rs. ${disc.discountedPrice} (${disc.label})` : `Rs. ${Number(v.price)}`;
+                                                return `${v.name} (${pStr})`;
+                                            }).join(', ');
                                             return {
                                                 requiresVariant: true,
                                                 itemName: resolved.item.name,
-                                                variants: resolved.variants.map(v => ({ name: v.name, price: Number(v.price) })),
+                                                variants: resolved.variants.map(v => {
+                                                    const disc = calculateDiscount(v.price, v.discount_percent ?? resolved.item.discount_percent, v.discount_fixed ?? resolved.item.discount_fixed, globalDiscount);
+                                                    return {
+                                                        name: v.name,
+                                                        originalPrice: Number(v.price),
+                                                        discountedPrice: disc.discountedPrice,
+                                                        hasDiscount: disc.hasDiscount,
+                                                        discountLabel: disc.label,
+                                                        price: disc.discountedPrice,
+                                                    };
+                                                }),
                                                 message: `"${resolved.item.name}" ke mukhtalif sizes mojood hain (${variantOptions}). Pehle customer se poochein ke kaunsa size add karna hai aur size milne ke baad cart mein add karein.`
                                             };
                                         }
@@ -388,7 +435,8 @@ async function executeTool(toolName, args, context) {
                     itemsList: (cart.items || []).map(i => `${i.quantity}x ${i.deal ? i.deal.name : (i.menu_item?.name || 'Item')}`),
                     subtotal: Number(pricing.subtotal || 0),
                     deliveryFee: Number(pricing.deliveryFee || 0),
-                    discount: Number(pricing.discount || 0),
+                    discount: Number(pricing.discountTotal || 0),
+                    discountTotal: Number(pricing.discountTotal || 0),
                     total: Number(pricing.total || 0),
                     cartEmpty: (cart.items || []).length === 0,
                 };
@@ -512,10 +560,12 @@ async function executeTool(toolName, args, context) {
                     clearSessionOrderDetails(sessionKey, cleanPhoneDigitsForDetails);
                 } catch (_) {}
 
+                const finalDiscountTotal = Number(result.order?.pricing?.discountTotal ?? result.order?.discount_total ?? 0);
                 return {
                     success: true,
                     orderNumber: finalOrderNum,
                     total: finalTotal,
+                    discountTotal: finalDiscountTotal,
                     status: finalStatus,
                 };
             }
@@ -810,7 +860,36 @@ async function runAgentLoop(messages, context) {
         try {
             aiResult = await routeLLM(messages);
         } catch (err) {
-            console.error('[AGENT] LLM call failed:', err.message);
+            console.warn('[AGENT] LLM call failed, falling back to deterministic ordering orchestrator:', err.message);
+            try {
+                const { handleIncomingOrderMessage } = await import('./whatsappOrderOrchestrator.js');
+                const ordRes = await handleIncomingOrderMessage({
+                    sock: context.sock,
+                    session: { id: context.sessionKey },
+                    normalizedMessage: {
+                        sessionId: context.sessionKey,
+                        chatId: context.chatId,
+                        messageId: 'fb_' + Date.now(),
+                        text: context.effectiveText || '',
+                        verifiedPhone: context.whatsappPhone,
+                        pushName: '',
+                        location: context.locationData,
+                    }
+                });
+                if (ordRes && ordRes.text) {
+                    return {
+                        text: ordRes.text,
+                        imageUrl: ordRes.imageUrl || null,
+                        toolResults: allToolResults,
+                        calledToolNames,
+                        tokenUsage: { promptTokens: 0, replyTokens: 0, totalTokens: 0 },
+                        providerInfo: { provider: 'native_orchestrator', model: 'fallback', keyIndex: 0 },
+                    };
+                }
+            } catch (fallbackErr) {
+                console.error('[AGENT] Fallback orchestrator error:', fallbackErr.message);
+            }
+
             return {
                 text: 'Mafi chahta hoon, rabtay mein thodi takheer ho sakti hai. Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein, ya support agent se rabte ke liye \'agent\' likhein.',
                 toolResults: allToolResults,
@@ -943,7 +1022,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
             appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
             appendSessionHistory(sessionKey, 'assistant', cleanFastReply, syncEpoch);
 
-            return cleanFastReply;
+            return fastResult.imageUrl ? { text: cleanFastReply, imageUrl: fastResult.imageUrl } : cleanFastReply;
         }
     } catch (err) {
         console.error('[AGENT] Fast route check error:', err.message);
@@ -972,6 +1051,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
         sock,
         locationData: activeLocation,
         confirmIntent,
+        effectiveText,
     };
 
     // Load live 5-second DB cache (Hissa 3)
@@ -1073,18 +1153,37 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     try {
         activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
         if (activeCart?.items && activeCart.items.length > 0) {
-            const lines = activeCart.items.map(i => {
-                const name = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-                const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
-                const p = unitPrice * i.quantity;
-                return `• ${i.quantity}x ${name}${v} — Rs. ${p.toLocaleString('en-PK')}`;
-            });
-            const subtotal = activeCart.items.reduce((s, i) => {
-                const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
-                return s + unitPrice * i.quantity;
-            }, 0);
-            activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${subtotal.toLocaleString('en-PK')}`;
+            const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId: jid }).catch(() => null);
+            if (totals && totals.items) {
+                const lines = totals.items.map(it => {
+                    const varStr = it.variantName ? ` (${it.variantName})` : '';
+                    const strike = it.hasDiscount ? `~Rs. ${it.originalUnitPrice}~ Rs. ${it.unitPrice}` : `Rs. ${it.unitPrice}`;
+                    return `• ${it.quantity}x ${it.name}${varStr} — ${strike} (Line Total: Rs. ${it.lineTotal})`;
+                });
+                (totals.deals || []).forEach(d => {
+                    lines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal || d.totalPrice}`);
+                });
+                let cartText = lines.join('\n');
+                if (totals.discountTotal > 0) {
+                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}\nDiscount: -Rs. ${totals.discountTotal.toLocaleString('en-PK')}\nTotal: Rs. ${totals.total.toLocaleString('en-PK')}`;
+                } else {
+                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}`;
+                }
+                activeCartSummary = cartText;
+            } else {
+                const lines = activeCart.items.map(i => {
+                    const name = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                    const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
+                    const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
+                    const p = unitPrice * i.quantity;
+                    return `• ${i.quantity}x ${name}${v} — Rs. ${p.toLocaleString('en-PK')}`;
+                });
+                const subtotal = activeCart.items.reduce((s, i) => {
+                    const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? 0);
+                    return s + unitPrice * i.quantity;
+                }, 0);
+                activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${subtotal.toLocaleString('en-PK')}`;
+            }
         }
     } catch (_) {}
 
@@ -1163,6 +1262,28 @@ export async function processMessage({ sock, msg, session, text, identity, locat
 
     const customerDetailsSummary = `Naam: ${updatedDetails.name || 'Not provided'}\nPhone: ${updatedDetails.phoneConfirmed || updatedDetails.phone ? displayPhone : 'Not confirmed'}\nDelivery Address: ${updatedDetails.address || (activeLocation?.formattedAddress || 'Not provided')}\nPayment Method: ${updatedDetails.paymentMethod || 'Not selected'}${checkoutStepGuidance}`;
 
+    // Compute live discount context for AI from cache
+    const gDiscount = cache.globalDiscount;
+    let cachedDiscountInfo = 'Filhal koi store-wide discount active nahi hai. Menu items standard rates par hain. Customer ko budget deals recommend karein.';
+    if (gDiscount && gDiscount.enabled && gDiscount.value > 0) {
+        const discValStr = gDiscount.type === 'FIXED' ? `Rs. ${gDiscount.value} OFF` : `${gDiscount.value}% OFF`;
+        cachedDiscountInfo = `🔥 LIVE STORE-WIDE DISCOUNT ACTIVE: "${gDiscount.title}" (${discValStr} on all menu items). Har menu item par yeh discount dynamically apply ho raha hai aur cart mein minus hota hai. Agar customer discount ya offer pooche, to unhe yeh discount zaroor batayein aur confirm karein ke yeh tamam items par dastiyab hai!`;
+    } else {
+        const itemDiscounts = [];
+        (cache.rawCategories || []).forEach(c => {
+            (c.menu_items || []).forEach(it => {
+                if (it.discount_percent > 0) {
+                    itemDiscounts.push(`${it.name} (${it.discount_percent}% OFF)`);
+                } else if (it.discount_fixed > 0) {
+                    itemDiscounts.push(`${it.name} (Rs. ${it.discount_fixed} OFF)`);
+                }
+            });
+        });
+        if (itemDiscounts.length > 0) {
+            cachedDiscountInfo = `🔥 INDIVIDUAL ITEM DISCOUNTS ACTIVE: In items par discount active hai: ${itemDiscounts.slice(0, 10).join(', ')}. Tamam items par store-wide discount nahi hai lekin in specific items par discount dastiyab hai.`;
+        }
+    }
+
     // Build grounded System Prompt (Hissa 6)
     const systemPromptText = buildSystemPrompt({
         whatsappPhone,
@@ -1172,6 +1293,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
         cachedDealsSummary: cache.cachedDealsSummary,
         cachedStoreInfo: cache.cachedStoreInfo,
         cachedFaqs: cache.cachedFaqs,
+        cachedDiscountInfo,
         activeCartSummary,
         customerDetailsSummary,
         confirmIntent,
@@ -1198,7 +1320,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     ];
 
     // Run Agent Loop
-    const { text: aiRawText, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
+    const { text: aiRawText, imageUrl: aiImageUrl, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
 
     // ── 7. Post-Verification & Cleanup (Hissa 7) ──
     const verificationOverride = verifyOutput(aiRawText || '', toolResults);
@@ -1222,7 +1344,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
     appendSessionHistory(sessionKey, 'assistant', cleanFinalReply, syncEpoch);
 
-    return cleanFinalReply;
+    return aiImageUrl ? { text: cleanFinalReply, imageUrl: aiImageUrl } : cleanFinalReply;
 }
 
 export default processMessage;

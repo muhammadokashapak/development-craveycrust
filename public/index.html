@@ -455,14 +455,26 @@
             </select>
           </div>
 
-          <button id="openAddMenuItemBtn" class="btn btn-primary btn-sm" type="button">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>Add Item</span>
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="openBulkDiscountBtn" class="btn btn-secondary btn-sm" type="button" style="display: inline-flex; align-items: center; gap: 6px;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg>
+              <span>Bulk Discount</span>
+            </button>
+            <button id="openAddMenuItemBtn" class="btn btn-primary btn-sm" type="button">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Add Item</span>
+            </button>
+          </div>
         </div>
+
+        <!-- Global Discount Notification Banner (Shown when store-wide discount is active) -->
+        <div id="menuGlobalDiscountBanner" class="global-discount-alert-banner hidden"></div>
 
         <div class="table-container">
           <div class="table-scroll-area">
@@ -472,7 +484,7 @@
                   <th style="width: 50px;">Image</th>
                   <th>Name</th>
                   <th>Category</th>
-                  <th>Base Price</th>
+                  <th>Price & Discount</th>
                   <th>Variants</th>
                   <th>Availability</th>
                   <th>Status</th>
@@ -609,35 +621,25 @@
 
       <!-- VIEW 6: WHATSAPP MANAGEMENT (Preserved) -->
       <section id="viewWhatsapp" class="workspace-view hidden">
-        <!-- Multi-Account Bar -->
-        <div class="accounts-strip">
+        <!-- Single WhatsApp Account Mode: Multi-Account Bar Hidden -->
+        <div class="accounts-strip" style="display: none !important;">
           <div class="accounts-strip-header">
             <div class="accounts-label">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>
               </svg>
-              <span>Linked WhatsApp Accounts</span>
+              <span>Linked WhatsApp Account</span>
             </div>
             <div class="accounts-actions">
               <button id="cleanInactiveBtn" class="btn-clean-inactive hidden" type="button" onclick="window.cleanInactiveAccounts()" title="Remove unconnected accounts">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
                 <span>Clean Inactive</span>
               </button>
-              <button id="addAccountBtn" class="btn-add-account" type="button" onclick="window.createNewAccount()" title="Link another WhatsApp account">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"></line>
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                </svg>
+              <button id="addAccountBtn" class="btn-add-account hidden" type="button" onclick="window.createNewAccount()" title="Link another WhatsApp account">
                 <span>Add WhatsApp</span>
               </button>
             </div>
           </div>
-          <div id="accountsList" class="accounts-pills">
-            <!-- Rendered dynamically via app.js -->
-          </div>
+          <div id="accountsList" class="accounts-pills"></div>
         </div>
 
         <!-- Main Content Area: Dynamic Split Layout -->
@@ -980,6 +982,61 @@
                 <label for="setOutOfDeliveryMsg">Out of Delivery Range Message (Unapproved Areas)</label>
                 <textarea id="setOutOfDeliveryMsg" rows="3" placeholder="Maazrat! Aap ki location hamare restaurant se door hai. Hamari delivery range 10 km tak mehdood hai.&#10;&#10;Barah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein. Shukriya!"></textarea>
                 <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Agar customer ki location delivery radius se bahar ho to bot ye dynamic message bhejega. Agar khali chorein ge to automatic distance aur 10km radius ka polite message jaye ga.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card: Menu Discount (All Items) -->
+          <div class="settings-card">
+            <div class="settings-card-header">
+              <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                <div>
+                  <h3>Menu Discount (All Items)</h3>
+                  <p>Apply a store-wide discount across every single menu item for all customers.</p>
+                </div>
+                <span class="badge-tag" id="setDiscountStatusBadge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">Store Discount</span>
+              </div>
+            </div>
+            <div class="settings-fields">
+              <div class="toggle-group-row">
+                <div>
+                  <strong>Enable Store-Wide Discount</strong>
+                  <div class="subtext">Turn ON to apply discount to all menu items automatically on WhatsApp & Online Cart</div>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="setGlobalDiscountEnabled" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+
+              <div class="form-row-2" style="margin-top: 14px;">
+                <div class="input-group">
+                  <label for="setGlobalDiscountType">Discount Type</label>
+                  <select id="setGlobalDiscountType">
+                    <option value="PERCENTAGE">Percentage Discount (%)</option>
+                    <option value="FIXED">Flat Rupee Amount (Rs. OFF)</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label for="setGlobalDiscountValue" id="setGlobalDiscountValueLabel">Discount Value (%) *</label>
+                  <input type="number" id="setGlobalDiscountValue" min="0" step="any" placeholder="e.g. 10, 15, 20" />
+                  <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Apni marzi ki koi bhi discount percentage ya fixed rupee value darj karein.</span>
+                </div>
+              </div>
+
+              <div class="input-group" style="margin-top: 10px;">
+                <label for="setGlobalDiscountTitle">Discount Offer Title / Banner Tag</label>
+                <input type="text" id="setGlobalDiscountTitle" placeholder="Special Discount" />
+                <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 3px; display: block;">Displays on WhatsApp menu header & bill summary (e.g. "Ramadan Special Offer", "Weekend 15% OFF", or "Grand Opening Discount").</span>
+              </div>
+
+              <div class="discount-preview-callout" style="margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2);">
+                <div style="font-size: 12px; font-weight: 600; color: #3b82f6; display: flex; align-items: center; gap: 6px;">
+                  <span>💡 Customer Experience:</span>
+                </div>
+                <div style="font-size: 11.5px; color: var(--fg-dim); margin-top: 4px; line-height: 1.4;">
+                  Jab yeh discount active hoga, WhatsApp menu aur Cart mein har item ki original price cross ho kar live discounted price nazar aayegi (maslan: <strong style="color: #10b981;">~Rs. 1399~ Rs. 1189</strong>). Agar kisi item ka apna specific discount set ho, to uska specific discount apply hoga.
+                </div>
               </div>
             </div>
           </div>
@@ -1505,6 +1562,21 @@
             </div>
           </div>
         </div>
+        <!-- Category Banner / Menu Card Image Upload (Hidden per admin preference) -->
+        <div class="input-group" style="display: none !important;">
+          <label>Category Menu Picture / Card (JPEG, PNG, WebP - Max 5MB)</label>
+          <div class="image-upload-box">
+            <input type="file" id="catImageFile" accept="image/jpeg,image/png,image/webp" style="display: none;" />
+            <input type="hidden" id="catImageUrl" value="" />
+            <button type="button" id="catImageActionBtn" class="btn btn-secondary btn-sm image-toggle-btn">
+              <span class="btn-icon">📷</span>
+              <span class="btn-text">Add Image</span>
+            </button>
+            <div id="catImagePreview" class="image-preview-thumbnail hidden"></div>
+            <span id="catImageStatus" class="image-file-status">No image selected</span>
+          </div>
+          <small class="subtext" style="display:block; margin-top:4px;">Jab customer WhatsApp par ye category mangega, bot ye picture sath bhejega.</small>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="window.closeCategoryModal()">Cancel</button>
           <button type="submit" id="catSaveBtn" class="btn btn-primary">Save Category</button>
@@ -1565,19 +1637,80 @@
           </div>
         </div>
 
+        <!-- Item-Specific Discount (Optional) -->
+        <div class="form-row-2" style="background: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: var(--r-sm); border: 1px dashed var(--border-color); margin-bottom: 16px;">
+          <div class="input-group">
+            <label for="itemDiscountPercent">Item Discount (%)</label>
+            <input type="number" id="itemDiscountPercent" min="0" max="100" step="any" placeholder="e.g. 15 for 15% off" />
+            <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 2px; display: block;">Specific percent off this item. Overrides store discount.</span>
+          </div>
+          <div class="input-group">
+            <label for="itemDiscountFixed">Item Fixed Discount (Rs.)</label>
+            <input type="number" id="itemDiscountFixed" min="0" step="any" placeholder="e.g. 100 for Rs. 100 off" />
+            <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 2px; display: block;">Or flat rupee amount discount.</span>
+          </div>
+        </div>
+
         <!-- Image Upload -->
         <div class="input-group">
-          <label for="itemImageFile">Item Image (JPEG, PNG, WebP — Max 5MB)</label>
+          <label>Item Image (JPEG, PNG, WebP — Max 5MB)</label>
           <div class="image-upload-box">
-            <input type="file" id="itemImageFile" accept="image/jpeg,image/png,image/webp" />
+            <input type="file" id="itemImageFile" accept="image/jpeg,image/png,image/webp" style="display: none;" />
             <input type="hidden" id="itemImageUrl" value="" />
+            <button type="button" id="itemImageActionBtn" class="btn btn-secondary btn-sm image-toggle-btn">
+              <span class="btn-icon">📷</span>
+              <span class="btn-text">Add Image</span>
+            </button>
             <div id="itemImagePreview" class="image-preview-thumbnail hidden"></div>
+            <span id="itemImageStatus" class="image-file-status">No image selected</span>
           </div>
         </div>
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="window.closeMenuItemModal()">Cancel</button>
           <button type="submit" id="itemSaveBtn" class="btn btn-primary">Save Menu Item</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: BULK APPLY DISCOUNT -->
+  <div id="bulkDiscountModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h3>Bulk Discount on All Items</h3>
+          <p class="subtext">Quickly apply or clear discounts across all menu items in one action</p>
+        </div>
+        <button type="button" class="modal-close-btn" id="bulkDiscountCloseBtn">✕</button>
+      </div>
+      <form id="bulkDiscountForm" onsubmit="return false;">
+        <div class="input-group">
+          <label for="bulkDiscountCategory">Target Category</label>
+          <select id="bulkDiscountCategory">
+            <option value="">All Categories (Every Menu Item)</option>
+          </select>
+          <span class="field-hint" style="font-size: 11px; color: var(--fg-muted); margin-top: 2px; display: block;">Choose a specific category or select all to update everything.</span>
+        </div>
+
+        <div class="input-group" style="margin-top: 12px;">
+          <label for="bulkDiscountAction">Discount Action</label>
+          <select id="bulkDiscountAction">
+            <option value="PERCENTAGE">Apply Percentage Discount (%)</option>
+            <option value="FIXED">Apply Flat Rupee Discount (Rs. OFF)</option>
+            <option value="CLEAR">Clear All Discounts (Remove discounts from items)</option>
+          </select>
+        </div>
+
+        <div class="input-group" id="bulkDiscountValueRow" style="margin-top: 12px;">
+          <label for="bulkDiscountValue" id="bulkDiscountValueLabel">Discount Percentage (%) *</label>
+          <input type="number" id="bulkDiscountValue" min="0" max="100" step="any" placeholder="e.g. 10, 15, 20" required />
+          <span class="field-hint" id="bulkDiscountValueHint" style="font-size: 11px; color: var(--fg-muted); margin-top: 2px; display: block;">Enter discount percentage to apply to all target items.</span>
+        </div>
+
+        <div class="modal-actions" style="margin-top: 20px;">
+          <button type="button" class="btn btn-secondary" id="bulkDiscountCancelBtn">Cancel</button>
+          <button type="submit" id="bulkDiscountSubmitBtn" class="btn btn-primary">Apply Discount to Items</button>
         </div>
       </form>
     </div>

@@ -9,6 +9,8 @@ export const createMenuItemSchema = z.object({
     spicy_level: z.enum(['NONE', 'MILD', 'MEDIUM', 'HOT']).default('NONE'),
     is_available: z.coerce.boolean().default(true),
     is_active: z.coerce.boolean().default(true),
+    discount_percent: z.coerce.number().min(0, 'Discount must be at least 0%').max(100, 'Discount cannot exceed 100%').optional().nullable(),
+    discount_fixed: z.coerce.number().min(0, 'Fixed discount must be at least 0').optional().nullable(),
 });
 
 export const updateMenuItemSchema = z.object({
@@ -20,4 +22,6 @@ export const updateMenuItemSchema = z.object({
     spicy_level: z.enum(['NONE', 'MILD', 'MEDIUM', 'HOT']).optional(),
     is_available: z.coerce.boolean().optional(),
     is_active: z.coerce.boolean().optional(),
+    discount_percent: z.coerce.number().min(0, 'Discount must be at least 0%').max(100, 'Discount cannot exceed 100%').optional().nullable(),
+    discount_fixed: z.coerce.number().min(0, 'Fixed discount must be at least 0').optional().nullable(),
 });

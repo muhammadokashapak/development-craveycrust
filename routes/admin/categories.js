@@ -4,6 +4,7 @@ import { createCategorySchema, updateCategorySchema } from '../../src/validators
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
 import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
+import { bumpSyncEpoch, refreshCatalogCache } from '../../src/services/catalogCacheService.js';
 
 const router = express.Router();
 
@@ -78,6 +79,7 @@ router.get('/', async (req, res) => {
             name: c.name || '',
             slug: c.slug || '',
             description: c.description || '',
+            image_url: c.image_url || '',
             sort_order: c.sort_order ?? 0,
             is_active: Boolean(c.is_active ?? true),
             items_count: c._count?.menu_items ?? 0,
@@ -187,7 +189,7 @@ router.post('/', async (req, res) => {
                 restaurantId = await getDefaultRestaurantId();
             } catch (_) {}
         }
-        const { name, description, sort_order, is_active } = parseResult.data;
+        const { name, description, image_url, sort_order, is_active } = parseResult.data;
 
         const baseSlug = slugify(name);
         if (!baseSlug) {
@@ -224,12 +226,15 @@ router.post('/', async (req, res) => {
                 name,
                 slug: baseSlug,
                 description: description || null,
+                image_url: image_url || null,
                 sort_order,
                 is_active,
             },
         });
 
         notifyN8nSync('category_created');
+        bumpSyncEpoch();
+        refreshCatalogCache().catch(() => {});
 
         return res.status(201).json({
             success: true,
@@ -280,7 +285,7 @@ router.put('/:id', async (req, res) => {
         }
 
         const updateData = {};
-        const { name, description, sort_order, is_active } = parseResult.data;
+        const { name, description, image_url, sort_order, is_active } = parseResult.data;
 
         if (name !== undefined) {
             updateData.name = name;
@@ -306,6 +311,7 @@ router.put('/:id', async (req, res) => {
         }
 
         if (description !== undefined) updateData.description = description;
+        if (image_url !== undefined) updateData.image_url = (image_url && typeof image_url === 'string' && image_url.trim()) ? image_url.trim() : null;
         if (sort_order !== undefined) updateData.sort_order = sort_order;
         if (is_active !== undefined) updateData.is_active = is_active;
 
@@ -315,6 +321,8 @@ router.put('/:id', async (req, res) => {
         });
 
         notifyN8nSync('category_updated');
+        bumpSyncEpoch();
+        refreshCatalogCache().catch(() => {});
 
         return res.json({ success: true, data: updated });
     } catch (err) {
@@ -360,6 +368,8 @@ router.patch('/:id/status', async (req, res) => {
         });
 
         notifyN8nSync('category_status_changed');
+        bumpSyncEpoch();
+        refreshCatalogCache().catch(() => {});
 
         return res.json({ success: true, data: updated });
     } catch (err) {

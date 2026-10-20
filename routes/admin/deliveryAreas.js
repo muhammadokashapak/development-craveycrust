@@ -66,14 +66,6 @@ router.get('/', async (req, res) => {
             });
         }
 
-        // Attempt 3: If table is completely empty globally, auto-seed the 32 standard areas
-        if (!areas || areas.length === 0) {
-            await ensureDeliveryAreasSeeded(prisma, restaurantId);
-            areas = await prisma.deliveryArea.findMany({
-                where: {},
-                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-            });
-        }
 
         const formatted = areas.map(a => ({
             id: a.id,
