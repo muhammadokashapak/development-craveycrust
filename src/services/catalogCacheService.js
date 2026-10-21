@@ -48,9 +48,25 @@ function isTestCategory(name) {
     return lower.includes('aleem') || lower.includes('test') || lower.includes('demo');
 }
 
+// ─── Helper: Format Included Items for Deal ─────────────────────────────
+function formatDealItemsText(deal) {
+    if (deal.deal_items && deal.deal_items.length > 0) {
+        return deal.deal_items.map(di => {
+            const qty = di.quantity || 1;
+            const qtyStr = `${qty}x `;
+            const itemName = di.menu_item?.name || 'Item';
+            const variantName = di.menu_variant?.name || '';
+            const needsVariant = variantName && !itemName.toLowerCase().includes(variantName.toLowerCase());
+            return `${qtyStr}${itemName}${needsVariant ? ` (${variantName})` : ''}`;
+        }).join(', ');
+    }
+    return '';
+}
+
 // ─── Helper: Classify deals into strictly 5 sections ──────────────────────
 function classifyDeal(deal) {
     const name = (deal.name || '').toLowerCase();
+    const itemsText = (deal.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
 
     // 1. === BURGER MEALS ===
     if (name.includes('burger meal') || (name.includes('burger') && name.includes('meal'))) {
@@ -69,6 +85,14 @@ function classifyDeal(deal) {
 
     // 4. === PIZZA VALUE DEALS (Multiple Pizzas + Drink) ===
     if (name.includes('deal 1') || name.includes('deal 2') || name.includes('deal 3') || (name.includes('pizza') && (name.includes('deal') || name.includes('value')))) {
+        return 'PIZZA_VALUE_DEALS';
+    }
+
+    // Fallback: Check items included
+    if (itemsText.includes('burger') && !itemsText.includes('pizza')) {
+        return 'BURGER_VALUE_DEALS';
+    }
+    if (itemsText.includes('pizza') && !itemsText.includes('burger')) {
         return 'PIZZA_VALUE_DEALS';
     }
 
@@ -134,9 +158,17 @@ async function fetchAllCatalog() {
             const isDrinkCategory = /drinks?/i.test(cat.name);
 
             let headerEmoji = '🍕';
-            if (cat.name.includes('Premium')) headerEmoji = '🌟';
-            else if (cat.name.includes('Classic')) headerEmoji = '🍕';
+            if (cat.name.includes('Starter')) headerEmoji = '🍟';
+            else if (cat.name.includes('Roll')) headerEmoji = '🌯';
+            else if (cat.name.includes('Box')) headerEmoji = '🍗';
+            else if (cat.name.includes('Wing')) headerEmoji = '🍗';
+            else if (cat.name.includes('Platter')) headerEmoji = '🍱';
+            else if (cat.name.includes('Pasta')) headerEmoji = '🍝';
+            else if (cat.name.includes('Sandwich')) headerEmoji = '🥪';
             else if (cat.name.includes('Burger Deals')) headerEmoji = '🍔';
+            else if (cat.name.includes('Burger')) headerEmoji = '🍔';
+            else if (cat.name.includes('Premium')) headerEmoji = '🌟';
+            else if (cat.name.includes('Classic')) headerEmoji = '🍕';
             else if (cat.name.includes('Pizza Deals')) headerEmoji = '🎁';
             else if (cat.name.includes('Cravey 2.0')) headerEmoji = '🔥';
             else if (isDrinkCategory) headerEmoji = '🥤';
@@ -197,17 +229,19 @@ async function fetchAllCatalog() {
             dealBuckets[bucket].push(deal);
         }
 
-        // Compact AI deals summary (single line per deal with dealId)
+        // Compact AI deals summary (single line per deal with dealId & included items)
         const cachedDealsSummary = (rawDeals || []).map(d => {
-            const desc = d.description ? ` (${d.description})` : '';
+            const itemsText = formatDealItemsText(d);
+            const desc = itemsText ? ` (${itemsText})` : '';
             return `• ${d.name} (Rs. ${Number(d.deal_price)})${desc} [dealId:${d.id}]`;
         }).join('\n') || '(No deals currently active)';
 
-        // Clean, beautiful customer deals formatting for WhatsApp
+        // Clean, beautiful customer deals formatting for WhatsApp (based on included items)
         const formatCustomerDealBlock = (title, emoji, dealList) => {
             if (!dealList || dealList.length === 0) return null;
             const lines = dealList.map(d => {
-                const desc = d.description ? `\n   _${d.description}_` : '';
+                const itemsText = formatDealItemsText(d);
+                const desc = itemsText ? `\n   _${itemsText}_` : '';
                 return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
             });
             return `${emoji} *${title}*\n━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n\n')}`;

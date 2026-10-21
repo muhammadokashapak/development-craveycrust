@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=8.4.7">
+  <link rel="stylesheet" href="style.css?v=8.4.8">
   <script>
     try {
       if (localStorage.getItem('wa_dash_token')) {
@@ -462,6 +462,10 @@
           </div>
 
           <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="deleteAllMenuItemsBtn" class="btn btn-danger-outline btn-sm" type="button" onclick="window.deleteAllMenuItemsUI()" title="Delete all menu items from database">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete All Items</span>
+            </button>
             <button id="openBulkDiscountBtn" class="btn btn-secondary btn-sm" type="button" style="display: inline-flex; align-items: center; gap: 6px;">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
@@ -513,13 +517,19 @@
             <h3>Menu Categories</h3>
             <span class="subtext">Organize food sections and display order</span>
           </div>
-          <button id="openAddCategoryBtn" class="btn btn-primary btn-sm" type="button">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>Add Category</span>
-          </button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="deleteAllCategoriesBtn" class="btn btn-danger-outline btn-sm" type="button" onclick="window.deleteAllCategoriesUI()" title="Delete all categories and their items from database">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete All Categories</span>
+            </button>
+            <button id="openAddCategoryBtn" class="btn btn-primary btn-sm" type="button">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Add Category</span>
+            </button>
+          </div>
         </div>
 
         <div class="table-container">
@@ -553,10 +563,16 @@
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" id="dealsSearchInput" placeholder="Search deals..." />
             </div>
-            <button id="openAddDealBtn" class="btn btn-primary btn-sm" type="button" onclick="window.openAddDealModal()">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              <span>Add Deal</span>
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="deleteAllDealsBtn" class="btn btn-danger-outline btn-sm" type="button" onclick="window.deleteAllDealsUI()" title="Delete all meal deals from database">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <span>Delete All Deals</span>
+              </button>
+              <button id="openAddDealBtn" class="btn btn-primary btn-sm" type="button" onclick="window.openAddDealModal()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Add Deal</span>
+              </button>
+            </div>
           </div>
 
           <div class="table-container">
@@ -595,6 +611,10 @@
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
               <input type="text" id="deliverySearchInput" placeholder="Search delivery areas..." />
             </div>
+            <button id="deleteAllDeliveryAreasBtn" class="btn btn-danger-outline btn-sm" type="button" onclick="window.deleteAllDeliveryAreasUI()" title="Delete all delivery areas from database">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete All Areas</span>
+            </button>
             <button id="openAddDeliveryBtn" class="btn btn-primary btn-sm" type="button" onclick="window.openAddDeliveryModal()">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
               <span>Add Delivery Area</span>
@@ -1223,6 +1243,10 @@
             <button type="button" class="btn btn-danger-outline btn-sm" onclick="window.openCustomerCleanupModal()">
               🧹 Purge Data
             </button>
+            <button type="button" id="deleteAllCustomersBtn" class="btn btn-danger-outline btn-sm" onclick="window.deleteAllCustomersUI()" title="Delete all customers from database">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete All Customers</span>
+            </button>
           </div>
         </div>
 
@@ -1384,6 +1408,9 @@
               <button type="button" id="chatsRefreshBtn" class="chats-refresh-btn" title="Refresh Live Chats">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               </button>
+              <button type="button" id="deleteAllChatsBtn" class="chats-refresh-btn" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Delete All Chats" onclick="window.deleteAllChatsUI()">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
             </div>
             
             <div id="chatsConversationsList" class="chats-conv-list">
@@ -1477,6 +1504,10 @@
             <span class="subtext">Dynamic source of truth for bot customer answers & policies</span>
           </div>
           <div style="display: flex; gap: 8px;">
+            <button id="deleteAllFaqsBtn" class="btn btn-danger-outline btn-sm" type="button" onclick="window.deleteAllFaqsUI()" title="Delete all FAQs from database">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete All FAQs</span>
+            </button>
             <button id="openFaqCategoriesBtn" class="btn btn-secondary btn-sm" type="button">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -1790,11 +1821,6 @@
             <label for="dealPrice">Deal Price (Rs.) *</label>
             <input type="number" id="dealPrice" min="0" step="any" placeholder="1499" required />
           </div>
-        </div>
-
-        <div class="input-group">
-          <label for="dealDescription">Description</label>
-          <textarea id="dealDescription" rows="2" placeholder="Included items, servings, details"></textarea>
         </div>
 
         <div class="form-row-2">
@@ -2359,6 +2385,6 @@
     <div id="toastMessage" class="toast-message">Notification</div>
   </div>
 
-  <script src="app.js?v=8.4.7"></script>
+  <script src="app.js?v=8.4.8"></script>
 </body>
 </html>

@@ -650,7 +650,10 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         deals.forEach((d) => {
             dealsMsg += `${d.name}: Rs.${Number(d.deal_price)}\n`;
             if (d.deal_items && d.deal_items.length > 0) {
-                const itemsStr = d.deal_items.map(di => `${di.quantity}x ${di.menu_item?.name || 'Item'}`).join(', ');
+                const itemsStr = d.deal_items.map(di => {
+                    const vName = di.menu_variant?.name && !di.menu_item?.name?.toLowerCase().includes(di.menu_variant.name.toLowerCase()) ? ` (${di.menu_variant.name})` : '';
+                    return `${di.quantity}x ${di.menu_item?.name || 'Item'}${vName}`;
+                }).join(', ');
                 dealsMsg += `Includes: ${itemsStr}\n`;
             }
             dealsMsg += '\n';
@@ -674,7 +677,8 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
                 if (targetDeal.deal_items && targetDeal.deal_items.length > 0) {
                     msg += `Items shamil hain:\n`;
                     targetDeal.deal_items.forEach(di => {
-                        msg += `• ${di.quantity}x ${di.menu_item?.name || di.custom_name || 'Item'}\n`;
+                        const vName = di.menu_variant?.name && !di.menu_item?.name?.toLowerCase().includes(di.menu_variant.name.toLowerCase()) ? ` (${di.menu_variant.name})` : '';
+                        msg += `• ${di.quantity}x ${di.menu_item?.name || di.custom_name || 'Item'}${vName}\n`;
                     });
                 }
                 msg += `\nCart mein add karne ke liye reply karein: "deal ${dNum}" ya "1 deal ${dNum}".`;

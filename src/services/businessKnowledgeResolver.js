@@ -613,7 +613,10 @@ export async function resolveBusinessAnswer({
             deals.forEach((d) => {
                 dealsMsg += `${d.name}: Rs.${Number(d.deal_price)}\n`;
                 if (d.deal_items && d.deal_items.length > 0) {
-                    const itemsStr = d.deal_items.map((di) => `${di.quantity}x ${di.menu_item?.name || 'Item'}`).join(', ');
+                    const itemsStr = d.deal_items.map((di) => {
+                        const vName = di.menu_variant?.name && !di.menu_item?.name?.toLowerCase().includes(di.menu_variant.name.toLowerCase()) ? ` (${di.menu_variant.name})` : '';
+                        return `${di.quantity}x ${di.menu_item?.name || 'Item'}${vName}`;
+                    }).join(', ');
                     dealsMsg += `Includes: ${itemsStr}\n`;
                 }
                 dealsMsg += '\n';

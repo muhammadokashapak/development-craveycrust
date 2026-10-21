@@ -721,3 +721,25 @@ export async function deleteCustomerChatHistory(identifiers = []) {
     return deletedCount;
 }
 
+/**
+ * Clear all customer chat messages and sessions permanently
+ */
+export async function clearAllChats() {
+    const prevLength = _localChatStore.length;
+    _localChatStore = [];
+    _confirmedNamesByChat.clear();
+    _confirmedNamesByPhone.clear();
+    try {
+        fs.writeFileSync(CHAT_BACKUP_FILE, JSON.stringify([], null, 2), 'utf8');
+    } catch (_) {}
+    try {
+        const { getDbClient } = await import('../db/client.js');
+        const prisma = getDbClient();
+        if (prisma) {
+            await prisma.conversationSession.deleteMany({});
+        }
+    } catch (_) {}
+    return prevLength;
+}
+
+

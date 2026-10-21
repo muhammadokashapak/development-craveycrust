@@ -178,4 +178,30 @@ router.post('/bulk-delete', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/admin/customers/delete-all
+ * DELETE /api/admin/customers/delete-all
+ */
+const handleDeleteAllCustomers = async (req, res) => {
+    try {
+        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || await getDefaultRestaurantId();
+        const deleteOrders = req.body?.deleteOrders === true || req.query?.deleteOrders === 'true';
+        const result = await bulkDeleteCustomers({
+            restaurantId,
+            olderThanDays: 0,
+            deleteOrders,
+        });
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} customer records`,
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllCustomers);
+router.delete('/delete-all', handleDeleteAllCustomers);
+
 export default router;

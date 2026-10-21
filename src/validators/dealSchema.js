@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const dealItemInputSchema = z.object({
     menu_item_id: z.string().min(1, 'Menu item ID is required'),
-    menu_variant_id: z.string().nullable().optional(),
-    quantity: z.number().int().min(1, 'Quantity must be at least 1').default(1),
+    menu_variant_id: z.union([z.string(), z.null()]).optional().transform(v => (!v || v === '' ? null : v)),
+    quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1').default(1),
 });
 
 export const createDealSchema = z.object({
@@ -27,6 +27,7 @@ export const updateDealSchema = z.object({
     end_at: z.union([z.string().datetime(), z.string(), z.date()]).optional().nullable(),
     is_active: z.boolean().optional(),
     sort_order: z.number().int().optional(),
+    items: z.array(dealItemInputSchema).optional(),
 });
 
 export const createDealItemSchema = z.object({
