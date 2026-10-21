@@ -352,6 +352,41 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/delivery-areas/delete-all
+ * DELETE /api/admin/delivery-areas/delete-all
+ * Delete all delivery areas
+ */
+const handleDeleteAllDeliveryAreas = async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not available' } });
+        }
+        const restaurantId = await resolveRestaurantId(req, prisma);
+
+        const result = await prisma.deliveryArea.deleteMany({
+            where: { ...(restaurantId ? { restaurant_id: restaurantId } : {}) },
+        });
+
+        const { bumpSyncEpoch, refreshCatalogCache } = await import('../../src/services/catalogCacheService.js');
+        bumpSyncEpoch();
+        await refreshCatalogCache();
+
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} delivery areas`,
+        });
+    } catch (err) {
+        console.error('[ADMIN] Failed to delete all delivery areas:', err);
+        return res.status(500).json({ success: false, error: { code: 'DELETE_ALL_ERROR', message: err.message } });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllDeliveryAreas);
+router.delete('/delete-all', handleDeleteAllDeliveryAreas);
+
+/**
  * DELETE /api/admin/delivery-areas/:id
  */
 router.delete('/:id', async (req, res) => {

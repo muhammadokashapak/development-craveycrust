@@ -3301,9 +3301,9 @@ function renderDealsTable() {
     return `
       <tr>
         <td>${imgEl}</td>
-        <td><strong>${escapeHtml(d.name)}</strong><br><small class="term-dim">${escapeHtml(d.description || '')}</small></td>
+        <td><strong style="font-size: 15px; font-weight: 600; color: #0f172a; display: block; line-height: 1.35;">${escapeHtml(d.name)}</strong></td>
         <td><div style="display: flex; flex-wrap: wrap; gap: 4px;">${itemsBadges}</div></td>
-        <td><strong>Rs. ${d.deal_price}</strong></td>
+        <td><strong style="font-size: 14px;">Rs. ${d.deal_price}</strong></td>
         <td><small>${validStr}</small></td>
         <td>${statusBadge}</td>
         <td style="text-align: right; white-space: nowrap;">
@@ -3536,7 +3536,6 @@ async function openEditDealModal(dealId) {
     document.getElementById('dealModalTitle').textContent = 'Edit Deal';
     document.getElementById('dealName').value = d.name || '';
     document.getElementById('dealPrice').value = d.deal_price ?? '';
-    document.getElementById('dealDescription').value = d.description || '';
     document.getElementById('dealSortOrder').value = d.sort_order ?? 0;
     document.getElementById('dealIsActive').checked = d.is_active ?? true;
 
@@ -3579,7 +3578,6 @@ if (dealForm) {
     const editId = document.getElementById('dealEditId').value;
     const name = document.getElementById('dealName').value.trim();
     const deal_price = parseFloat(document.getElementById('dealPrice').value);
-    const description = document.getElementById('dealDescription').value.trim();
     const start_at = document.getElementById('dealStartAt').value || null;
     const end_at = document.getElementById('dealEndAt').value || null;
     const sort_order = parseInt(document.getElementById('dealSortOrder').value, 10) || 0;
@@ -3604,7 +3602,7 @@ if (dealForm) {
     const payload = {
       name,
       deal_price,
-      description: description || null,
+      description: null,
       start_at: start_at ? new Date(start_at).toISOString() : null,
       end_at: end_at ? new Date(end_at).toISOString() : null,
       sort_order,
@@ -6505,6 +6503,230 @@ const chatsExportListBtn = document.getElementById('chatsExportListBtn');
 if (chatsExportListBtn) {
   chatsExportListBtn.addEventListener('click', exportConversationsListCsv);
 }
+
+// ─── Universal "Delete All" Operations for Admin Dashboard ───────────────────
+
+async function deleteAllMenuItemsUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to delete ALL menu items from the database?\n\n" +
+    "• All food items, item variants, and related cart items will be permanently erased.\n" +
+    "• This action CANNOT be undone.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all menu items...', 'info');
+    const res = await fetch('/api/admin/menu/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All menu items successfully deleted!', 'success');
+      cachedMenuItemsList = [];
+      try { await LocalDB.clear('menu'); } catch (_) {}
+      if (typeof renderMenuItemsTable === 'function') renderMenuItemsTable();
+      if (typeof loadMenuItems === 'function') await loadMenuItems();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete menu items', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllMenuItemsUI = deleteAllMenuItemsUI;
+
+async function deleteAllCategoriesUI() {
+  const proceed = confirm(
+    "⚠️ CRITICAL WARNING: Delete ALL categories from the database?\n\n" +
+    "• Deleting all categories will also remove ALL menu items and their variants.\n" +
+    "• This will completely reset your food catalog.\n\n" +
+    "Are you absolutely sure you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all categories...', 'info');
+    const res = await fetch('/api/admin/categories/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All categories successfully deleted!', 'success');
+      cachedCategoriesList = [];
+      cachedMenuItemsList = [];
+      try {
+        await LocalDB.clear('categories');
+        await LocalDB.clear('menu');
+      } catch (_) {}
+      if (typeof renderCategoriesTable === 'function') renderCategoriesTable();
+      if (typeof loadCategories === 'function') await loadCategories();
+      if (typeof loadCategoriesForDropdown === 'function') await loadCategoriesForDropdown();
+      if (typeof loadMenuItems === 'function') await loadMenuItems();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete categories', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllCategoriesUI = deleteAllCategoriesUI;
+
+async function deleteAllDealsUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to delete ALL meal deals from the database?\n\n" +
+    "• All meal deals and deal item combos will be permanently removed.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all meal deals...', 'info');
+    const res = await fetch('/api/admin/deals/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All meal deals successfully deleted!', 'success');
+      if (typeof loadDeals === 'function') await loadDeals();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete deals', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllDealsUI = deleteAllDealsUI;
+
+async function deleteAllDeliveryAreasUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to delete ALL delivery zones & coverage areas?\n\n" +
+    "• All configured delivery zones, fees, and minimum spend limits will be removed.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all delivery areas...', 'info');
+    const res = await fetch('/api/admin/delivery-areas/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All delivery areas successfully deleted!', 'success');
+      if (typeof loadDeliveryAreas === 'function') await loadDeliveryAreas();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete delivery areas', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllDeliveryAreasUI = deleteAllDeliveryAreasUI;
+
+async function deleteAllCustomersUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to delete ALL registered customer profiles?\n\n" +
+    "• All customer directory records will be permanently removed from the database.\n" +
+    "• Customer WhatsApp Chats will NOT be touched (intact).\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all customer records...', 'info');
+    const res = await fetch('/api/admin/customers/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All customers successfully deleted!', 'success');
+      cachedCustomersList = [];
+      try { await LocalDB.clear('customers'); } catch (_) {}
+      if (typeof renderCustomersTable === 'function') renderCustomersTable();
+      if (typeof loadCustomers === 'function') await loadCustomers(true);
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete customers', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllCustomersUI = deleteAllCustomersUI;
+
+async function deleteAllChatsUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to permanently clear ALL customer chat logs?\n\n" +
+    "• All conversation history, audit records, and active conversation sessions will be erased.\n" +
+    "• This action CANNOT be undone.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Clearing all customer chat logs...', 'info');
+    const res = await fetch('/api/admin/chats/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All customer chats permanently cleared!', 'success');
+      activeChatCustomer = null;
+      const threadContainer = document.getElementById('chatMessagesScroll');
+      if (threadContainer) threadContainer.innerHTML = '';
+      const headerName = document.getElementById('chatActiveName');
+      if (headerName) headerName.textContent = 'Select a Conversation';
+      const headerPhone = document.getElementById('chatActivePhone');
+      if (headerPhone) headerPhone.textContent = 'WhatsApp Customer Chat Log';
+      if (typeof loadConversations === 'function') await loadConversations();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to clear chats', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllChatsUI = deleteAllChatsUI;
+
+async function deleteAllFaqsUI() {
+  const proceed = confirm(
+    "⚠️ WARNING: Are you sure you want to delete ALL FAQs from the knowledge base?\n\n" +
+    "• All FAQ questions, answers, and bot policies will be permanently erased.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Deleting all FAQs...', 'info');
+    const res = await fetch('/api/admin/faqs/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'All FAQs successfully removed!', 'success');
+      if (typeof loadFaqs === 'function') await loadFaqs();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to delete FAQs', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.deleteAllFaqsUI = deleteAllFaqsUI;
+
 
 
 

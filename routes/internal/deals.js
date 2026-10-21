@@ -61,7 +61,7 @@ router.get('/', async (req, res) => {
 
         const formatted = availableDeals.map(d => {
             const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ');
-            const fullText = (d.name + ' ' + (d.description || '') + ' ' + itemsText).toLowerCase();
+            const fullText = (d.name + ' ' + itemsText).toLowerCase();
             const isBurger = /\b(burger|zinger|zeggy)\b/i.test(fullText);
             const isPizza = /\b(pizza)\b/i.test(fullText);
             let category = 'Special Deals';
@@ -72,7 +72,6 @@ router.get('/', async (req, res) => {
                 id: d.id,
                 name: d.name,
                 category,
-                description: d.description || '',
                 dealPrice: Number(d.deal_price),
                 items: d.deal_items.map(di => ({
                     name: di.menu_item?.name || '',

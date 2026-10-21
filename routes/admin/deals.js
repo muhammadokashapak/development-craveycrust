@@ -4,6 +4,7 @@ import { createDealSchema, updateDealSchema, createDealItemSchema, updateDealIte
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
 import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
+import { refreshCatalogCache } from '../../src/services/catalogCacheService.js';
 
 const router = express.Router();
 
@@ -210,7 +211,7 @@ router.post('/', async (req, res) => {
                 restaurant_id: restaurantId || null,
                 name: name.trim(),
                 slug,
-                description: description?.trim() || null,
+                description: null,
                 image_url: image_url || null,
                 deal_price,
                 start_at: start_at ? new Date(start_at) : null,
@@ -238,6 +239,7 @@ router.post('/', async (req, res) => {
         });
 
         notifyN8nSync('deal_created');
+        refreshCatalogCache().catch(() => {});
 
         return res.status(201).json({
             success: true,
@@ -356,9 +358,32 @@ router.put('/:id', async (req, res) => {
             });
         }
 
-        const updateData = {};
+        if (parsed.data.items && parsed.data.items.length > 0) {
+            for (const it of parsed.data.items) {
+                const menuItem = await prisma.menuItem.findFirst({
+                    where: { id: it.menu_item_id, ...(restaurantId ? { restaurant_id: restaurantId } : {}) },
+                    include: { variants: true },
+                });
+                if (!menuItem) {
+                    return res.status(404).json({
+                        success: false,
+                        error: { code: 'MENU_ITEM_NOT_FOUND', message: `Menu item '${it.menu_item_id}' not found` },
+                    });
+                }
+                if (it.menu_variant_id) {
+                    const variantExists = menuItem.variants.some(v => v.id === it.menu_variant_id);
+                    if (!variantExists) {
+                        return res.status(400).json({
+                            success: false,
+                            error: { code: 'VARIANT_NOT_FOUND', message: `Variant does not belong to item '${menuItem.name}'` },
+                        });
+                    }
+                }
+            }
+        }
+
+        const updateData = { description: null };
         if (parsed.data.name !== undefined) updateData.name = parsed.data.name.trim();
-        if (parsed.data.description !== undefined) updateData.description = parsed.data.description?.trim() || null;
         if (parsed.data.image_url !== undefined) updateData.image_url = parsed.data.image_url;
         if (parsed.data.deal_price !== undefined) updateData.deal_price = parsed.data.deal_price;
         if (parsed.data.start_at !== undefined) updateData.start_at = parsed.data.start_at ? new Date(parsed.data.start_at) : null;
@@ -366,20 +391,44 @@ router.put('/:id', async (req, res) => {
         if (parsed.data.is_active !== undefined) updateData.is_active = parsed.data.is_active;
         if (parsed.data.sort_order !== undefined) updateData.sort_order = parsed.data.sort_order;
 
-        const updated = await prisma.deal.update({
-            where: { id: req.params.id },
-            data: updateData,
-            include: {
-                deal_items: {
-                    include: {
-                        menu_item: true,
-                        menu_variant: true,
+        const updated = await prisma.$transaction(async (tx) => {
+            await tx.deal.update({
+                where: { id: req.params.id },
+                data: updateData,
+            });
+
+            if (parsed.data.items !== undefined) {
+                await tx.dealItem.deleteMany({
+                    where: { deal_id: req.params.id },
+                });
+
+                if (parsed.data.items.length > 0) {
+                    await tx.dealItem.createMany({
+                        data: parsed.data.items.map(it => ({
+                            deal_id: req.params.id,
+                            menu_item_id: it.menu_item_id,
+                            menu_variant_id: it.menu_variant_id || null,
+                            quantity: it.quantity || 1,
+                        })),
+                    });
+                }
+            }
+
+            return tx.deal.findUnique({
+                where: { id: req.params.id },
+                include: {
+                    deal_items: {
+                        include: {
+                            menu_item: { select: { id: true, name: true, base_price: true, is_available: true } },
+                            menu_variant: { select: { id: true, name: true, price: true, is_available: true } },
+                        },
                     },
                 },
-            },
+            });
         });
 
         notifyN8nSync('deal_updated');
+        refreshCatalogCache().catch(() => {});
 
         return res.json({
             success: true,
@@ -429,6 +478,7 @@ router.patch('/:id/status', async (req, res) => {
         });
 
         notifyN8nSync('deal_status_changed');
+        refreshCatalogCache().catch(() => {});
 
         return res.json({
             success: true,
@@ -441,6 +491,48 @@ router.patch('/:id/status', async (req, res) => {
         });
     }
 });
+
+/**
+ * POST /api/admin/deals/delete-all
+ * DELETE /api/admin/deals/delete-all
+ * Delete all deals and deal_items
+ */
+const handleDeleteAllDeals = async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not available' } });
+        }
+        let restaurantId = req.user?.restaurantId || req.user?.restaurant_id;
+        if (!restaurantId) {
+            restaurantId = await getDefaultRestaurantId();
+        }
+
+        await prisma.dealItem.deleteMany({
+            where: { deal: { restaurant_id: restaurantId } },
+        });
+        await prisma.cartItem.deleteMany({
+            where: { cart: { restaurant_id: restaurantId }, deal_id: { not: null } },
+        });
+        const result = await prisma.deal.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+
+        await refreshCatalogCache();
+
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} deals`,
+        });
+    } catch (err) {
+        console.error('[ADMIN] Failed to delete all deals:', err);
+        return res.status(500).json({ success: false, error: { code: 'DELETE_ALL_ERROR', message: err.message } });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllDeals);
+router.delete('/delete-all', handleDeleteAllDeals);
 
 /**
  * DELETE /api/admin/deals/:id
@@ -470,6 +562,7 @@ router.delete('/:id', async (req, res) => {
         await prisma.deal.delete({ where: { id: req.params.id } });
 
         notifyN8nSync('deal_deleted');
+        refreshCatalogCache().catch(() => {});
 
         return res.json({
             success: true,

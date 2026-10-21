@@ -381,6 +381,54 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/categories/delete-all
+ * DELETE /api/admin/categories/delete-all
+ * Delete all categories and their items, variants, cart items, deal item links
+ */
+const handleDeleteAllCategories = async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not available' } });
+        }
+        const { getDefaultRestaurantId } = await import('../../src/services/restaurantService.js');
+        const restaurantId = req.user?.restaurantId || await getDefaultRestaurantId();
+
+        await prisma.cartItem.deleteMany({
+            where: { cart: { restaurant_id: restaurantId } },
+        });
+        await prisma.dealItem.deleteMany({
+            where: { deal: { restaurant_id: restaurantId } },
+        });
+        await prisma.menuVariant.deleteMany({
+            where: { menu_item: { restaurant_id: restaurantId } },
+        });
+        await prisma.menuItem.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+        const result = await prisma.category.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+
+        const { bumpSyncEpoch, refreshCatalogCache } = await import('../../src/services/catalogCacheService.js');
+        bumpSyncEpoch();
+        await refreshCatalogCache();
+
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} categories`,
+        });
+    } catch (err) {
+        console.error('[ADMIN] Failed to delete all categories:', err);
+        return res.status(500).json({ success: false, error: { code: 'DELETE_ALL_ERROR', message: err.message } });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllCategories);
+router.delete('/delete-all', handleDeleteAllCategories);
+
+/**
  * DELETE /api/admin/categories/:id
  * Safe delete category (prevents deletion if menu items exist)
  */

@@ -376,6 +376,41 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/faqs/delete-all
+ * DELETE /api/admin/faqs/delete-all
+ * Delete all FAQs
+ */
+const handleDeleteAllFaqs = async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not available' } });
+        }
+        const restaurantId = req.user?.restaurantId || req.user?.restaurant_id || (await getDefaultRestaurantId());
+
+        const result = await prisma.fAQ.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+
+        const { bumpSyncEpoch, refreshCatalogCache } = await import('../../src/services/catalogCacheService.js');
+        bumpSyncEpoch();
+        await refreshCatalogCache();
+
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} FAQs`,
+        });
+    } catch (err) {
+        console.error('[ADMIN] Failed to delete all FAQs:', err);
+        return res.status(500).json({ success: false, error: { code: 'DELETE_ALL_ERROR', message: err.message } });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllFaqs);
+router.delete('/delete-all', handleDeleteAllFaqs);
+
+/**
  * DELETE /api/admin/faqs/:id
  * Delete FAQ.
  */

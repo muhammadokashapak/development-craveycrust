@@ -525,6 +525,51 @@ router.patch('/:id/availability', async (req, res) => {
 });
 
 /**
+ * POST /api/admin/menu/delete-all
+ * DELETE /api/admin/menu/delete-all
+ * Delete all menu items, variants, cart items, and deal item links
+ */
+const handleDeleteAllMenuItems = async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { code: 'DB_UNAVAILABLE', message: 'Database not available' } });
+        }
+        const { getDefaultRestaurantId } = await import('../../src/services/restaurantService.js');
+        const restaurantId = req.user?.restaurantId || await getDefaultRestaurantId();
+
+        await prisma.cartItem.deleteMany({
+            where: { cart: { restaurant_id: restaurantId } },
+        });
+        await prisma.dealItem.deleteMany({
+            where: { deal: { restaurant_id: restaurantId } },
+        });
+        await prisma.menuVariant.deleteMany({
+            where: { menu_item: { restaurant_id: restaurantId } },
+        });
+        const result = await prisma.menuItem.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+
+        bumpSyncEpoch();
+        const { refreshCatalogCache } = await import('../../src/services/catalogCacheService.js');
+        await refreshCatalogCache();
+
+        return res.json({
+            success: true,
+            count: result.count,
+            message: `Successfully deleted all ${result.count} menu items`,
+        });
+    } catch (err) {
+        console.error('[ADMIN] Failed to delete all menu items:', err);
+        return res.status(500).json({ success: false, error: { code: 'DELETE_ALL_ERROR', message: err.message } });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllMenuItems);
+router.delete('/delete-all', handleDeleteAllMenuItems);
+
+/**
  * DELETE /api/admin/menu/:id
  * Delete menu item and associated variants
  */

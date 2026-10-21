@@ -104,4 +104,27 @@ router.post('/conversations/:chatId/messages', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/admin/chats/delete-all
+ * DELETE /api/admin/chats/delete-all
+ * Clear all customer chats
+ */
+const handleDeleteAllChats = async (req, res) => {
+    try {
+        const { clearAllChats } = await import('../../src/services/chatService.js');
+        const count = await clearAllChats();
+        return res.json({
+            success: true,
+            count,
+            message: 'All customer chats cleared successfully',
+        });
+    } catch (err) {
+        console.error('[CHATS_ROUTE] Error deleting all chats:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+};
+
+router.post('/delete-all', handleDeleteAllChats);
+router.delete('/delete-all', handleDeleteAllChats);
+
 export default router;
