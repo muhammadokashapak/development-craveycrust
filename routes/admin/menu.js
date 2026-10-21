@@ -71,6 +71,36 @@ router.get('/', async (req, res) => {
             });
         }
 
+        // If scoped restaurant has no items, fallback to global items (matching categories.js behavior)
+        if ((!items || items.length === 0) && where.restaurant_id) {
+            const fallbackWhere = { ...where };
+            delete fallbackWhere.restaurant_id;
+            try {
+                items = await prisma.menuItem.findMany({
+                    where: fallbackWhere,
+                    include: {
+                        category: { select: { id: true, name: true, slug: true } },
+                        variants: {
+                            orderBy: { sort_order: 'asc' },
+                            select: { id: true, name: true, price: true, is_available: true, sort_order: true },
+                        },
+                    },
+                    orderBy: [{ category: { sort_order: 'asc' } }, { name: 'asc' }],
+                });
+            } catch (fallbackErr) {
+                items = await prisma.menuItem.findMany({
+                    where: fallbackWhere,
+                    include: {
+                        category: { select: { id: true, name: true, slug: true } },
+                        variants: {
+                            select: { id: true, name: true, price: true, is_available: true, sort_order: true },
+                        },
+                    },
+                    orderBy: [{ name: 'asc' }],
+                });
+            }
+        }
+
         const globalDiscount = await getGlobalDiscountSettings(restaurantId);
 
         const formatted = items.map(item => {
