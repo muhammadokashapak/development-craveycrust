@@ -6727,6 +6727,44 @@ async function deleteAllFaqsUI() {
 }
 window.deleteAllFaqsUI = deleteAllFaqsUI;
 
+async function loadCraveyMenuUI() {
+  const proceed = confirm(
+    "🍕 Sync Official Cravey Crust Menu from Google Maps?\n\n" +
+    "• This will populate the complete Cravey Crust menu (Starters, King's Rolls, Chicken Box, Wings, Burgers, Classic/Special/Premium Pizzas, Calzone, Pasta, Drinks) and all 12 Official Meal Deals.\n" +
+    "• Existing menu in the database will be freshly synchronized.\n\n" +
+    "Do you want to proceed?"
+  );
+  if (!proceed) return;
+
+  try {
+    showToast('Syncing official Cravey Crust menu & deals...', 'info');
+    const res = await fetch('/api/admin/menu/load-cravey-menu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Cravey Crust menu loaded successfully!', 'success');
+      cachedMenuItemsList = [];
+      cachedCategoriesList = [];
+      try {
+        await LocalDB.clear('menu');
+        await LocalDB.clear('categories');
+      } catch (_) {}
+      if (typeof loadCategoriesForDropdown === 'function') await loadCategoriesForDropdown();
+      if (typeof loadMenuItems === 'function') await loadMenuItems();
+      if (typeof loadCategories === 'function') await loadCategories();
+      if (typeof loadDeals === 'function') await loadDeals();
+      if (typeof loadDashboardStats === 'function') await loadDashboardStats();
+    } else {
+      showToast(data.error?.message || data.error || 'Failed to sync menu', 'error');
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+}
+window.loadCraveyMenuUI = loadCraveyMenuUI;
+
 
 
 

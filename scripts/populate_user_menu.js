@@ -835,12 +835,17 @@ async function populateFullMenu() {
     console.log('\n🎉 ALL GOOGLE MAPS MENU ITEMS, CATEGORIES, VARIANTS & DEALS POPULATED SUCCESSFULLY!');
 }
 
-populateFullMenu()
-    .catch((err) => {
-        console.error('❌ Failed to populate menu:', err);
-        process.exit(1);
-    })
-    .finally(() => {
-        const prisma = getDbClient();
-        if (prisma) prisma.$disconnect();
-    });
+export { populateFullMenu };
+
+// If executed directly from CLI (e.g. `node scripts/populate_user_menu.js`)
+if (process.argv[1] && (process.argv[1].endsWith('populate_user_menu.js') || process.argv[1].endsWith('populate_google_maps_menu.js'))) {
+    populateFullMenu()
+        .catch((err) => {
+            console.error('❌ Failed to populate menu:', err);
+            process.exit(1);
+        })
+        .finally(() => {
+            const prisma = getDbClient();
+            if (prisma) prisma.$disconnect();
+        });
+}

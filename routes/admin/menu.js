@@ -570,6 +570,21 @@ router.post('/delete-all', handleDeleteAllMenuItems);
 router.delete('/delete-all', handleDeleteAllMenuItems);
 
 /**
+ * POST /api/admin/menu/load-cravey-menu
+ * Populate complete official Cravey Crust Google Maps menu & deals directly
+ */
+router.post('/load-cravey-menu', async (req, res) => {
+    try {
+        const { populateFullMenu } = await import('../../scripts/populate_user_menu.js');
+        await populateFullMenu();
+        return res.json({ success: true, message: 'Official Cravey Crust menu & deals loaded successfully!' });
+    } catch (err) {
+        console.error('[ADMIN] Failed to load Cravey Crust menu:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
  * DELETE /api/admin/menu/:id
  * Delete menu item and associated variants
  */

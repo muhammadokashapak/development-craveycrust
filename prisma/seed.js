@@ -106,9 +106,9 @@ async function main() {
     }
     console.log(`✅ Restaurant settings: ${settings.length} seeded`);
 
-    // ── Seed Complete Live Menu, Deals, Delivery Areas, and FAQs ──────
-    const { seedCustomMenuAndFaqs } = await import('../scripts/seed_custom_menu_and_faqs.js');
-    await seedCustomMenuAndFaqs();
+    // ── Seed Complete Live Cravey Crust Menu, Deals, and Categories ──────
+    const { populateFullMenu } = await import('../scripts/populate_user_menu.js');
+    await populateFullMenu();
 
     console.log('\n🌱 Seed complete!\n');
     console.log('═══════════════════════════════════════════════');
