@@ -2,11 +2,11 @@ services:
   # ─── WhatsApp Bot Service ───────────────────────────────────────────────
   whatsapp-bot:
     build: .
-    container_name: whatsapp-bot
+    container_name: ${STACK_NAME:-whatsapp-bot}
     restart: unless-stopped
 
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
 
     env_file:
       - path: .env
@@ -24,7 +24,7 @@ services:
       - ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-}
       - BOT_DOMAIN=${BOT_DOMAIN:-bot.craveycrust.com}
       - SERVER_IP=${SERVER_IP:-localhost}
-      # ── Database Connection (Auto-matched with cravey-postgres container) ─
+      # ── Database Connection (Uses internal service hostname on default network) ─
       - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-cravey}:${POSTGRES_PASSWORD}@cravey-postgres:5432/${POSTGRES_DB:-cravey_crust}?schema=public}
       - REDIS_URL=${REDIS_URL:-}
       # ── Feature Flags ────────────────────────────────────────────────────
@@ -37,8 +37,7 @@ services:
       - N8N_INTEGRATION_ENABLED=${N8N_INTEGRATION_ENABLED:-false}
       - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
       - N8N_BOT_SECRET=${N8N_BOT_SECRET:-}
-      - N8N_TIMEOUT=${N8N_TIMEOUT:-10000}
-      - KNOWLEDGE_BASE_ENABLED=${KNOWLEDGE_BASE_ENABLED:-true}
+      - N8N_TIMEOUT=${N8N_TIMEOUT:-10000} - KNOWLEDGE_BASE_ENABLED=${KNOWLEDGE_BASE_ENABLED:-true}
       - WHATSAPP_ORDERING_ENABLED=${WHATSAPP_ORDERING_ENABLED:-true}
       # ── AI Configuration ─────────────────────────────────────────────────
       - STANDALONE_AI_ENABLED=${STANDALONE_AI_ENABLED:-true}
@@ -46,8 +45,7 @@ services:
       - AI_PRIMARY_PROVIDER=${AI_PRIMARY_PROVIDER:-gemini}
       - AI_FALLBACK_PROVIDER=${AI_FALLBACK_PROVIDER:-gemini}
       - AI_TEMPERATURE=${AI_TEMPERATURE:-0.2}
-      - AI_MAX_TOKENS=${AI_MAX_TOKENS:-1024}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_MAX_TOKENS=${AI_MAX_TOKENS:-1024} - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_API_KEYS=${GEMINI_API_KEYS:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
       - DEEPSEEK_API_KEYS=${DEEPSEEK_API_KEYS:-}
@@ -65,14 +63,14 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whatsapp-bot.rule=Host(`${BOT_DOMAIN:-bot.craveycrust.com}`)"
-      - "traefik.http.routers.whatsapp-bot.entrypoints=websecure"
-      - "traefik.http.routers.whatsapp-bot.tls=true"
-      - "traefik.http.routers.whatsapp-bot.tls.certresolver=mytlschallenge"
-      - "traefik.http.routers.whatsapp-bot.service=whatsapp-bot"
-      - "traefik.http.services.whatsapp-bot.loadbalancer.server.port=3000"
-      - "traefik.http.services.whatsapp-bot.loadbalancer.server.scheme=http"
-      - "traefik.http.services.whatsapp-bot.loadbalancer.passHostHeader=true"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.rule=Host(`${BOT_DOMAIN:-bot.craveycrust.com}`)"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.entrypoints=websecure"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.tls=true"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.service=${STACK_NAME:-whatsapp-bot}"
+      - "traefik.http.services.${STACK_NAME:-whatsapp-bot}.loadbalancer.server.port=3000"
+      - "traefik.http.services.${STACK_NAME:-whatsapp-bot}.loadbalancer.server.scheme=http"
+      - "traefik.http.services.${STACK_NAME:-whatsapp-bot}.loadbalancer.passHostHeader=true"
       - "traefik.docker.network=n8n_default"
 
     networks:
@@ -89,7 +87,7 @@ services:
   # ─── PostgreSQL Database ─────────────────────────────────────────────────
   cravey-postgres:
     image: postgres:16-alpine
-    container_name: cravey-postgres
+    container_name: ${STACK_NAME:-cravey}-postgres
     restart: unless-stopped
 
     environment:
@@ -101,7 +99,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cravey} -d ${POSTGRES_DB:-cravey_crust}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cravey} -d${POSTGRES_DB:-cravey_crust}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -110,12 +108,12 @@ services:
     networks:
       - default
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
 
   # ─── Redis (session/cache layer) ─────────────────────────────────────────
   cravey-redis:
     image: redis:7-alpine
-    container_name: cravey-redis
+    container_name: ${STACK_NAME:-cravey}-redis
     restart: unless-stopped
 
     command: >
