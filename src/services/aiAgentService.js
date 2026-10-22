@@ -936,8 +936,16 @@ async function runAgentLoop(messages, context) {
         }
 
         // No tool call — final answer reached
+        let aiImageUrl = null;
+        if (calledToolNames.includes('get_menu_categories')) {
+            aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
+        } else if (calledToolNames.includes('get_current_deals')) {
+            aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
+        }
+
         return {
             text: aiResponse,
+            imageUrl: aiImageUrl,
             toolResults: allToolResults,
             calledToolNames,
             tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },

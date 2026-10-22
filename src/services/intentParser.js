@@ -2984,7 +2984,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 handled: true,
                 routeName: 'live_deals',
                 reply: dealsReply,
-                imageUrl: null,
+                imageUrl: targetCatImage || 'assets/menu/cravey_crust_deals_menu.png',
             };
         } catch (err) {
             console.error('[FAST_ROUTE] Deals cache error:', err.message);
@@ -3053,7 +3053,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 handled: true,
                 routeName: 'live_categories',
                 reply: menuReply,
-                imageUrl: null,
+                imageUrl: 'assets/menu/cravey_crust_main_menu.png',
             };
         } catch (_) {}
     }
@@ -3132,7 +3132,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 handled: true,
                 routeName: 'category_menu_display',
                 reply: catReply,
-                imageUrl: null,
+                imageUrl: targetCat.image_url || 'assets/menu/cravey_crust_main_menu.png',
             };
         }
     } catch (_) {}

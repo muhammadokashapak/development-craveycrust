@@ -106,7 +106,16 @@ export async function sendWhatsAppMediaOrText(sock, jid, { text, imageUrl }, opt
                 imagePayload = { url: trimmed };
             } else {
                 const relPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
-                const absPath = path.resolve(process.cwd(), relPath);
+                let absPath = path.resolve(process.cwd(), relPath);
+                if (!fs.existsSync(absPath)) {
+                    if (relPath.startsWith('uploads/')) {
+                        const alt = path.resolve(process.cwd(), relPath.replace(/^uploads\//, 'assets/'));
+                        if (fs.existsSync(alt)) absPath = alt;
+                    } else if (relPath.startsWith('assets/')) {
+                        const alt = path.resolve(process.cwd(), relPath.replace(/^assets\//, 'uploads/'));
+                        if (fs.existsSync(alt)) absPath = alt;
+                    }
+                }
                 if (fs.existsSync(absPath)) {
                     imagePayload = fs.readFileSync(absPath);
                 }

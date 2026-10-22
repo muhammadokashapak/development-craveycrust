@@ -589,7 +589,7 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         }
         return {
             text: catText,
-            imageUrl: null,
+            imageUrl: matchedCategory.image_url || 'assets/menu/cravey_crust_main_menu.png',
             intent: 'SHOW_CATEGORY',
             stage: 'BROWSING_MENU',
         };
@@ -632,7 +632,7 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         });
         menuMsg += `\nReply category name ya direct item order karein (e.g. 2 zinger).`;
 
-        return { text: menuMsg, intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
+        return { text: menuMsg, imageUrl: 'assets/menu/cravey_crust_main_menu.png', intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
     }
 
     // SHOW_DEALS
@@ -661,7 +661,7 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         dealsMsg = dealsMsg.trimEnd();
         dealsMsg += `\n\nCart mein deal add karne ke liye likhein: deal 1 ya 2 deal 1.`;
 
-        return { text: dealsMsg, intent: 'SHOW_DEALS' };
+        return { text: dealsMsg, imageUrl: 'assets/menu/cravey_crust_deals_menu.png', intent: 'SHOW_DEALS' };
     }
 
     // DEAL_INQUIRY
@@ -1457,7 +1457,7 @@ Direct order: likhein 2 zinger ya 1 pizza`,
         const globalDiscount = await getGlobalDiscountSettings(restaurantId);
         return {
             text: formatCategoryResponse(category, globalDiscount),
-            imageUrl: null,
+            imageUrl: category.image_url || 'assets/menu/cravey_crust_main_menu.png',
             intent: 'SHOW_CATEGORY',
             stage: 'BROWSING_MENU',
         };
