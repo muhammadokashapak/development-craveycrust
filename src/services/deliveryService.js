@@ -14,7 +14,7 @@ export async function getOutOfDeliveryMessage(restaurantId, distanceKm = null, m
         if (distanceKm != null && !isNaN(distanceKm)) {
             const distFormatted = distanceKm.toFixed(1);
             const radiusFormatted = configuredRadius % 1 === 0 ? configuredRadius.toFixed(0) : configuredRadius.toFixed(1);
-            return `Maazrat! Aap ki location hamare restaurant se ${distFormatted} km door hai, jabke hamari delivery range ${radiusFormatted} km tak mehdood hai. Is waqt hum is area mein delivery provide nahi karte.\n\nBarah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein jo hamari ${radiusFormatted} km range mein ho. Shukriya!`;
+            return `Maazrat! Aap ki location hamare restaurant se ${distFormatted} km door hai, jabke hamari delivery range ${radiusFormatted} km tak mehdood hai. Is waqt hum is area mein delivery provide nahi karte.\n\nAgar aap bahar hon ya pin mein masla ho, to aap apna Islamabad / Rawalpindi ka mukammal delivery address text mein bhi likh kar bhej sakte hain (jaise *Ghauri Town Phase 5, Street 12*). Shukriya! 📍`;
         }
 
         if (cache?.outOfDeliveryMessage) {
@@ -23,7 +23,7 @@ export async function getOutOfDeliveryMessage(restaurantId, distanceKm = null, m
     } catch (_) {}
 
     const radiusText = maxRadiusKm != null ? `${maxRadiusKm} km` : '10 km';
-    return `Maazrat! Aap ki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery range (${radiusText}) mein delivery provide karte hain.\n\nBarah-e-karam kisi nazdeeki delivery area ka address ya WhatsApp location pin share karein. Shukriya!`;
+    return `Maazrat! Aap ki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery range (${radiusText}) mein delivery provide karte hain.\n\nAgar pin bhejne mein masla ho ya aap bahar hon, to aap apna Islamabad / Rawalpindi ka delivery address text mein bhi likh kar bhej sakte hain (jaise *Ghauri Town Phase 5, Street 12*). Shukriya! 📍`;
 }
 
 /**

@@ -261,7 +261,45 @@ Reply cart to view cart ya checkout to proceed.`,
 
     // Menu item match
     if (resolved.type === 'ITEM') {
-        // If item has variants, prompt for size
+        // If variant was matched directly from query (e.g. user said "behari kebab pizza large")
+        if (resolved.matchedVariant) {
+            await addItemToCart({
+                sessionKey: convSession.session_key,
+                restaurantId,
+                menuItemId: resolved.item.id,
+                variantId: resolved.matchedVariant.id,
+                quantity,
+            });
+
+            await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
+            const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+            const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+            const disc = calculateDiscount(
+                resolved.matchedVariant.price,
+                resolved.matchedVariant.discount_percent ?? resolved.item.discount_percent,
+                resolved.matchedVariant.discount_fixed ?? resolved.item.discount_fixed,
+                globalDiscount
+            );
+            const originalPrice = Number(resolved.matchedVariant.price);
+            const unitPriceStr = disc.hasDiscount
+                ? `~Rs. ${originalPrice * quantity}~ Rs. ${disc.discountedPrice * quantity} (${disc.label})`
+                : `Rs. ${originalPrice * quantity}`;
+
+            const discountLine = cartTotals.discountTotal > 0 ? `\nDiscount: -Rs. ${cartTotals.discountTotal}\nTotal: Rs. ${cartTotals.total}` : '';
+            return {
+                text: 
+`Added to Cart!
+
+${quantity}x ${resolved.item.name} (${resolved.matchedVariant.name}): ${unitPriceStr}
+Subtotal: Rs. ${cartTotals.subtotal}${discountLine}
+
+Reply cart to view cart ya checkout to proceed.`,
+                intent: 'ADD_ITEM',
+                stage: 'BUILDING_CART',
+            };
+        }
+
+        // If item has variants but no size was specified, prompt for size
         if (resolved.hasVariants && resolved.variants && resolved.variants.length > 0) {
             draft.pendingVariantItem = {
                 item: resolved.item,
@@ -1444,6 +1482,37 @@ Direct order: likhein 2 zinger ya 1 pizza`,
     // 1. Check Active Category
     let category = null;
     const isPureNum = /^\d+$/.test(candidateQuery.trim());
+    const cleanedCatQ = candidateQuery.trim().toLowerCase()
+        .replace(/\b(?:me|mai|mei|mein|men|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|kia|kay|kon|konse|konsa|sa|se|hain|hen|ha|hai|hy|dekhna|dein|btao|batao|chahiye|menu|flavor|flavors|flavour|flavours|available)\b/gi, '')
+        .replace(/[^\w\s]/g, '')
+        .trim();
+
+    if (cleanedCatQ === 'pizza' || cleanedCatQ === 'pizzas') {
+        const allCats = await getActiveCategories(restaurantId).catch(() => []);
+        const classicCat = allCats.find(c => /classic\s*pi[z]+as?/i.test(c.name));
+        const premiumCat = allCats.find(c => /premium\s*pi[z]+as?/i.test(c.name));
+        const [fullClassic, fullPremium] = await Promise.all([
+            classicCat ? getCategoryWithItems(classicCat.id, restaurantId) : null,
+            premiumCat ? getCategoryWithItems(premiumCat.id, restaurantId) : null,
+        ]);
+
+        if (fullClassic || fullPremium) {
+            await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BROWSING_MENU' });
+            const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+            const cache = await getCatalogCache();
+            const parts = [];
+            if (fullClassic) parts.push(formatCategoryResponse(fullClassic, globalDiscount, cache));
+            if (fullPremium) parts.push(formatCategoryResponse(fullPremium, globalDiscount, cache));
+
+            return {
+                text: `${parts.join('\n\n')}\n\n_Sizes: Small (Rs. 599/699), Medium (Rs. 1199/1399), Large (Rs. 1599/1799), Party Size (Rs. 2499/2799)_\nOrder karne ke liye kisi bhi pizza ka naam aur size bata dein (jaise *Chicken Tikka Medium* ya *Chicken Extreme Large*)!`,
+                imageUrl: (fullPremium?.image_url || fullClassic?.image_url || 'assets/menu/cravey_crust_main_menu.png'),
+                intent: 'SHOW_CATEGORY',
+                stage: 'BROWSING_MENU',
+            };
+        }
+    }
+
     if (isPureNum) {
         if (convSession.stage === 'BROWSING_MENU' || entities?.categoryIndex) {
             category = await getCategoryWithItems(parseInt(candidateQuery, 10), restaurantId);

@@ -2743,8 +2743,8 @@ async function loadSettings() {
       const setGlobalDiscountTitle = document.getElementById('setGlobalDiscountTitle');
       const setDiscountStatusBadge = document.getElementById('setDiscountStatusBadge');
 
-      const isGlobalEnabled = custom.global_discount_enabled === 'true';
-      if (setGlobalDiscountEnabled) setGlobalDiscountEnabled.checked = isGlobalEnabled;
+      const isGlobalEnabled = false;
+      if (setGlobalDiscountEnabled) setGlobalDiscountEnabled.checked = false;
       if (setGlobalDiscountType) setGlobalDiscountType.value = custom.global_discount_type || 'PERCENTAGE';
       if (setGlobalDiscountValue) setGlobalDiscountValue.value = custom.global_discount_value || '0';
       if (setGlobalDiscountTitle) setGlobalDiscountTitle.value = custom.global_discount_title || 'Special Discount';
@@ -2907,7 +2907,7 @@ if (settingsForm) {
         restaurant_map_url: setRestaurantMapUrl ? setRestaurantMapUrl.value.trim() : 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9',
         restaurant_lat: setRestaurantLat && setRestaurantLat.value.trim() ? setRestaurantLat.value.trim() : '33.6180334',
         restaurant_lng: setRestaurantLng && setRestaurantLng.value.trim() ? setRestaurantLng.value.trim() : '73.1398525',
-        global_discount_enabled: setGlobalDiscountEnabled ? String(setGlobalDiscountEnabled.checked) : 'false',
+        global_discount_enabled: 'false',
         global_discount_type: setGlobalDiscountType ? setGlobalDiscountType.value : 'PERCENTAGE',
         global_discount_value: setGlobalDiscountValue && setGlobalDiscountValue.value.trim() ? setGlobalDiscountValue.value.trim() : '0',
         global_discount_title: setGlobalDiscountTitle ? setGlobalDiscountTitle.value.trim() : 'Special Discount',

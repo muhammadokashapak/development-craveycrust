@@ -227,6 +227,13 @@ async function populateFullMenu() {
         description: 'Combination of sauce & chicken, cheese topped with black olive & pepper',
         basePrice: 699,
     });
+    await addItem({
+        categoryName: 'Starters',
+        name: 'Regular Fries',
+        slug: 'regular-fries',
+        description: 'Crispy golden salted French fries',
+        basePrice: 220,
+    });
 
     // 2. King's Rolls
     console.log("\n🌯 Populating King's Rolls...");
@@ -268,6 +275,13 @@ async function populateFullMenu() {
         slug: 'half-box',
         description: '4 pcs fresh chicken served with fries, garlic sauce & 1 bun',
         basePrice: 1199,
+    });
+    await addItem({
+        categoryName: 'Chicken Box',
+        name: 'Chicken Piece',
+        slug: 'chicken-piece',
+        description: 'Crispy fried fresh chicken piece',
+        basePrice: 180,
     });
     await addItem({
         categoryName: 'Chicken Box',
@@ -378,20 +392,6 @@ async function populateFullMenu() {
         description: 'Crispy crunchy spicy chicken fillet with fresh lettuce and signature mayo sauce',
         basePrice: 499,
         spicyLevel: 'MEDIUM',
-    });
-    await addItem({
-        categoryName: 'Burgers',
-        name: 'Chicken Piece',
-        slug: 'chicken-piece',
-        description: 'Crispy fried fresh chicken piece',
-        basePrice: 180,
-    });
-    await addItem({
-        categoryName: 'Burgers',
-        name: 'Regular Fries',
-        slug: 'regular-fries',
-        description: 'Crispy golden salted French fries',
-        basePrice: 220,
     });
 
     // 9. Premium Pizzas

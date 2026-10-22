@@ -209,9 +209,10 @@ export function extractSizeFromQuery(query) {
     else if (isRegular) size = 'Regular';
 
     // Strip size keywords and common ordering verbs to extract item name
-    const clean = q
+    let clean = q
         .replace(/\b(?:party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
         .replace(/\b(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
+        .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 
