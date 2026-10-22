@@ -1290,6 +1290,7 @@ function switchView(viewName) {
     dashboard:  { el: document.getElementById('viewDashboard'),  title: 'Dashboard Overview', sub: 'Real-time restaurant metrics & operations' },
     orders:     { el: document.getElementById('viewOrders'),     title: 'Live Orders Management', sub: 'Real-time orders feed, customer details, and status updates' },
     menu:       { el: document.getElementById('viewMenu'),       title: 'Menu Management',    sub: 'Manage items, prices, variants and availability' },
+    'menu-cards': { el: document.getElementById('viewMenuCards'), title: 'WhatsApp Bot Menu & Deals Studio', sub: 'Multi-page menu photos and promotional flyers sent directly to WhatsApp customers' },
     categories: { el: document.getElementById('viewCategories'), title: 'Categories',         sub: 'Organize menu sections and ordering' },
     deals:      { el: document.getElementById('viewDeals'),      title: 'Meal Deals',         sub: 'Meal bundles and special value combos' },
     delivery:   { el: document.getElementById('viewDelivery'),   title: 'Delivery Areas',     sub: 'Delivery zones, fees and minimum order amounts' },
@@ -1406,13 +1407,18 @@ function switchView(viewName) {
     loadCategoriesForDropdown();
     loadMenuItems();
   }
+  if (viewName === 'menu-cards') {
+    if (typeof loadMenuCardsStudio === 'function') loadMenuCardsStudio();
+  }
   if (viewName === 'categories') loadCategories();
   if (viewName === 'deals') {
     loadDeals();
     loadMenuItemsForDeals();
   }
   if (viewName === 'delivery') loadDeliveryAreas();
-  if (viewName === 'settings') loadSettings();
+  if (viewName === 'settings') {
+    loadSettings();
+  }
   if (viewName === 'prompt') loadBotPrompt();
 }
 window.switchView = switchView;
@@ -2736,6 +2742,11 @@ async function loadSettings() {
         setRestaurantLng.value = custom.restaurant_lng || '73.1398525';
       }
 
+      const setMenuImageUrl = document.getElementById('setMenuImageUrl');
+      const setDealsImageUrl = document.getElementById('setDealsImageUrl');
+      if (setMenuImageUrl) setMenuImageUrl.value = custom.menu_image_url || '';
+      if (setDealsImageUrl) setDealsImageUrl.value = custom.deals_image_url || '';
+
       // Store-wide Global Discount
       const setGlobalDiscountEnabled = document.getElementById('setGlobalDiscountEnabled');
       const setGlobalDiscountType = document.getElementById('setGlobalDiscountType');
@@ -2878,6 +2889,8 @@ if (settingsForm) {
     const setGlobalDiscountType = document.getElementById('setGlobalDiscountType');
     const setGlobalDiscountValue = document.getElementById('setGlobalDiscountValue');
     const setGlobalDiscountTitle = document.getElementById('setGlobalDiscountTitle');
+    const setMenuImageUrl = document.getElementById('setMenuImageUrl');
+    const setDealsImageUrl = document.getElementById('setDealsImageUrl');
 
     const supportPhoneVal = setHumanHandoffPhone ? setHumanHandoffPhone.value.trim() : '';
 
@@ -2911,6 +2924,8 @@ if (settingsForm) {
         global_discount_type: setGlobalDiscountType ? setGlobalDiscountType.value : 'PERCENTAGE',
         global_discount_value: setGlobalDiscountValue && setGlobalDiscountValue.value.trim() ? setGlobalDiscountValue.value.trim() : '0',
         global_discount_title: setGlobalDiscountTitle ? setGlobalDiscountTitle.value.trim() : 'Special Discount',
+        menu_image_url: setMenuImageUrl ? setMenuImageUrl.value.trim() : '',
+        deals_image_url: setDealsImageUrl ? setDealsImageUrl.value.trim() : '',
       },
     };
 
@@ -2924,6 +2939,7 @@ if (settingsForm) {
       if (data.success) {
         showToast('Restaurant settings saved successfully', 'success');
         if (payload.name) updateBrandDisplay(payload.name);
+        if (typeof loadBotImagesUI === 'function') loadBotImagesUI();
       } else {
         showToast(data.error?.message || 'Failed to save settings', 'error');
       }
@@ -6726,6 +6742,395 @@ async function deleteAllFaqsUI() {
   }
 }
 window.deleteAllFaqsUI = deleteAllFaqsUI;
+
+// ─── WhatsApp Bot Menu & Deals Cards Studio Controller ────────────────────────
+let menuCardsState = {
+  activeTab: 'menu', // 'menu' or 'deals'
+  data: {
+    menuImages: [],
+    dealsImages: [],
+    defaultMenuImages: [],
+    defaultDealsImages: [],
+    isCustomMenu: false,
+    isCustomDeals: false,
+  },
+  initialized: false
+};
+
+function resolveCardImgSrc(p) {
+  if (!p) return '/assets/menu/cravey_crust_main_menu.png';
+  if (p.startsWith('http://') || p.startsWith('https://') || p.startsWith('/')) return p;
+  return '/' + p;
+}
+
+window.openImageLightbox = function(src, caption) {
+  const modal = document.getElementById('imageLightboxModal');
+  const img = document.getElementById('imageLightboxImg');
+  const cap = document.getElementById('imageLightboxCaption');
+  if (!modal || !img) {
+    if (src) window.open(src, '_blank');
+    return;
+  }
+  img.src = resolveCardImgSrc(src);
+  if (cap) cap.textContent = caption || '';
+  modal.classList.remove('hidden');
+};
+window.previewFullImage = window.openImageLightbox;
+
+async function loadMenuCardsStudio() {
+  setupMenuCardsStudioHandlers();
+
+  const statMenuCount = document.getElementById('statMenuCount');
+  const statDealsCount = document.getElementById('statDealsCount');
+  const tabBadgeMenu = document.getElementById('tabBadgeMenu');
+  const tabBadgeDeals = document.getElementById('tabBadgeDeals');
+
+  try {
+    const res = await fetch('/api/admin/menu/cards');
+    const data = await res.json();
+    if (data.success && data.data) {
+      menuCardsState.data = data.data;
+
+      const menuCount = (data.data.menuImages || []).length;
+      const dealsCount = (data.data.dealsImages || []).length;
+
+      if (statMenuCount) statMenuCount.textContent = menuCount;
+      if (statDealsCount) statDealsCount.textContent = dealsCount;
+      if (tabBadgeMenu) tabBadgeMenu.textContent = menuCount;
+      if (tabBadgeDeals) tabBadgeDeals.textContent = dealsCount;
+
+      renderMenuCardsGallery();
+    }
+  } catch (err) {
+    console.error('[MENU_CARDS] Error loading cards:', err);
+    if (typeof showToast === 'function') {
+      showToast('Failed to load menu cards: ' + err.message, 'error');
+    }
+  }
+}
+window.loadMenuCardsStudio = loadMenuCardsStudio;
+window.loadBotImagesUI = loadMenuCardsStudio; // backward compatibility
+
+window.scrollCardsGallery = function(direction) {
+  const grid = document.getElementById('cardsGalleryGrid');
+  if (grid) {
+    grid.scrollBy({ left: direction * 210, behavior: 'smooth' });
+  }
+};
+
+function renderMenuCardsGallery() {
+  const grid = document.getElementById('cardsGalleryGrid');
+  if (!grid) return;
+
+  const currentTab = menuCardsState.activeTab;
+  const isMenu = currentTab === 'menu';
+  const images = (isMenu ? menuCardsState.data.menuImages : menuCardsState.data.dealsImages) || [];
+  const isCustom = isMenu ? menuCardsState.data.isCustomMenu : menuCardsState.data.isCustomDeals;
+
+  // Update tabs appearance
+  const tabBtnMenu = document.getElementById('tabBtnMenu');
+  const tabBtnDeals = document.getElementById('tabBtnDeals');
+  if (tabBtnMenu && tabBtnDeals) {
+    if (isMenu) {
+      tabBtnMenu.className = 'btn btn-primary';
+      tabBtnDeals.className = 'btn btn-secondary';
+    } else {
+      tabBtnMenu.className = 'btn btn-secondary';
+      tabBtnDeals.className = 'btn btn-primary';
+    }
+  }
+
+  // Update Gallery Header Bar
+  const secIcon = document.getElementById('gallerySectionIcon');
+  const secTitle = document.getElementById('gallerySectionTitle');
+  const secBadge = document.getElementById('gallerySectionBadge');
+  if (secIcon) secIcon.textContent = isMenu ? '📋' : '🎁';
+  if (secTitle) secTitle.textContent = isMenu ? 'Uploaded Menu Pages' : 'Uploaded Deals Flyers';
+  if (secBadge) {
+    const unit = isMenu ? (images.length === 1 ? 'Page' : 'Pages') : (images.length === 1 ? 'Flyer' : 'Flyers');
+    secBadge.textContent = `${images.length} ${unit}`;
+  }
+
+  const dropzoneText = document.getElementById('dropzoneActionText');
+  if (dropzoneText) {
+    dropzoneText.textContent = isMenu ? 'Drag & drop menu page photos here, or' : 'Drag & drop deals flyer photos here, or';
+  }
+
+  if (images.length === 0) {
+    grid.innerHTML = `
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: var(--fg-muted); min-height: 200px; width: 100%;">
+        <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 20px;">
+          ${isMenu ? '📋' : '🎁'}
+        </div>
+        <h5 style="margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--fg-main, #fff);">No ${isMenu ? 'menu pages' : 'deals flyers'} uploaded yet</h5>
+        <p style="margin: 0; font-size: 11px; max-width: 250px; color: var(--fg-muted);">Upload images or PDF via the upload box on the right.</p>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  images.forEach((url, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === images.length - 1;
+    const pageNum = idx + 1;
+    const label = isMenu ? (isFirst ? 'Page 1 (Cover)' : `Page ${pageNum}`) : `Flyer #${pageNum}`;
+    const cleanUrl = resolveCardImgSrc(url);
+
+    html += `
+      <div class="menu-card-item">
+        <!-- Card Top Bar -->
+        <div style="padding: 7px 10px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface, rgba(255,255,255,0.03)); border-bottom: 1px solid var(--border-color);">
+          <div style="display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <span style="font-size: 12px;">${isMenu ? '📄' : '🎁'}</span>
+            <strong style="font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</strong>
+          </div>
+          <span class="badge" style="font-size: 9.5px; padding: 1px 5px; border-radius: 8px; background: rgba(255,255,255,0.08); flex-shrink: 0;">${pageNum}/${images.length}</span>
+        </div>
+
+        <!-- Thumbnail (Image or PDF) -->
+        ${cleanUrl.toLowerCase().endsWith('.pdf') ? `
+        <div style="position: relative; width: 100%; height: 150px; background: #1e293b; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;" onclick="window.open('${cleanUrl}', '_blank')" title="Click to open PDF document">
+          <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <div style="font-size: 12px; font-weight: 600; color: #f8fafc;">PDF Document</div>
+          <span style="font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 3px;">Click to view</span>
+        </div>
+        ` : `
+        <div style="position: relative; width: 100%; height: 150px; background: #000; overflow: hidden; cursor: pointer; display: flex; align-items: center; justify-content: center;" onclick="window.openImageLightbox('${cleanUrl}', '${isMenu ? 'Menu' : 'Deals'} ${label}')" title="Click to view full size">
+          <img src="${cleanUrl}" alt="${label}" style="width: 100%; height: 100%; object-fit: contain; transition: transform 0.3s ease;" onerror="this.src='/assets/menu/cravey_crust_main_menu.png'" />
+          <div style="position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); border-radius: 4px; padding: 2px 6px; font-size: 10px; color: #fff; display: flex; align-items: center; gap: 3px;">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <span>Zoom</span>
+          </div>
+        </div>
+        `}
+
+        <!-- Card Footer Actions -->
+        <div style="padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 4px; border-top: 1px solid var(--border-color); background: var(--bg-surface, rgba(255,255,255,0.02));">
+          <div style="display: flex; gap: 3px;">
+            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 6px;" ${isFirst ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, -1)" title="Move page earlier">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 6px;" ${isLast ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, 1)" title="Move page later">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            </button>
+          </div>
+          <button type="button" class="btn btn-danger-outline btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.deleteCardPage(${idx})" title="Remove this page">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Delete</span>
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  grid.innerHTML = html;
+}
+
+window.reorderCardPage = async function(idx, direction) {
+  const currentTab = menuCardsState.activeTab;
+  const isMenu = currentTab === 'menu';
+  const list = [...((isMenu ? menuCardsState.data.menuImages : menuCardsState.data.dealsImages) || [])];
+
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= list.length) return;
+
+  const temp = list[idx];
+  list[idx] = list[targetIdx];
+  list[targetIdx] = temp;
+
+  try {
+    const res = await fetch('/api/admin/menu/cards/reorder', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: currentTab, images: list })
+    });
+    const data = await res.json();
+    if (data.success) {
+      if (isMenu) {
+        menuCardsState.data.menuImages = list;
+      } else {
+        menuCardsState.data.dealsImages = list;
+      }
+      renderMenuCardsGallery();
+      showToast('Page order updated', 'success');
+    } else {
+      showToast(data.error?.message || 'Failed to reorder', 'error');
+    }
+  } catch (err) {
+    showToast('Reorder error: ' + err.message, 'error');
+  }
+};
+
+window.deleteCardPage = async function(idx) {
+  const currentTab = menuCardsState.activeTab;
+  const isMenu = currentTab === 'menu';
+  const label = isMenu ? `Page ${idx + 1}` : `Flyer ${idx + 1}`;
+
+  if (!confirm(`Are you sure you want to delete ${label}?`)) return;
+
+  try {
+    const res = await fetch('/api/admin/menu/cards', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: currentTab, index: idx })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`${label} deleted successfully`, 'success');
+      await loadMenuCardsStudio();
+    } else {
+      showToast(data.error?.message || 'Failed to delete', 'error');
+    }
+  } catch (err) {
+    showToast('Delete error: ' + err.message, 'error');
+  }
+};
+
+function setupMenuCardsStudioHandlers() {
+  if (menuCardsState.initialized) return;
+  menuCardsState.initialized = true;
+
+  const tabBtnMenu = document.getElementById('tabBtnMenu');
+  const tabBtnDeals = document.getElementById('tabBtnDeals');
+  const refreshBtn = document.getElementById('refreshMenuCardsBtn');
+  const resetBtn = document.getElementById('resetActiveCardsBtn');
+
+  const dropzone = document.getElementById('cardsUploadDropzone');
+  const fileInput = document.getElementById('cardsMultiFileInput');
+  const uploadStatus = document.getElementById('uploadStatusBadge');
+  const uploadText = document.getElementById('uploadStatusText');
+
+  if (tabBtnMenu) {
+    tabBtnMenu.addEventListener('click', () => {
+      menuCardsState.activeTab = 'menu';
+      renderMenuCardsGallery();
+    });
+  }
+  if (tabBtnDeals) {
+    tabBtnDeals.addEventListener('click', () => {
+      menuCardsState.activeTab = 'deals';
+      renderMenuCardsGallery();
+    });
+  }
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      await loadMenuCardsStudio();
+      showToast('Studio refreshed with latest cards', 'info');
+    });
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      const currentTab = menuCardsState.activeTab;
+      const label = currentTab === 'menu' ? 'Main Menu' : 'Meal Deals';
+      if (!confirm(`Kya aap ${label} ki images ko default system images par reset karna chahte hain?`)) return;
+
+      try {
+        const res = await fetch('/api/admin/menu/cards/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: currentTab })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.data?.message || `${label} reset to defaults`, 'success');
+          await loadMenuCardsStudio();
+        } else {
+          showToast(data.error?.message || 'Reset failed', 'error');
+        }
+      } catch (err) {
+        showToast('Reset error: ' + err.message, 'error');
+      }
+    });
+  }
+
+  async function handleFilesUpload(files) {
+    if (!files || files.length === 0) return;
+    const currentTab = menuCardsState.activeTab;
+
+    if (uploadStatus) {
+      uploadStatus.classList.remove('hidden');
+      if (uploadText) uploadText.textContent = `Uploading ${files.length} image(s)...`;
+    }
+
+    const formData = new FormData();
+    formData.append('type', currentTab);
+    for (let i = 0; i < files.length; i++) {
+      formData.append('images', files[i]);
+    }
+
+    try {
+      const res = await fetch('/api/admin/menu/cards/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const resText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(resText);
+      } catch (_) {
+        throw new Error(res.ok ? 'Unexpected response from server' : `Server error (${res.status}): ${resText.slice(0, 100)}`);
+      }
+      if (data.success) {
+        showToast(data.data?.message || `${files.length} file(s) uploaded successfully!`, 'success');
+        await loadMenuCardsStudio();
+      } else {
+        showToast(data.error?.message || 'Upload failed', 'error');
+      }
+    } catch (err) {
+      showToast('Upload error: ' + err.message, 'error');
+    } finally {
+      if (uploadStatus) uploadStatus.classList.add('hidden');
+      if (fileInput) fileInput.value = '';
+    }
+  }
+
+  if (dropzone && fileInput) {
+    dropzone.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'INPUT') {
+        fileInput.click();
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        handleFilesUpload(fileInput.files);
+      }
+    });
+
+    // Drag and Drop
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--primary)';
+      dropzone.style.background = 'rgba(34, 197, 94, 0.05)';
+    });
+    dropzone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--border-color)';
+      dropzone.style.background = 'var(--bg-card)';
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--border-color)';
+      dropzone.style.background = 'var(--bg-card)';
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFilesUpload(e.dataTransfer.files);
+      }
+    });
+  }
+}
+
+// Initialize on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setupMenuCardsStudioHandlers();
+  });
+} else {
+  setupMenuCardsStudioHandlers();
+}
+
 
 
 

@@ -876,10 +876,16 @@ async function runAgentLoop(messages, context) {
                         location: context.locationData,
                     }
                 });
-                if (ordRes && ordRes.text) {
+                const hasOrdContent = Boolean(
+                    (ordRes && ordRes.text && ordRes.text.trim()) ||
+                    (ordRes && ordRes.imageUrl) ||
+                    (ordRes && Array.isArray(ordRes.imageUrls) && ordRes.imageUrls.length > 0)
+                );
+                if (ordRes && hasOrdContent) {
                     return {
-                        text: ordRes.text,
-                        imageUrl: ordRes.imageUrl || null,
+                        text: ordRes.text || '',
+                        imageUrl: ordRes.imageUrl || (Array.isArray(ordRes.imageUrls) ? ordRes.imageUrls[0] : null),
+                        imageUrls: ordRes.imageUrls || (ordRes.imageUrl ? [ordRes.imageUrl] : []),
                         toolResults: allToolResults,
                         calledToolNames,
                         tokenUsage: { promptTokens: 0, replyTokens: 0, totalTokens: 0 },
@@ -937,35 +943,33 @@ async function runAgentLoop(messages, context) {
 
         // No tool call — final answer reached
         let aiImageUrl = null;
+        let aiImageUrls = null;
         if (calledToolNames.includes('get_menu_categories')) {
             try {
-                const userKey = context?.sessionKey || context?.chatId;
-                const altPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
-                const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
-                if (!hasMenuBeenSent(userKey, altPhone)) {
-                    aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
-                    markMenuSent(userKey, altPhone);
-                }
+                const { getCatalogCache } = await import('./catalogCacheService.js');
+                const cache = await getCatalogCache();
+                aiImageUrls = cache.menuImageUrls || ['assets/menu/cravey_crust_main_menu.png'];
+                aiImageUrl = aiImageUrls[0];
             } catch (_) {
                 aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
+                aiImageUrls = [aiImageUrl];
             }
         } else if (calledToolNames.includes('get_current_deals')) {
             try {
-                const userKey = context?.sessionKey || context?.chatId;
-                const altPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
-                const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
-                if (!haveDealsBeenSent(userKey, altPhone)) {
-                    aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
-                    markDealsSent(userKey, altPhone);
-                }
+                const { getCatalogCache } = await import('./catalogCacheService.js');
+                const cache = await getCatalogCache();
+                aiImageUrls = cache.dealsImageUrls || ['assets/menu/cravey_crust_deals_menu.png'];
+                aiImageUrl = aiImageUrls[0];
             } catch (_) {
                 aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
+                aiImageUrls = [aiImageUrl];
             }
         }
 
         return {
             text: aiResponse,
             imageUrl: aiImageUrl,
+            imageUrls: aiImageUrls,
             toolResults: allToolResults,
             calledToolNames,
             tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
@@ -1036,8 +1040,14 @@ export async function processMessage({ sock, msg, session, text, identity, locat
             sock,
         });
 
-        if (fastResult.handled && fastResult.reply) {
-            const cleanFastReply = sanitizeOutput(fastResult.reply);
+        const hasFastContent = Boolean(
+            (fastResult.reply && fastResult.reply.trim()) ||
+            fastResult.imageUrl ||
+            (Array.isArray(fastResult.imageUrls) && fastResult.imageUrls.length > 0)
+        );
+
+        if (fastResult.handled && hasFastContent) {
+            const cleanFastReply = fastResult.reply ? sanitizeOutput(fastResult.reply) : '';
 
             // Log zero tokens used (Hissa 2)
             logZeroTokenReply({
@@ -1048,9 +1058,15 @@ export async function processMessage({ sock, msg, session, text, identity, locat
 
             // Update session history
             appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
-            appendSessionHistory(sessionKey, 'assistant', cleanFastReply, syncEpoch);
+            if (cleanFastReply) {
+                appendSessionHistory(sessionKey, 'assistant', cleanFastReply, syncEpoch);
+            }
 
-            return fastResult.imageUrl ? { text: cleanFastReply, imageUrl: fastResult.imageUrl } : cleanFastReply;
+            return {
+                text: cleanFastReply,
+                imageUrl: fastResult.imageUrl || (fastResult.imageUrls && fastResult.imageUrls[0]) || null,
+                imageUrls: fastResult.imageUrls || (fastResult.imageUrl ? [fastResult.imageUrl] : []),
+            };
         }
     } catch (err) {
         console.error('[AGENT] Fast route check error:', err.message);

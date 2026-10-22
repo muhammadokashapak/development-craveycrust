@@ -1,10 +1,15 @@
 import express from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import crypto from 'crypto';
 import { getDbClient } from '../../src/db/client.js';
 import { createMenuItemSchema, updateMenuItemSchema } from '../../src/validators/menuSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
 import { bumpSyncEpoch } from '../../src/services/catalogCacheService.js';
 import { calculateDiscount, getGlobalDiscountSettings, bulkApplyDiscountToAllItems } from '../../src/services/discountService.js';
+import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
 
 const router = express.Router();
 
@@ -166,6 +171,409 @@ router.get('/', async (req, res) => {
             success: false,
             error: { code: 'INTERNAL_ERROR', message: err.message || 'Failed to retrieve menu items' },
         });
+    }
+});
+
+// ─── WhatsApp Bot Menu & Deals Image & PDF Upload & Management ─────────────────
+
+const CARD_UPLOADS_DIR = path.join(process.cwd(), 'uploads', 'menu');
+if (!fs.existsSync(CARD_UPLOADS_DIR)) {
+    fs.mkdirSync(CARD_UPLOADS_DIR, { recursive: true });
+}
+
+const ALLOWED_CARD_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tiff', '.svg', '.heic', '.avif', '.pdf'];
+const ALLOWED_CARD_MIMES = [
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/tiff', 'image/svg+xml', 'image/heic', 'image/avif',
+    'application/pdf', 'application/x-pdf'
+];
+
+const cardStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, CARD_UPLOADS_DIR);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        const safeExt = ALLOWED_CARD_EXTS.includes(ext) ? ext : (file.mimetype === 'application/pdf' ? '.pdf' : '.png');
+        const typePrefix = req.body?.type === 'deals' ? 'deals_card' : 'menu_card';
+        const uniqueName = `${typePrefix}_${Date.now()}_${crypto.randomBytes(6).toString('hex')}${safeExt}`;
+        cb(null, uniqueName);
+    },
+});
+
+const cardUpload = multer({
+    storage: cardStorage,
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ALLOWED_CARD_MIMES.includes(file.mimetype) || ALLOWED_CARD_EXTS.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`INVALID_FILE_TYPE: File type '${ext || file.mimetype}' is not supported. Please upload an image or PDF.`));
+        }
+    },
+    limits: {
+        fileSize: 25 * 1024 * 1024, // 25MB limit
+        files: 20,
+    },
+});
+
+// Helper to extract parsed image array from DB settings
+function parseSettingImages(settingsMap, arrayKey, singleKey, defaultAsset) {
+    if (settingsMap[arrayKey]) {
+        try {
+            const parsed = JSON.parse(settingsMap[arrayKey]);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter(Boolean);
+        } catch (_) {
+            if (settingsMap[arrayKey].trim()) return [settingsMap[arrayKey].trim()];
+        }
+    }
+    if (settingsMap[singleKey] && settingsMap[singleKey].trim()) {
+        return [settingsMap[singleKey].trim()];
+    }
+    return [defaultAsset];
+}
+
+/**
+ * GET /api/admin/menu/cards
+ * Fetch active multi-page Menu and Deals cards
+ */
+router.get('/cards', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) {
+            return res.status(503).json({ success: false, error: { message: 'Database not available' } });
+        }
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const settings = await prisma.restaurantSetting.findMany({
+            where: {
+                restaurant_id: restaurantId,
+                key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
+            },
+        });
+
+        const settingsMap = {};
+        settings.forEach(s => { settingsMap[s.key] = s.value; });
+
+        const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
+        const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
+
+        return res.json({
+            success: true,
+            data: {
+                menuImages,
+                dealsImages,
+                isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
+                isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+                defaultMenuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                defaultDealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Fetch cards error:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
+ * Legacy compatibility: GET /api/admin/menu/bot-images
+ */
+router.get('/bot-images', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database not available' } });
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const settings = await prisma.restaurantSetting.findMany({
+            where: {
+                restaurant_id: restaurantId,
+                key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
+            },
+        });
+
+        const settingsMap = {};
+        settings.forEach(s => { settingsMap[s.key] = s.value; });
+
+        const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
+        const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
+
+        return res.json({
+            success: true,
+            data: {
+                menuImageUrl: menuImages[0] || 'assets/menu/cravey_crust_main_menu.png',
+                dealsImageUrl: dealsImages[0] || 'assets/menu/cravey_crust_deals_menu.png',
+                menuImages,
+                dealsImages,
+                isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
+                isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+            },
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
+ * POST /api/admin/menu/cards/upload
+ * Upload 1 or multiple files (images or PDFs) to add as pages to Menu or Deals
+ */
+router.post('/cards/upload', (req, res) => {
+    cardUpload.array('images', 20)(req, res, async (err) => {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({
+                success: false,
+                error: { message: err.code === 'LIMIT_FILE_SIZE' ? 'Each file must be under 25MB' : err.message },
+            });
+        } else if (err) {
+            return res.status(400).json({ success: false, error: { message: err.message } });
+        }
+
+        const files = req.files || (req.file ? [req.file] : []);
+        if (files.length === 0) {
+            return res.status(400).json({ success: false, error: { message: 'No files were uploaded' } });
+        }
+
+        try {
+            const prisma = getDbClient();
+            if (!prisma) {
+                return res.status(503).json({ success: false, error: { message: 'Database unavailable' } });
+            }
+
+            const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+            const defaultRestId = await getDefaultRestaurantId();
+            const type = (req.body?.type || req.query?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
+            const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
+            const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+
+            // Load existing array
+            const currentSetting = await prisma.restaurantSetting.findUnique({
+                where: { restaurant_id_key: { restaurant_id: restaurantId, key: arrayKey } },
+            });
+
+            let currentImages = [];
+            if (currentSetting?.value) {
+                try {
+                    const parsed = JSON.parse(currentSetting.value);
+                    if (Array.isArray(parsed)) currentImages = parsed.filter(Boolean);
+                } catch (_) {}
+            }
+
+            // Append new files
+            const newUrls = files.map(f => `uploads/menu/${f.filename}`);
+            const updatedImages = [...currentImages, ...newUrls];
+
+            const targetRestIds = new Set([restaurantId]);
+            if (defaultRestId) targetRestIds.add(defaultRestId);
+
+            for (const tId of targetRestIds) {
+                await prisma.restaurantSetting.upsert({
+                    where: { restaurant_id_key: { restaurant_id: tId, key: arrayKey } },
+                    update: { value: JSON.stringify(updatedImages) },
+                    create: { restaurant_id: tId, key: arrayKey, value: JSON.stringify(updatedImages) },
+                });
+                await prisma.restaurantSetting.upsert({
+                    where: { restaurant_id_key: { restaurant_id: tId, key: singleKey } },
+                    update: { value: updatedImages[0] || '' },
+                    create: { restaurant_id: tId, key: singleKey, value: updatedImages[0] || '' },
+                });
+            }
+
+            bumpSyncEpoch();
+
+            return res.json({
+                success: true,
+                data: {
+                    type,
+                    images: updatedImages,
+                    addedCount: newUrls.length,
+                    message: `${newUrls.length} ${type === 'deals' ? 'deal file(s)' : 'menu file(s)'} successfully added!`,
+                },
+            });
+        } catch (dbErr) {
+            console.error('[ADMIN] Error saving card files:', dbErr);
+            return res.status(500).json({ success: false, error: { message: dbErr.message } });
+        }
+    });
+});
+
+/**
+ * DELETE /api/admin/menu/cards
+ * Delete a specific card file from the list
+ */
+router.delete('/cards', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database unavailable' } });
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const type = (req.body?.type || req.query?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
+        const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
+        const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+
+        const index = req.body?.index !== undefined ? parseInt(req.body.index, 10) : -1;
+        const targetUrl = req.body?.url ? String(req.body.url).trim() : '';
+
+        const currentSetting = await prisma.restaurantSetting.findUnique({
+            where: { restaurant_id_key: { restaurant_id: restaurantId, key: arrayKey } },
+        });
+
+        let currentImages = [];
+        if (currentSetting?.value) {
+            try {
+                const parsed = JSON.parse(currentSetting.value);
+                if (Array.isArray(parsed)) currentImages = parsed.filter(Boolean);
+            } catch (_) {}
+        }
+
+        let updatedImages = [...currentImages];
+        let removedItem = null;
+
+        if (index >= 0 && index < updatedImages.length) {
+            removedItem = updatedImages.splice(index, 1)[0];
+        } else if (targetUrl) {
+            const idx = updatedImages.findIndex(u => u === targetUrl || u.endsWith(targetUrl));
+            if (idx !== -1) {
+                removedItem = updatedImages.splice(idx, 1)[0];
+            }
+        }
+
+        if (!removedItem && updatedImages.length === currentImages.length) {
+            return res.status(404).json({ success: false, error: { message: 'Card item not found to delete' } });
+        }
+
+        if (removedItem && removedItem.startsWith('uploads/menu/')) {
+            const localFile = path.join(process.cwd(), removedItem);
+            if (fs.existsSync(localFile)) {
+                try { fs.unlinkSync(localFile); } catch (_) {}
+            }
+        }
+
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+
+        for (const tId of targetRestIds) {
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: arrayKey } },
+                update: { value: JSON.stringify(updatedImages) },
+                create: { restaurant_id: tId, key: arrayKey, value: JSON.stringify(updatedImages) },
+            });
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: singleKey } },
+                update: { value: updatedImages[0] || '' },
+                create: { restaurant_id: tId, key: singleKey, value: updatedImages[0] || '' },
+            });
+        }
+
+        bumpSyncEpoch();
+
+        return res.json({
+            success: true,
+            data: {
+                type,
+                images: updatedImages,
+                deleted: removedItem,
+                message: `Card deleted successfully`,
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Delete card error:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
+ * PUT /api/admin/menu/cards/reorder
+ * Reorder card pages in sequence
+ */
+router.put('/cards/reorder', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database unavailable' } });
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const type = (req.body?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
+        const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
+        const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+
+        const newImages = req.body?.images;
+        if (!Array.isArray(newImages)) {
+            return res.status(400).json({ success: false, error: { message: 'Invalid images array' } });
+        }
+
+        const cleaned = newImages.filter(u => typeof u === 'string' && u.trim().length > 0);
+
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+
+        for (const tId of targetRestIds) {
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: arrayKey } },
+                update: { value: JSON.stringify(cleaned) },
+                create: { restaurant_id: tId, key: arrayKey, value: JSON.stringify(cleaned) },
+            });
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: singleKey } },
+                update: { value: cleaned[0] || '' },
+                create: { restaurant_id: tId, key: singleKey, value: cleaned[0] || '' },
+            });
+        }
+
+        bumpSyncEpoch();
+
+        return res.json({
+            success: true,
+            data: {
+                type,
+                images: cleaned,
+                message: 'Cards reordered successfully',
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Reorder cards error:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
+ * POST /api/admin/menu/cards/reset
+ * Reset cards to default assets
+ */
+router.post('/cards/reset', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database unavailable' } });
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const type = (req.body?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
+        const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
+        const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+
+        for (const tId of targetRestIds) {
+            await prisma.restaurantSetting.deleteMany({
+                where: { restaurant_id: tId, key: { in: [arrayKey, singleKey] } },
+            });
+        }
+
+        bumpSyncEpoch();
+
+        const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
+
+        return res.json({
+            success: true,
+            data: {
+                type,
+                images: [defaultAsset],
+                message: `${type === 'deals' ? 'Deals' : 'Menu'} cards reset to default flyer.`,
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Reset cards error:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
     }
 });
 

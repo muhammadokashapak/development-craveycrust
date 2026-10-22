@@ -3057,45 +3057,33 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
         if (!isActivelyCheckingOut) {
             try {
-                const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
-                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                if (haveDealsBeenSent(userSessionId, cleanPhone)) {
-                    return {
-                        handled: true,
-                        routeName: 'deals_already_sent',
-                        reply: `Main aapko Cravey Crust ki special deals already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke deals check kar lein.\n\nAapko kaunsi deal pasand aayi hai? Bas deal ka naam bata dein (jaise *Deal 1*, *Pizza Meal For 2*, ya *Burger Meal For 1*) taake main aapka order book kar sakoon! 😊`,
-                    };
-                }
-                markDealsSent(userSessionId, cleanPhone);
-
                 const cache = await getCatalogCache();
                 const { getActiveCategories } = await import('./menuService.js');
                 const { getDefaultRestaurantId } = await import('./restaurantService.js');
                 const restId = await getDefaultRestaurantId().catch(() => null);
                 const allCats = await getActiveCategories(restId).catch(() => []);
 
-                let dealsReply = '';
-                let targetCatImage = null;
-                // Detect category preference — expanded keywords
+                let targetDealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
+                    ? cache.dealsImageUrls
+                    : [cache.dealsImageUrl || 'assets/menu/cravey_crust_deals_menu.png'];
+
                 const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
                 const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
 
                 if (isBurger && !isPizza) {
                     const bCat = allCats.find(c => /burger\s*deals?/i.test(c.name));
-                    targetCatImage = bCat?.image_url || null;
-                    dealsReply = `${cache.customerBurgerDeals || 'Burger deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Burger Meal For 1* ya *Deal 4*)!`;
+                    if (bCat?.image_url) targetDealsImages = [bCat.image_url];
                 } else if (isPizza && !isBurger) {
                     const pCat = allCats.find(c => /pi[z]+a\s*deals?/i.test(c.name));
-                    targetCatImage = pCat?.image_url || null;
-                    dealsReply = `${cache.customerPizzaDeals || 'Pizza deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Deal 2* ya *Pizza Meal For 1*)!`;
-                } else {
-                    dealsReply = `Active Deals:\n\n${cache.customerAllDeals || 'Deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein!`;
+                    if (pCat?.image_url) targetDealsImages = [pCat.image_url];
                 }
+
                 return {
                     handled: true,
-                    routeName: 'live_deals',
-                    reply: dealsReply,
-                    imageUrl: targetCatImage || 'assets/menu/cravey_crust_deals_menu.png',
+                    routeName: 'live_deals_image',
+                    reply: '',
+                    imageUrls: targetDealsImages,
+                    imageUrl: targetDealsImages[0],
                 };
             } catch (err) {
                 console.error('[FAST_ROUTE] Deals cache error:', err.message);
@@ -3144,39 +3132,21 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── 4. Live Categories / Menu (<= 8 words) ──
+    // ── 4. Live Menu Images (<= 8 words) ──
     const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal'));
     if (isMenuKeyword && wordCount <= 8 && !hasCartOrOrderAction) {
         try {
-            const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
-            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-            if (hasMenuBeenSent(userSessionId, cleanPhone)) {
-                return {
-                    handled: true,
-                    routeName: 'menu_already_sent',
-                    reply: `Main aapko Cravey Crust ka menu already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke menu check kar lein.\n\nAap in mein se kya order karna chahenge? Bas item ka naam bata dein (jaise *Chicken Tikka Pizza* ya *Zinger Burger*), hum foran process kar denge! 😊`,
-                };
-            }
-            markMenuSent(userSessionId, cleanPhone);
-
-            const { getActiveCategories } = await import('./menuService.js');
-            const { getDefaultRestaurantId } = await import('./restaurantService.js');
-            const restId = await getDefaultRestaurantId().catch(() => null);
-            const allCats = await getActiveCategories(restId).catch(() => []);
             const cache = await getCatalogCache();
-            const store = cache.storeName || 'Cravey Crust';
-
-            let menuReply = `📋 *${store.toUpperCase()} MENU*\n\nCategory select karein (Number ya Name reply karein):\n\n`;
-            allCats.forEach((c, idx) => {
-                menuReply += `${idx + 1}️⃣ *${c.name}* (${c.itemCount} items)\n`;
-            });
-            menuReply += `\nKisi bhi category ka number (jaise *1* ya *2*) ya naam reply karein uski items dekhne ke liye!\n(Direct item order karne ke liye item ka naam bata dein)`;
+            const targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
+                ? cache.menuImageUrls
+                : [cache.menuImageUrl || 'assets/menu/cravey_crust_main_menu.png'];
 
             return {
                 handled: true,
-                routeName: 'live_categories',
-                reply: menuReply,
-                imageUrl: 'assets/menu/cravey_crust_main_menu.png',
+                routeName: 'live_menu_images',
+                reply: '',
+                imageUrls: targetMenuImages,
+                imageUrl: targetMenuImages[0],
             };
         } catch (_) {}
     }

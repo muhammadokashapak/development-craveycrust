@@ -91,56 +91,80 @@ export function cleanOldDownloads() {
 }
 
 /**
- * Safely send an image (local file or URL) or text message to a WhatsApp chat
- * Handles 1024 caption limit and disk file resolution automatically
+ * Safely send image(s) (local file or URL) or text message to a WhatsApp chat.
+ * Supports both single `imageUrl` and multi-image `imageUrls` array.
+ * Sends multiple pages in clean sequence with micro-delay between pages.
  */
-export async function sendWhatsAppMediaOrText(sock, jid, { text, imageUrl }, options = {}) {
+export async function sendWhatsAppMediaOrText(sock, jid, { text, imageUrl, imageUrls }, options = {}) {
     if (!sock || !jid) return null;
 
-    if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim()) {
-        try {
-            let imagePayload = null;
-            const trimmed = imageUrl.trim();
+    // Normalize images array
+    const imagesList = Array.isArray(imageUrls) && imageUrls.length > 0
+        ? imageUrls.filter(u => typeof u === 'string' && u.trim().length > 0)
+        : (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() ? [imageUrl.trim()] : []);
 
-            if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-                imagePayload = { url: trimmed };
-            } else {
-                const relPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
-                let absPath = path.resolve(process.cwd(), relPath);
-                if (!fs.existsSync(absPath)) {
-                    if (relPath.startsWith('uploads/')) {
-                        const alt = path.resolve(process.cwd(), relPath.replace(/^uploads\//, 'assets/'));
-                        if (fs.existsSync(alt)) absPath = alt;
-                    } else if (relPath.startsWith('assets/')) {
-                        const alt = path.resolve(process.cwd(), relPath.replace(/^assets\//, 'uploads/'));
-                        if (fs.existsSync(alt)) absPath = alt;
+    if (imagesList.length > 0) {
+        let lastResult = null;
+        const total = imagesList.length;
+
+        for (let i = 0; i < total; i++) {
+            const singleImg = imagesList[i];
+            const pageNum = i + 1;
+
+            // Generate clean page caption
+            let pageCaption = '';
+            const cleanText = (text || '').trim();
+            if (total === 1) {
+                pageCaption = cleanText;
+            } else if (cleanText) {
+                pageCaption = i === 0 ? `${cleanText} (Page ${pageNum}/${total})` : `Page ${pageNum}/${total}`;
+            }
+
+            try {
+                let imagePayload = null;
+                const trimmed = singleImg.trim();
+
+                if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                    imagePayload = { url: trimmed };
+                } else {
+                    const relPath = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+                    let absPath = path.resolve(process.cwd(), relPath);
+                    if (!fs.existsSync(absPath)) {
+                        if (relPath.startsWith('uploads/')) {
+                            const alt = path.resolve(process.cwd(), relPath.replace(/^uploads\//, 'assets/'));
+                            if (fs.existsSync(alt)) absPath = alt;
+                        } else if (relPath.startsWith('assets/')) {
+                            const alt = path.resolve(process.cwd(), relPath.replace(/^assets\//, 'uploads/'));
+                            if (fs.existsSync(alt)) absPath = alt;
+                        }
+                    }
+                    if (fs.existsSync(absPath)) {
+                        imagePayload = fs.readFileSync(absPath);
                     }
                 }
-                if (fs.existsSync(absPath)) {
-                    imagePayload = fs.readFileSync(absPath);
-                }
-            }
 
-            if (imagePayload) {
-                const cleanText = (text || '').trim();
-                // WhatsApp caption limit is 1024 characters
-                if (cleanText.length <= 1000) {
-                    return await sock.sendMessage(jid, {
-                        image: imagePayload,
-                        caption: cleanText,
-                    }, options);
-                } else {
-                    await sock.sendMessage(jid, {
-                        image: imagePayload,
-                    }, options);
-                    return await sock.sendMessage(jid, {
-                        text: cleanText,
-                    }, options);
+                if (imagePayload) {
+                    const isPdf = trimmed.toLowerCase().endsWith('.pdf') || (typeof singleImg === 'string' && singleImg.toLowerCase().includes('.pdf'));
+                    const fileName = isPdf ? path.basename(trimmed) || 'Cravey_Crust_Menu.pdf' : undefined;
+                    const sendPayload = isPdf
+                        ? { document: imagePayload, mimetype: 'application/pdf', fileName }
+                        : { image: imagePayload };
+                    if (pageCaption && pageCaption.length <= 1000) {
+                        sendPayload.caption = pageCaption;
+                    }
+                    lastResult = await sock.sendMessage(jid, sendPayload, options);
+
+                    // Micro-pause between multiple pages so delivery arrives in strict chronological order
+                    if (i < total - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 350));
+                    }
                 }
+            } catch (mediaErr) {
+                console.error(`[MEDIA] Failed to send image ${pageNum}/${total} to ${jid}:`, mediaErr.message);
             }
-        } catch (mediaErr) {
-            console.error('[MEDIA] Failed to send image message, falling back to text:', mediaErr.message);
         }
+
+        if (lastResult) return lastResult;
     }
 
     // Fallback or plain text message

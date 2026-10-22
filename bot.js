@@ -241,6 +241,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
 }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 // ─── Health Route ─────────────────────────────────────────
 // Mounted BEFORE auth middleware — publicly accessible, no token required.
@@ -1513,19 +1514,28 @@ async function handleMessage(sock, msg, session) {
                 if (aiReply) {
                     const textToSend = typeof aiReply === 'object' ? aiReply.text : aiReply;
                     const imgToSend = typeof aiReply === 'object' ? aiReply.imageUrl : null;
+                    const imgsToSend = typeof aiReply === 'object' ? aiReply.imageUrls : null;
+                    const hasImages = Boolean(imgToSend || (Array.isArray(imgsToSend) && imgsToSend.length > 0));
 
-                    if (textToSend && textToSend.trim()) {
-                        await sendWhatsAppMediaOrText(sock, jid, { text: textToSend, imageUrl: imgToSend }, { quoted: msg }).catch(err => {
+                    if ((textToSend && textToSend.trim()) || hasImages) {
+                        await sendWhatsAppMediaOrText(sock, jid, {
+                            text: textToSend || '',
+                            imageUrl: imgToSend,
+                            imageUrls: imgsToSend,
+                        }, { quoted: msg }).catch(err => {
                             console.error(`[AI] Failed to send reply to ${jid}:`, err.message);
                         });
 
                         // Record outgoing bot chat reply
+                        const imgLabel = (Array.isArray(imgsToSend) && imgsToSend.length > 1)
+                            ? `📷 Image Reply (${imgsToSend.length} Pages)`
+                            : '📷 Image Reply';
                         recordChatMessage({
                             chatId: jid,
                             phone: customerPhone,
                             customerName: customerName,
                             sender: 'bot',
-                            message: textToSend,
+                            message: textToSend || (hasImages ? imgLabel : ''),
                         }).catch(() => {});
                     }
                 }

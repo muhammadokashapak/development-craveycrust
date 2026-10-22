@@ -662,65 +662,22 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
     // SHOW_MENU
     if (intent === 'SHOW_MENU' || intentResult.intent === 'SHOW_MENU') {
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BROWSING_MENU' });
-        const userKey = convSession.session_key || convSession.chat_id;
-        const altPhone = (normalizedMessage.verifiedPhone || '').replace(/\D/g, '');
-        const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
-        if (hasMenuBeenSent(userKey, altPhone)) {
-            return {
-                text: `Main aapko menu already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke menu check kar lein.\n\nAapko in mein se kya pasand aaya? Apna item bata dein (jaise 2 Zinger ya 1 Medium Pizza)! 😊`,
-                intent: 'SHOW_MENU',
-                stage: 'BROWSING_MENU',
-            };
-        }
-        markMenuSent(userKey, altPhone);
-        const categories = await getActiveCategories(restaurantId);
-
-        let menuMsg = `${restName} Menu\n\nCategory select karein:\n\n`;
-        categories.forEach(c => {
-            menuMsg += `${c.name} (${c.itemCount} items)\n`;
-        });
-        menuMsg += `\nReply category name ya direct item order karein (e.g. 2 zinger).`;
-
-        return { text: menuMsg, imageUrl: 'assets/menu/cravey_crust_main_menu.png', intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
+        const { getCatalogCache } = await import('./catalogCacheService.js');
+        const cache = await getCatalogCache();
+        const menuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
+            ? cache.menuImageUrls
+            : [cache.menuImageUrl || 'assets/menu/cravey_crust_main_menu.png'];
+        return { text: '', imageUrls: menuImages, imageUrl: menuImages[0], intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
     }
 
     // SHOW_DEALS
     if (intent === 'SHOW_DEALS' || intentResult.intent === 'SHOW_DEALS') {
-        const userKey = convSession.session_key || convSession.chat_id;
-        const altPhone = (normalizedMessage.verifiedPhone || '').replace(/\D/g, '');
-        const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
-        if (haveDealsBeenSent(userKey, altPhone)) {
-            return {
-                text: `Main aapko special deals already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke deals check kar lein aur apni pasandeeda deal ka naam bata dein! 😊`,
-                intent: 'SHOW_DEALS',
-            };
-        }
-        markDealsSent(userKey, altPhone);
-        const deals = await getActiveDeals(restaurantId);
-
-        if (deals.length === 0) {
-            return {
-                text: 'Filhal koi special deals active nahi hain. Normal menu dekhne ke liye menu likhein.',
-                intent: 'SHOW_DEALS',
-            };
-        }
-
-        let dealsMsg = `${restName} Special Deals\n\n`;
-        deals.forEach((d) => {
-            dealsMsg += `${d.name}: Rs.${Number(d.deal_price)}\n`;
-            if (d.deal_items && d.deal_items.length > 0) {
-                const itemsStr = d.deal_items.map(di => {
-                    const vName = di.menu_variant?.name && !di.menu_item?.name?.toLowerCase().includes(di.menu_variant.name.toLowerCase()) ? ` (${di.menu_variant.name})` : '';
-                    return `${di.quantity}x ${di.menu_item?.name || 'Item'}${vName}`;
-                }).join(', ');
-                dealsMsg += `Includes: ${itemsStr}\n`;
-            }
-            dealsMsg += '\n';
-        });
-        dealsMsg = dealsMsg.trimEnd();
-        dealsMsg += `\n\nCart mein deal add karne ke liye likhein: deal 1 ya 2 deal 1.`;
-
-        return { text: dealsMsg, imageUrl: 'assets/menu/cravey_crust_deals_menu.png', intent: 'SHOW_DEALS' };
+        const { getCatalogCache } = await import('./catalogCacheService.js');
+        const cache = await getCatalogCache();
+        const dealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
+            ? cache.dealsImageUrls
+            : [cache.dealsImageUrl || 'assets/menu/cravey_crust_deals_menu.png'];
+        return { text: '', imageUrls: dealsImages, imageUrl: dealsImages[0], intent: 'SHOW_DEALS' };
     }
 
     // DEAL_INQUIRY
