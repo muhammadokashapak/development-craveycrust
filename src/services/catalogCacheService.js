@@ -118,8 +118,8 @@ async function fetchAllCatalog() {
             getGlobalDiscountSettings(restId),
         ]);
 
-        // ── 1. Filter out test categories (aleem, test, demo) ──
-        const validCategories = (categories || []).filter(c => !isTestCategory(c.name));
+        // ── 1. Filter out test categories (aleem, test, demo) & deals (deals belong to Deals catalog) ──
+        const validCategories = (categories || []).filter(c => !isTestCategory(c.name) && !/deals?/i.test(c.name));
 
         // Format Categories Summary
         const cachedCategoriesSummary = validCategories.map((c, idx) =>
@@ -165,12 +165,9 @@ async function fetchAllCatalog() {
             else if (cat.name.includes('Platter')) headerEmoji = '🍱';
             else if (cat.name.includes('Pasta')) headerEmoji = '🍝';
             else if (cat.name.includes('Sandwich')) headerEmoji = '🥪';
-            else if (cat.name.includes('Burger Deals')) headerEmoji = '🍔';
             else if (cat.name.includes('Burger')) headerEmoji = '🍔';
             else if (cat.name.includes('Premium')) headerEmoji = '🌟';
             else if (cat.name.includes('Classic')) headerEmoji = '🍕';
-            else if (cat.name.includes('Pizza Deals')) headerEmoji = '🎁';
-            else if (cat.name.includes('Cravey 2.0')) headerEmoji = '🔥';
             else if (isDrinkCategory) headerEmoji = '🥤';
 
             const itemLines = validItems.map(item => {

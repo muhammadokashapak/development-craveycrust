@@ -141,24 +141,6 @@ async function populateFullMenu() {
             description: 'Chilled soft drinks and purified mineral water',
             sort_order: 11,
         },
-        {
-            name: 'Pizza Deals',
-            slug: 'pizza-deals',
-            description: 'Value pizza combo meals with chilled drinks',
-            sort_order: 12,
-        },
-        {
-            name: 'Burger Deals',
-            slug: 'burger-deals',
-            description: 'Zinger burger meals with fries and chilled drinks',
-            sort_order: 13,
-        },
-        {
-            name: 'Cravey 2.0 Deals',
-            slug: 'cravey-2-0-deals',
-            description: 'Special combo feasts and burger feasts',
-            sort_order: 14,
-        },
     ];
 
     const categoryMap = {};
@@ -613,63 +595,6 @@ async function populateFullMenu() {
             { name: 'Regular Bottle', price: 70 },
         ],
     });
-
-    // 12. Pizza Deals (MenuItem representations for ordering)
-    console.log('\n🍕 Populating Pizza Deals Menu Items...');
-    const pizzaDealsMenu = [
-        { name: 'Pizza Meal For 1', slug: 'pizza-meal-for-1', price: 599, desc: 'Small Pizza, Regular Drink' },
-        { name: 'Pizza Meal For 2', slug: 'pizza-meal-for-2', price: 1299, desc: 'Regular Pizza, 2 Regular Drink' },
-        { name: 'Pizza Meal For 3', slug: 'pizza-meal-for-3', price: 1599, desc: 'Large Pizza, 1 liter Drink' },
-        { name: 'Pizza Meal For 4', slug: 'pizza-meal-for-4', price: 2499, desc: 'Party size Pizza, 1.5 liter Drink' },
-    ];
-    for (const d of pizzaDealsMenu) {
-        await addItem({
-            categoryName: 'Pizza Deals',
-            name: d.name,
-            slug: d.slug,
-            description: d.desc,
-            basePrice: d.price,
-            variants: [{ name: d.name, price: d.price }],
-        });
-    }
-
-    // 13. Burger Deals (MenuItem representations for ordering)
-    console.log('\n🍔 Populating Burger Deals Menu Items...');
-    const burgerDealsMenu = [
-        { name: 'Burger Meal For 1', slug: 'burger-meal-for-1', price: 599, desc: 'Zinger Burger, Regular Fries, Regular Drink' },
-        { name: 'Burger Meal For 2', slug: 'burger-meal-for-2', price: 999, desc: '2 Zinger Burger, Regular Fries, 2 Regular Drink' },
-        { name: 'Burger Meal For 3', slug: 'burger-meal-for-3', price: 1599, desc: '3 Zinger Burger, 3 Chicken Piece, 1 Litre Drink' },
-    ];
-    for (const d of burgerDealsMenu) {
-        await addItem({
-            categoryName: 'Burger Deals',
-            name: d.name,
-            slug: d.slug,
-            description: d.desc,
-            basePrice: d.price,
-            variants: [{ name: d.name, price: d.price }],
-        });
-    }
-
-    // 14. Cravey 2.0 Deals (MenuItem representations for ordering)
-    console.log('\n🔥 Populating Cravey 2.0 Deals Menu Items...');
-    const craveyDealsMenu = [
-        { name: 'Deal 1', slug: 'deal-1', price: 1099, desc: '2 Small Pizza, 2 Reg Drinks' },
-        { name: 'Deal 2', slug: 'deal-2', price: 2099, desc: '2 Medium Pizza, 1L Drink' },
-        { name: 'Deal 3', slug: 'deal-3', price: 2999, desc: '2 Large Pizza, 1L Drink' },
-        { name: 'Deal 4', slug: 'deal-4', price: 999, desc: '4 Zeggy Burgers' },
-        { name: 'Deal 5', slug: 'deal-5', price: 1099, desc: '3 Zinger Burger, 1L Drink' },
-    ];
-    for (const d of craveyDealsMenu) {
-        await addItem({
-            categoryName: 'Cravey 2.0 Deals',
-            name: d.name,
-            slug: d.slug,
-            description: d.desc,
-            basePrice: d.price,
-            variants: [{ name: d.name, price: d.price }],
-        });
-    }
 
     // ── 4. Populate Deals Table (`Deal` and `DealItem`) ────────────────────────
     console.log('\n🎁 Populating Deals Table with Linked Menu Items (description: null as requested)...');

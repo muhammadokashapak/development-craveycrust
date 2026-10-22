@@ -26,7 +26,7 @@ export async function getActiveMenu(restaurantId) {
 
     const restId = restaurantId || await getDefaultRestaurantId();
 
-    return prisma.category.findMany({
+    const categories = await prisma.category.findMany({
         where: {
             restaurant_id: restId,
             is_active: true,
@@ -48,6 +48,8 @@ export async function getActiveMenu(restaurantId) {
             },
         },
     });
+
+    return categories.filter(c => !/deals?/i.test(c.name));
 }
 
 /**
@@ -61,62 +63,34 @@ export async function getActiveCategories(restaurantId) {
 
     const restId = restaurantId || await getDefaultRestaurantId();
 
-    const [categories, deals] = await Promise.all([
-        prisma.category.findMany({
-            where: {
-                restaurant_id: restId,
-                is_active: true,
-            },
-            orderBy: { sort_order: 'asc' },
-            include: {
-                _count: {
-                    select: {
-                        menu_items: {
-                            where: { is_active: true, is_available: true },
-                        },
+    const categories = await prisma.category.findMany({
+        where: {
+            restaurant_id: restId,
+            is_active: true,
+        },
+        orderBy: { sort_order: 'asc' },
+        include: {
+            _count: {
+                select: {
+                    menu_items: {
+                        where: { is_active: true, is_available: true },
                     },
                 },
             },
-        }),
-        prisma.deal.findMany({
-            where: {
-                restaurant_id: restId,
-                is_active: true,
-            },
-            select: { name: true },
-        }).catch(() => []),
-    ]);
-
-    // Count pizza deals and burger deals from active deals table
-    const pizzaDealsCount = deals.filter(d => {
-        const n = (d.name || '').toLowerCase();
-        return n.includes('pizza meal') || n.includes('deal 1') || n.includes('deal 2') || n.includes('deal 3') || n.includes('pizza');
-    }).length;
-
-    const burgerDealsCount = deals.filter(d => {
-        const n = (d.name || '').toLowerCase();
-        return n.includes('burger meal') || n.includes('deal 4') || n.includes('deal 5') || n.includes('burger');
-    }).length;
-
-    return categories.map((cat, idx) => {
-        let itemCount = cat._count.menu_items;
-        const lowerName = (cat.name || '').toLowerCase();
-        if (/pi[z]+a\s*deals?/i.test(lowerName) && pizzaDealsCount > 0) {
-            itemCount = pizzaDealsCount;
-        } else if (/burger\s*deals?/i.test(lowerName) && burgerDealsCount > 0) {
-            itemCount = burgerDealsCount;
-        }
-
-        return {
-            index: idx + 1,
-            id: cat.id,
-            name: cat.name,
-            slug: cat.slug,
-            description: cat.description || '',
-            image_url: cat.image_url || null,
-            itemCount,
-        };
+        },
     });
+
+    const activeFoodCategories = categories.filter(c => !/deals?/i.test(c.name));
+
+    return activeFoodCategories.map((cat, idx) => ({
+        index: idx + 1,
+        id: cat.id,
+        name: cat.name,
+        slug: cat.slug,
+        description: cat.description || '',
+        image_url: cat.image_url || null,
+        itemCount: cat._count.menu_items,
+    }));
 }
 
 /**

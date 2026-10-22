@@ -74,7 +74,10 @@ router.get('/', async (req, res) => {
             }
         }
 
-        const formatted = (categories || []).map(c => ({
+        // Exclude deal categories from standard food categories
+        const validCategories = (categories || []).filter(c => !/deals?/i.test(c.name || '') && !/deals?/i.test(c.slug || ''));
+
+        const formatted = validCategories.map(c => ({
             id: c.id,
             name: c.name || '',
             slug: c.slug || '',

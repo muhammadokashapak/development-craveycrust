@@ -128,10 +128,7 @@ async function seed() {
     const categoryDefs = [
         { name: 'Premium Pizzas', slug: 'premium-pizzas', description: 'Freshly baked dough with extreme chicken toppings, stuffed crusts and rich mozzarella', sort_order: 1 },
         { name: 'Classic Pizzas', slug: 'classic-pizzas', description: 'Traditional favorite pizzas loaded with premium mozzarella & flavorful chunks', sort_order: 2 },
-        { name: 'Pizza Deals', slug: 'pizza-deals', description: 'Value pizza combo meals with chilled drinks', sort_order: 3 },
-        { name: 'Burger Deals', slug: 'burger-deals', description: 'Zinger burger feast meals with fries and drinks', sort_order: 4 },
-        { name: 'Special Deals', slug: 'special-deals', description: 'Special bundle deals and combo feasts', sort_order: 5 },
-        { name: 'Drinks', slug: 'drinks', description: 'Chilled soft drinks and purified mineral water', sort_order: 6 },
+        { name: 'Drinks', slug: 'drinks', description: 'Chilled soft drinks and purified mineral water', sort_order: 3 },
     ];
 
     const categoryMap = {};
@@ -344,98 +341,6 @@ async function seed() {
         }
     }
 
-    // C. Pizza Deals (as Menu Items with Variant)
-    const pizzaDealItems = [
-        { name: 'Pizza Meal For 1', slug: 'pizza-meal-for-1', description: 'Small Pizza, Regular Drink', price: 599, variantName: 'Meal for 1' },
-        { name: 'Pizza Meal For 2', slug: 'pizza-meal-for-2', description: 'Regular Pizza, 2 Regular Drink', price: 1299, variantName: 'Meal for 2' },
-        { name: 'Pizza Meal For 3', slug: 'pizza-meal-for-3', description: 'Large Pizza, 1 liter Drink', price: 1599, variantName: 'Meal for 3' },
-        { name: 'Pizza Meal For 4', slug: 'pizza-meal-for-4', description: 'Party size Pizza, 1.5 liter Drink', price: 2499, variantName: 'Meal for 4' },
-    ];
-    for (const item of pizzaDealItems) {
-        const createdItem = await prisma.menuItem.create({
-            data: {
-                restaurant_id: restaurantId,
-                category_id: categoryMap['Pizza Deals'],
-                name: item.name,
-                slug: item.slug,
-                description: item.description,
-                base_price: item.price,
-                is_available: true,
-                is_active: true,
-            },
-        });
-        await prisma.menuVariant.create({
-            data: {
-                menu_item_id: createdItem.id,
-                name: item.variantName,
-                price: item.price,
-                sort_order: 1,
-                is_available: true,
-            },
-        });
-    }
-
-    // D. Burger Deals (as Menu Items with Variant)
-    const burgerDealItems = [
-        { name: 'Burger Meal For 1', slug: 'burger-meal-for-1', description: 'Zinger Burger, Regular Fries, Regular Drink', price: 599, variantName: 'Meal for 1' },
-        { name: 'Burger Meal For 2', slug: 'burger-meal-for-2', description: '2 Zinger Burger, Regular Fries, 2 Regular Drink', price: 999, variantName: 'Meal for 2' },
-        { name: 'Burger Meal For 3', slug: 'burger-meal-for-3', description: '3 Zinger Burger, 3 Chicken Piece, 1 Litre Drink', price: 1599, variantName: 'Meal for 3' },
-    ];
-    for (const item of burgerDealItems) {
-        const createdItem = await prisma.menuItem.create({
-            data: {
-                restaurant_id: restaurantId,
-                category_id: categoryMap['Burger Deals'],
-                name: item.name,
-                slug: item.slug,
-                description: item.description,
-                base_price: item.price,
-                is_available: true,
-                is_active: true,
-            },
-        });
-        await prisma.menuVariant.create({
-            data: {
-                menu_item_id: createdItem.id,
-                name: item.variantName,
-                price: item.price,
-                sort_order: 1,
-                is_available: true,
-            },
-        });
-    }
-
-    // E. Special Deals (as Menu Items with Variant)
-    const specialDealItems = [
-        { name: 'Deal 1', slug: 'deal-1', description: '2 Small Pizza, 2 Reg Drinks', price: 1099, variantName: 'Combo' },
-        { name: 'Deal 2', slug: 'deal-2', description: '2 Medium Pizza, 1L Drink', price: 2099, variantName: 'Combo' },
-        { name: 'Deal 3', slug: 'deal-3', description: '2 Large Pizza, 1L Drink', price: 2999, variantName: 'Combo' },
-        { name: 'Deal 4', slug: 'deal-4', description: '4 Burgers', price: 999, variantName: 'Burger Feast' },
-        { name: 'Deal 5', slug: 'deal-5', description: '3 Zinger Burger, 1L Drink', price: 1099, variantName: 'Burger Feast' },
-    ];
-    for (const item of specialDealItems) {
-        const createdItem = await prisma.menuItem.create({
-            data: {
-                restaurant_id: restaurantId,
-                category_id: categoryMap['Special Deals'],
-                name: item.name,
-                slug: item.slug,
-                description: item.description,
-                base_price: item.price,
-                is_available: true,
-                is_active: true,
-            },
-        });
-        await prisma.menuVariant.create({
-            data: {
-                menu_item_id: createdItem.id,
-                name: item.variantName,
-                price: item.price,
-                sort_order: 1,
-                is_available: true,
-            },
-        });
-    }
 
     // F. Drinks
     const drinkItems = [
