@@ -1325,6 +1325,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
         activeCartSummary,
         customerDetailsSummary,
         confirmIntent,
+        maxDeliveryRadiusKm: cache.maxDeliveryRadiusKm || 10,
     });
 
     const fullSystemPrompt = systemPromptText

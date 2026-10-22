@@ -57,15 +57,17 @@ export function clearLastDiscussedItem(sessionKey) {
 export function isDeliveryAreaInquiry(text) {
     if (!text || typeof text !== 'string') return false;
     const lower = text.toLowerCase().trim();
-    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|zone)\b/i.test(lower) ||
-           /\b(?:range|area|zone)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|hai|he|hy|h|\?)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|available|possible)\s*(?:hai|he|hy|h|\?)?/i.test(lower) ||
-           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|range|zone)\b/i.test(lower) ||
+    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|zone|radius)\b/i.test(lower) ||
+           /\b(?:range|area|zone|radius)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|allowed|allow|hai|he|hy|h|\?)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|available|possible|allowed|allow)\s*(?:hai|he|hy|h|\?)?/i.test(lower) ||
+           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|range|zone|allowed|karein|karte|krte|hoti)\b/i.test(lower) ||
            /\b(?:delivery|deliver)\s*(?:area|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|\?)/i.test(lower) ||
            /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?delivery\b/i.test(lower) ||
            /\b(?:area|range)\s*(?:mein|me|mai|pe|par)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
-           /\b(?:area\s*of\s*radius|delivery\s*radius|radius)\b/i.test(lower);
+           /\b(?:area\s*of\s*radius|delivery\s*radius|radius)\b/i.test(lower) ||
+           (/\b(?:deliver|delivery)\b/i.test(lower) && /\b(?:allowed|allow|ho\s*sakti|kar\s*sakte|kar\s*skte|karoge|karogy|karty|karte|krte|krty|available|possible|charges|fee)\b/i.test(lower)) ||
+           (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kon\s*kon\s*se\s*area|which\s*areas?)\b.*?\b(?:deliver|delivery)\b/i.test(lower));
 }
 
 export function cleanExtractedAddress(text) {
@@ -412,6 +414,32 @@ export async function getNextCheckoutStepResponse({
             reply: (introMessage ? `${introMessage}\n\n` : '') +
                 `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
         };
+    }
+
+    // Validate delivery radius whenever address or location pin is provided
+    if (details.address || details.location) {
+        try {
+            const { checkDeliveryAvailability } = await import('./deliveryService.js');
+            const dCheck = await checkDeliveryAvailability({
+                restaurantId: cache?.restId,
+                address: details.address || details.location?.address,
+                latitude: details.location?.latitude,
+                longitude: details.location?.longitude,
+            });
+            if (dCheck && !dCheck.available) {
+                // Out of delivery radius! Reset session address so customer must provide a valid one
+                details.address = null;
+                details.location = null;
+                details.locationConfirmed = false;
+                details.locationAwaitingConfirmation = false;
+                return {
+                    handled: true,
+                    routeName: 'step_location_out_of_range',
+                    step: 'ADDRESS',
+                    reply: `${dCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+                };
+            }
+        } catch (_) {}
     }
 
     // STEP 3b: Location Confirmation (If GPS location shared but not yet confirmed by customer)
@@ -2432,7 +2460,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     targetLat = loc.latitude;
                     targetLng = loc.longitude;
                 } else {
-                    const cleanedCandidate = cleanExtractedAddress(raw.replace(/\b(?:delivery|deliver|area|range|zone|mein|me|mai|pe|par|aati|aata|ata|ati|hoti|hota|krte|karte|possible|available|hai|he|hy|h|\?|kya|kia|ye|yeh|is)\b/gi, ' '));
+                    const withoutQuestions = raw.replace(/[?.,!]/g, ' ');
+                    const cleanedCandidate = withoutQuestions
+                        .replace(/\b(?:delivery|deliver|allowed|allow|area|areas|range|zone|mein|me|mai|pe|par|aati|aata|ata|ati|hoti|hota|hogi|hoga|krte|karte|krty|karty|karoge|karogy|possible|available|hai|he|hy|h|kya|kia|ye|yeh|is|idhar|yahan)\b/gi, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
                     if (cleanedCandidate && cleanedCandidate.length >= 3) {
                         targetAddr = cleanedCandidate;
                     }
@@ -2452,17 +2484,36 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                 if (dCheck.available) {
                     const distInfo = dCheck.distanceKm != null ? ` (approx. ${dCheck.distanceKm} km door)` : '';
-                    let reply = `Ji bilkul ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Aap ki location (*${displayLoc}*) hamari delivery range mein aati hai${distInfo}. 👍\n\n`;
-                    if (!currDetails.paymentMethod) {
-                        reply += `Payment method kaunsa pasand karenge — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`;
-                    } else {
-                        reply += `Order confirm karne ke liye “Confirm” ya “Haan” likhein!`;
+                    let cart = null;
+                    if (userSessionId) {
+                        try {
+                            const { getActiveCart } = await import('./cartService.js');
+                            cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: restId, chatId });
+                        } catch (_) {}
                     }
-                    return {
-                        handled: true,
-                        routeName: 'delivery_area_confirmed',
-                        reply,
-                    };
+                    const hasCartItems = cart?.items && cart.items.length > 0;
+
+                    if (hasCartItems) {
+                        let reply = `Ji bilkul ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Aap ki location (*${displayLoc}*) hamari delivery range mein aati hai${distInfo}. 👍\n\n`;
+                        if (!currDetails.paymentMethod) {
+                            reply += `Payment method kaunsa pasand karenge — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`;
+                        } else {
+                            reply += `Order confirm karne ke liye “Confirm” ya “Haan” likhein!`;
+                        }
+                        return {
+                            handled: true,
+                            routeName: 'delivery_area_confirmed',
+                            reply,
+                        };
+                    } else {
+                        const feeInfo = dCheck.deliveryFee === 0 ? 'delivery bilkul FREE hai' : `delivery fee Rs. ${dCheck.deliveryFee} hai`;
+                        const maxR = dCheck.maxRadiusKm || cache?.maxDeliveryRadiusKm || 10;
+                        return {
+                            handled: true,
+                            routeName: 'delivery_area_inquiry_allowed',
+                            reply: `Ji bilkul! Cravey Crust *${displayLoc}* mein delivery provide karta hai! 🚚\n(Yeh hamare restaurant se ${dCheck.distanceKm ? `approx. ${dCheck.distanceKm} km door hai aur hamari ${maxR} KM delivery range ke andar hai` : `hamari ${maxR} KM range mein hai`} — ${feeInfo}).\n\nAap aaj kya mangwana chahenge? Menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+                        };
+                    }
                 } else {
                     if (userSessionId && currDetails.address) {
                         updateSessionOrderDetails(userSessionId, { address: null, location: null }, cleanPhone);
@@ -2732,8 +2783,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const isPin = loc?.latitude != null && loc?.longitude != null;
                     const cleanedAddr = isPin ? (loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`) : cleanExtractedAddress(raw);
                     if (cleanedAddr && cleanedAddr.length >= 3) {
-                        const { getActiveCart } = await import('./cartService.js');
+                        const { checkDeliveryAvailability } = await import('./deliveryService.js');
                         const cache = await getCatalogCache();
+                        const delCheck = await checkDeliveryAvailability({
+                            restaurantId: cache?.restId,
+                            address: isPin ? null : cleanedAddr,
+                            latitude: loc?.latitude,
+                            longitude: loc?.longitude,
+                        });
+
+                        if (!delCheck.available) {
+                            return {
+                                handled: true,
+                                routeName: 'address_out_of_range',
+                                reply: `${delCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin bhej dein jo hamari delivery range mein ho. 📍`,
+                            };
+                        }
+
+                        const { getActiveCart } = await import('./cartService.js');
                         const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                         if (cart?.items && cart.items.length > 0) {
                             const details = updateSessionOrderDetails(userSessionId, {
@@ -2742,12 +2809,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                                 locationConfirmed: !isPin,
                                 locationAwaitingConfirmation: isPin,
                             }, cleanPhone);
+                            const distText = delCheck.distanceKm != null ? ` (approx. ${delCheck.distanceKm} km door)` : '';
                             return await getNextCheckoutStepResponse({
                                 details,
                                 whatsappPhone,
                                 cart,
                                 cache,
-                                introMessage: isPin ? '' : `Delivery address (*${cleanedAddr}*) note kar liya hai. 📍`,
+                                introMessage: isPin ? '' : `Delivery address (*${cleanedAddr}*) note kar liya hai${distText}. 📍`,
                             });
                         }
                     } else if (raw.trim().length > 0 && raw.trim().length < 3) {
@@ -3273,7 +3341,25 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const addressStr = loc?.mapUrl || loc?.formattedAddress || strippedRaw || raw;
 
             const isPin = loc?.latitude != null && loc?.longitude != null;
-            // Always save location to session regardless of cart state
+
+            // Validate delivery radius against settings BEFORE saving
+            const { checkDeliveryAvailability } = await import('./deliveryService.js');
+            const delCheck = await checkDeliveryAvailability({
+                restaurantId: cache?.restId,
+                address: (!isPin ? addressStr : null),
+                latitude: loc?.latitude,
+                longitude: loc?.longitude,
+            });
+
+            if (!delCheck.available) {
+                return {
+                    handled: true,
+                    routeName: 'customer_location_out_of_range',
+                    reply: `${delCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin share karein jo hamari delivery range mein ho. 📍`,
+                };
+            }
+
+            // Always save verified in-range location to session
             const details = updateSessionOrderDetails(userSessionId, {
                 address: addressStr,
                 location: loc,
@@ -3287,20 +3373,23 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             } catch (_) {}
 
+            const distText = delCheck.distanceKm != null ? ` (approx. ${delCheck.distanceKm} km door)` : '';
+            const maxR = delCheck.maxRadiusKm || cache?.maxDeliveryRadiusKm || 10;
+
             if (cart?.items && cart.items.length > 0) {
                 return await getNextCheckoutStepResponse({
                     details,
                     whatsappPhone,
                     cart,
                     cache,
-                    introMessage: isPin ? '' : `Zabardast ${details.name ? details.name + ' bhai! ' : ''}Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*`,
+                    introMessage: isPin ? '' : `Zabardast ${details.name ? details.name + ' bhai! ' : ''}Aap ki location (*${addressStr.slice(0, 80)}*) hamari ${maxR} KM delivery range ke andar hai${distText}! 📍`,
                 });
             } else {
-                // Cart is empty — location saved, ask customer to order something
+                // Cart is empty — location verified within radius!
                 return {
                     handled: true,
                     routeName: 'location_saved_no_cart',
-                    reply: `Zabardast! Aap ka delivery address note kar liya hai: 📍 *${addressStr.slice(0, 80)}*\n\nAb koi item ya deal select karein taake order place ho sake! Menu dekhne ke liye 'menu' ya 'deals' likhein.`,
+                    reply: `Zabardast! Aap ki delivery location hamari delivery range ke andar hai${distText}! 🚚\n📍 Address note kar liya hai: *${addressStr.slice(0, 80)}*\n\nAb koi item ya deal select karein taake order place ho sake! Menu dekhne ke liye 'menu' ya 'deals' likhein.`,
                 };
             }
         } catch (err) {

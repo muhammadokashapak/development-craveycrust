@@ -284,11 +284,15 @@ async function fetchAllCatalog() {
         const minOrder         = Number(restaurant?.min_order || 0);
         const deliveryFee      = Number(restaurant?.default_delivery_fee || 0);
 
+        const radiusSetting = (restaurant?.settings || []).find(s => s.key === 'max_delivery_radius_km');
+        const maxDeliveryRadiusKm = (radiusSetting?.value && !isNaN(parseFloat(radiusSetting.value))) ? parseFloat(radiusSetting.value) : 10.0;
+
         const cachedStoreInfo = `Name: ${storeName}
 Outlet Address: ${storeAddress}
 Timings: ${storeTimings}
 Phone: ${storePhone}
 Min Order: Rs. ${minOrder} | Default Delivery Fee: Rs. ${deliveryFee}
+Maximum Delivery Radius: ${maxDeliveryRadiusKm} KM (Hamari circular delivery coverage ${maxDeliveryRadiusKm} km tak mehdood hai)
 COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'} (${easypaisaNumber} - ${accountName})`;
 
         const defaultOutOfDeliveryMsg = 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.\n\nBarah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!';
@@ -298,9 +302,6 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
         const defaultReviewsUrl = 'https://maps.app.goo.gl/rVvANx8pRmtXrEMj9';
         const reviewsSetting = (restaurant?.settings || []).find(s => s.key === 'google_reviews_url');
         const googleReviewsUrl = (reviewsSetting?.value && reviewsSetting.value.trim()) ? reviewsSetting.value.trim() : defaultReviewsUrl;
-
-        const radiusSetting = (restaurant?.settings || []).find(s => s.key === 'max_delivery_radius_km');
-        const maxDeliveryRadiusKm = (radiusSetting?.value && !isNaN(parseFloat(radiusSetting.value))) ? parseFloat(radiusSetting.value) : 10.0;
 
         const latSetting = (restaurant?.settings || []).find(s => s.key === 'restaurant_lat');
         const restaurantLat = (latSetting?.value && !isNaN(parseFloat(latSetting.value))) ? parseFloat(latSetting.value) : 33.6180334;

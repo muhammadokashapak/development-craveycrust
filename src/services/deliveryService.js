@@ -22,8 +22,8 @@ export async function getOutOfDeliveryMessage(restaurantId, distanceKm = null, m
         }
     } catch (_) {}
 
-    const radiusText = maxRadiusKm != null ? `${maxRadiusKm} km` : '10 km';
-    return `Maazrat! Aap ki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery range (${radiusText}) mein delivery provide karte hain.\n\nAgar pin bhejne mein masla ho ya aap bahar hon, to aap apna Islamabad / Rawalpindi ka delivery address text mein bhi likh kar bhej sakte hain (jaise *Ghauri Town Phase 5, Street 12*). Shukriya! 📍`;
+    const radiusText = (configuredRadius ?? maxRadiusKm) != null ? `${(configuredRadius ?? maxRadiusKm)} km` : '10 km';
+    return `Maazrat! Aap ki share ki hui location hamare restaurant se bahar hai. Hum sirf apne approved delivery range (${radiusText}) mein delivery provide karte hain.\n\nAgar pin bhejne mein masla ho ya aap bahar hon, to aap apna Islamabad / Rawalpindi ka delivery address text mein bhi likh kar bhej sakte hain (jaise *Ghauri Town Phase 5, Street 12*). Shukriya! 📍`;
 }
 
 /**

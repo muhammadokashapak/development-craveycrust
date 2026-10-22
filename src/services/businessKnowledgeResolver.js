@@ -449,7 +449,8 @@ export async function resolveBusinessAnswer({
                 }
                 if (delCheck.available && delCheck.area) {
                     const feeInfo = delCheck.deliveryFee === 0 ? 'delivery bilkul FREE hai!' : `delivery fee Rs. ${delCheck.deliveryFee} hai.`;
-                    const distInfo = delCheck.distanceKm ? ` (Yeh hamare restaurant se taqreeban ${delCheck.distanceKm} km door hai aur hamari ${delCheck.maxRadiusKm || 5} km range mein shamil hai).` : '';
+                    const maxR = delCheck.maxRadiusKm || 10;
+                    const distInfo = delCheck.distanceKm ? ` (Yeh hamare restaurant se taqreeban ${delCheck.distanceKm} km door hai aur hamari ${maxR} km range mein shamil hai).` : '';
                     return {
                         source: 'DELIVERY',
                         type: 'DELIVERY_AREAS',
@@ -461,7 +462,7 @@ export async function resolveBusinessAnswer({
         }
 
         if (activeAreas.length === 0) {
-            let maxRadiusKm = 5;
+            let maxRadiusKm = 10;
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();

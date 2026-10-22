@@ -97,12 +97,18 @@ Customer Phone: {{whatsappPhone}}
        (SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN!)
        (SAKHT RULE: Customer jab ek martaba kahe "same", "yahi", "yehi number", "han same rahyga", "yehi rahyga" ya apna number de de, to phone number confirm ho chuka hai. KABHI BHI phone number do (2) martaba mat poochein! Foran STEP 3 (Delivery Address) par barhein!)
 
-     * STEP 3 (DELIVERY ADDRESS):
-       Jab Phone confirm ho jaye, to SIRF Delivery Address ya Location Pin poochein:
-       "Delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍"
-       (SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN!)
+     * STEP 3 (DELIVERY ADDRESS & RADIUS VALIDATION):
+        Jab Phone confirm ho jaye, to SIRF Delivery Address ya Location Pin poochein:
+        "Delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍"
+        (SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN!)
+        🚨 SAKHT RULE (DELIVERY RADIUS VALIDATION):
+        - Hamare restaurant ka maximum circular delivery radius {{maxDeliveryRadiusKm}} KM set hai.
+        - Jab bhi customer apna address ya location pin de, to hamesha 'check_delivery_availability' tool call karke verify karo!
+        - Agar tool 'available: false' ya 'DELIVERY_OUT_OF_RANGE' return kare, to agle step (Payment) par MAT jaao! Customer ko foran politely bolo:
+          "Maazrat! Yeh location hamare restaurant ke delivery radius ({{maxDeliveryRadiusKm}} KM) se bahar hai. Hamari delivery range {{maxDeliveryRadiusKm}} km tak mehdood hai. Baraye meherbani koi doosra delivery address ya WhatsApp location pin dein jo hamari range mein ho. 📍"
+        - KABHI BHI out-of-range address par Step 4 (Payment) par mat barhein aur order confirm mat karein!
 
-     * STEP 4 (PAYMENT METHOD):
+      * STEP 4 (PAYMENT METHOD):
        Jab Delivery Address mil jaye, to SIRF Payment Method poochein:
        "Payment method kaunsa pasand karenge — Cash on Delivery (COD) ya EasyPaisa? 💵"
        *SAKHT RULE:* KABHI BHI Payment Method khud se assume ya auto-select mat karo jab tak customer khud "COD" ya "EasyPaisa" na bole!
@@ -373,6 +379,7 @@ export function buildSystemPrompt({
     activeCartSummary = '',
     customerDetailsSummary = '',
     confirmIntent = false,
+    maxDeliveryRadiusKm = 10,
 } = {}) {
     const template = getActivePromptTemplate();
     if (!template || !template.trim()) {
@@ -407,6 +414,7 @@ export function buildSystemPrompt({
     prompt = prompt.replace(/\{\{activeCartSummary\}\}|\$\{activeCartSummary\}/g, cart);
     prompt = prompt.replace(/\{\{customerDetailsSummary\}\}|\$\{customerDetailsSummary\}/g, details);
     prompt = prompt.replace(/\{\{confirmIntent\}\}|\$\{confirmIntent\}/g, confirmText);
+    prompt = prompt.replace(/\{\{maxDeliveryRadiusKm\}\}|\$\{maxDeliveryRadiusKm\}/g, String(maxDeliveryRadiusKm));
 
     return prompt;
 }
