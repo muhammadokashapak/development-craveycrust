@@ -29,21 +29,22 @@ async function main() {
             create: {
                 name: 'Store Admin',
                 slug: 'store-admin',
-            phone: '+92-300-0000000',
-            address: 'Main Boulevard',
-            currency: 'PKR',
-            timezone: 'Asia/Karachi',
-            opening_time: '10:00',
-            closing_time: '23:00',
-            min_order: 0,
-            default_delivery_fee: 0,
-            cod_enabled: true,
-            easypaisa_enabled: false,
-            easypaisa_number: null,
-            account_name: 'Store Admin',
-            is_active: true,
-        },
-    });
+                phone: '+92-300-0000000',
+                address: 'Main Boulevard',
+                currency: 'PKR',
+                timezone: 'Asia/Karachi',
+                opening_time: '10:00',
+                closing_time: '23:00',
+                min_order: 0,
+                default_delivery_fee: 0,
+                cod_enabled: true,
+                easypaisa_enabled: false,
+                easypaisa_number: null,
+                account_name: 'Store Admin',
+                is_active: true,
+            },
+        });
+    }
     console.log(`✅ Restaurant: ${restaurant.name} (${restaurant.id})`);
 
     // ── Admin Users (Super Admin & Admin / Staff) ────────────
