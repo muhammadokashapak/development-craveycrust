@@ -235,6 +235,7 @@ export function updateSessionOrderDetails(sessionKey, patch, altKey) {
 export function clearSessionOrderDetails(sessionKey, altKey) {
     if (sessionKey) _sessionOrderDetails.delete(sessionKey);
     if (altKey) _sessionOrderDetails.delete(altKey);
+    clearMenuSentTracking(sessionKey, altKey);
 }
 
 // ─── In-Memory Active Placed Order Update Tracker ────────────────────────
@@ -371,4 +372,58 @@ export async function getRememberedCustomerDetails(key, altKey) {
     return details;
 }
 
+// ─── Menu / Deals Send Throttle Tracker (Single-Send per Session) ────────
+const _menuSentTracker = new Map();
 
+export function markMenuSent(sessionKey, altKey) {
+    if (!sessionKey && !altKey) return;
+    const primary = sessionKey || altKey;
+    const now = Date.now();
+    const entry = _menuSentTracker.get(primary) || (altKey ? _menuSentTracker.get(altKey) : null) || {};
+    entry.menuSentAt = now;
+    if (primary) _menuSentTracker.set(primary, entry);
+    if (altKey) _menuSentTracker.set(altKey, entry);
+    if (sessionKey) _menuSentTracker.set(sessionKey, entry);
+}
+
+export function hasMenuBeenSent(sessionKey, altKey, maxAgeMs = 30 * 60 * 1000) {
+    if (!sessionKey && !altKey) return false;
+    const primary = sessionKey || altKey;
+    let entry = _menuSentTracker.get(primary);
+    if (!entry && altKey) entry = _menuSentTracker.get(altKey);
+    if (!entry || !entry.menuSentAt) return false;
+    if (Date.now() - entry.menuSentAt > maxAgeMs) {
+        entry.menuSentAt = null;
+        return false;
+    }
+    return true;
+}
+
+export function markDealsSent(sessionKey, altKey) {
+    if (!sessionKey && !altKey) return;
+    const primary = sessionKey || altKey;
+    const now = Date.now();
+    const entry = _menuSentTracker.get(primary) || (altKey ? _menuSentTracker.get(altKey) : null) || {};
+    entry.dealsSentAt = now;
+    if (primary) _menuSentTracker.set(primary, entry);
+    if (altKey) _menuSentTracker.set(altKey, entry);
+    if (sessionKey) _menuSentTracker.set(sessionKey, entry);
+}
+
+export function haveDealsBeenSent(sessionKey, altKey, maxAgeMs = 30 * 60 * 1000) {
+    if (!sessionKey && !altKey) return false;
+    const primary = sessionKey || altKey;
+    let entry = _menuSentTracker.get(primary);
+    if (!entry && altKey) entry = _menuSentTracker.get(altKey);
+    if (!entry || !entry.dealsSentAt) return false;
+    if (Date.now() - entry.dealsSentAt > maxAgeMs) {
+        entry.dealsSentAt = null;
+        return false;
+    }
+    return true;
+}
+
+export function clearMenuSentTracking(sessionKey, altKey) {
+    if (sessionKey) _menuSentTracker.delete(sessionKey);
+    if (altKey) _menuSentTracker.delete(altKey);
+}

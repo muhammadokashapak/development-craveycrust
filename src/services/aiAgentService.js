@@ -938,9 +938,29 @@ async function runAgentLoop(messages, context) {
         // No tool call — final answer reached
         let aiImageUrl = null;
         if (calledToolNames.includes('get_menu_categories')) {
-            aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
+            try {
+                const userKey = context?.sessionKey || context?.chatId;
+                const altPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
+                const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
+                if (!hasMenuBeenSent(userKey, altPhone)) {
+                    aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
+                    markMenuSent(userKey, altPhone);
+                }
+            } catch (_) {
+                aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
+            }
         } else if (calledToolNames.includes('get_current_deals')) {
-            aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
+            try {
+                const userKey = context?.sessionKey || context?.chatId;
+                const altPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
+                const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
+                if (!haveDealsBeenSent(userKey, altPhone)) {
+                    aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
+                    markDealsSent(userKey, altPhone);
+                }
+            } catch (_) {
+                aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
+            }
         }
 
         return {

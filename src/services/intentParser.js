@@ -1273,6 +1273,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (chatId) unmuteChat(chatId);
             if (sessionKey) unmuteChat(sessionKey);
             if (whatsappPhone) unmuteChat(whatsappPhone);
+            const { clearMenuSentTracking } = await import('./sessionService.js');
+            clearMenuSentTracking(sessionKey || chatId, (whatsappPhone || '').replace(/\D/g, ''));
         } catch (_) {}
         const cache = await getCatalogCache();
         const rawStore = cache.storeName || '';
@@ -2959,7 +2961,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── 3. Live Deals (General Deals List) (<= 7 words, no deal number, no order action) ──
-    const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?)\b/i.test(lower);
+    const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?|platters?)\b/i.test(lower);
     const hasSpecificDealNumber = /\b(deal\s*#?\d|meal\s*#?\d)\b/i.test(lower);
     // Also handle "sirf X deals" prefix ("sirf" = only)
     const isSirfDeals = /\b(sirf|only|just|bas)\b/i.test(lower) && isDealsKeyword;
@@ -2987,6 +2989,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
         if (!isActivelyCheckingOut) {
             try {
+                const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                if (haveDealsBeenSent(userSessionId, cleanPhone)) {
+                    return {
+                        handled: true,
+                        routeName: 'deals_already_sent',
+                        reply: `Main aapko Cravey Crust ki special deals already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke deals check kar lein.\n\nAapko kaunsi deal pasand aayi hai? Bas deal ka naam bata dein (jaise *Deal 1*, *Pizza Meal For 2*, ya *Burger Meal For 1*) taake main aapka order book kar sakoon! 😊`,
+                    };
+                }
+                markDealsSent(userSessionId, cleanPhone);
+
                 const cache = await getCatalogCache();
                 const { getActiveCategories } = await import('./menuService.js');
                 const { getDefaultRestaurantId } = await import('./restaurantService.js');
@@ -2998,7 +3011,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // Detect category preference — expanded keywords
                 const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
                 const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
-                if (isBurger && !isPizza) {
+                const isPlatter = /\b(platter|platters)\b/i.test(lower);
+
+                if (isPlatter) {
+                    dealsReply = `🍱 *CRAVEY CRUST PLATTERS*\n━━━━━━━━━━━━━━━━━━━━━\n• *Premium Platter* — Rs. 1,099\n   _Includes: 4 Pcs Behari Roll + 6 Pcs Wings + Fries & Garlic Dip_\n\n• *Cheese Roll Platter* — Rs. 999\n   _Includes: 4 Pcs Cheese Roll + 6 Pcs Wings + Fries & Garlic Dip_\n\nOrder karne ke liye bas platter ka naam bata dein! 😊`;
+                } else if (isBurger && !isPizza) {
                     const bCat = allCats.find(c => /burger\s*deals?/i.test(c.name));
                     targetCatImage = bCat?.image_url || null;
                     dealsReply = `${cache.customerBurgerDeals || 'Burger deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Burger Meal For 1* ya *Deal 4*)!`;
@@ -3066,6 +3083,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal'));
     if (isMenuKeyword && wordCount <= 8 && !hasCartOrOrderAction) {
         try {
+            const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            if (hasMenuBeenSent(userSessionId, cleanPhone)) {
+                return {
+                    handled: true,
+                    routeName: 'menu_already_sent',
+                    reply: `Main aapko Cravey Crust ka menu already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke menu check kar lein.\n\nAap in mein se kya order karna chahenge? Bas item ka naam bata dein (jaise *Chicken Tikka Pizza* ya *Zinger Burger*), hum foran process kar denge! 😊`,
+                };
+            }
+            markMenuSent(userSessionId, cleanPhone);
+
             const { getActiveCategories } = await import('./menuService.js');
             const { getDefaultRestaurantId } = await import('./restaurantService.js');
             const restId = await getDefaultRestaurantId().catch(() => null);

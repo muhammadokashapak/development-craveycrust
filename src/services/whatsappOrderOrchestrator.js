@@ -662,6 +662,17 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
     // SHOW_MENU
     if (intent === 'SHOW_MENU' || intentResult.intent === 'SHOW_MENU') {
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BROWSING_MENU' });
+        const userKey = convSession.session_key || convSession.chat_id;
+        const altPhone = (normalizedMessage.verifiedPhone || '').replace(/\D/g, '');
+        const { hasMenuBeenSent, markMenuSent } = await import('./sessionService.js');
+        if (hasMenuBeenSent(userKey, altPhone)) {
+            return {
+                text: `Main aapko menu already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke menu check kar lein.\n\nAapko in mein se kya pasand aaya? Apna item bata dein (jaise 2 Zinger ya 1 Medium Pizza)! 😊`,
+                intent: 'SHOW_MENU',
+                stage: 'BROWSING_MENU',
+            };
+        }
+        markMenuSent(userKey, altPhone);
         const categories = await getActiveCategories(restaurantId);
 
         let menuMsg = `${restName} Menu\n\nCategory select karein:\n\n`;
@@ -675,6 +686,16 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
 
     // SHOW_DEALS
     if (intent === 'SHOW_DEALS' || intentResult.intent === 'SHOW_DEALS') {
+        const userKey = convSession.session_key || convSession.chat_id;
+        const altPhone = (normalizedMessage.verifiedPhone || '').replace(/\D/g, '');
+        const { haveDealsBeenSent, markDealsSent } = await import('./sessionService.js');
+        if (haveDealsBeenSent(userKey, altPhone)) {
+            return {
+                text: `Main aapko special deals already upar bhej chuka hoon! 👆 Baraye meherbani thora upar scroll kar ke deals check kar lein aur apni pasandeeda deal ka naam bata dein! 😊`,
+                intent: 'SHOW_DEALS',
+            };
+        }
+        markDealsSent(userKey, altPhone);
         const deals = await getActiveDeals(restaurantId);
 
         if (deals.length === 0) {
