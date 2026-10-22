@@ -2961,7 +2961,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── 3. Live Deals (General Deals List) (<= 7 words, no deal number, no order action) ──
-    const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?|platters?)\b/i.test(lower);
+    const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?)\b/i.test(lower);
     const hasSpecificDealNumber = /\b(deal\s*#?\d|meal\s*#?\d)\b/i.test(lower);
     // Also handle "sirf X deals" prefix ("sirf" = only)
     const isSirfDeals = /\b(sirf|only|just|bas)\b/i.test(lower) && isDealsKeyword;
@@ -3011,11 +3011,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // Detect category preference — expanded keywords
                 const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
                 const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
-                const isPlatter = /\b(platter|platters)\b/i.test(lower);
 
-                if (isPlatter) {
-                    dealsReply = `🍱 *CRAVEY CRUST PLATTERS*\n━━━━━━━━━━━━━━━━━━━━━\n• *Premium Platter* — Rs. 1,099\n   _Includes: 4 Pcs Behari Roll + 6 Pcs Wings + Fries & Garlic Dip_\n\n• *Cheese Roll Platter* — Rs. 999\n   _Includes: 4 Pcs Cheese Roll + 6 Pcs Wings + Fries & Garlic Dip_\n\nOrder karne ke liye bas platter ka naam bata dein! 😊`;
-                } else if (isBurger && !isPizza) {
+                if (isBurger && !isPizza) {
                     const bCat = allCats.find(c => /burger\s*deals?/i.test(c.name));
                     targetCatImage = bCat?.image_url || null;
                     dealsReply = `${cache.customerBurgerDeals || 'Burger deals abhi available nahi hain.'}\n\nOrder karne ke liye kisi bhi deal ka naam bata dein (jaise *Burger Meal For 1* ya *Deal 4*)!`;

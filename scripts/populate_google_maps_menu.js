@@ -100,40 +100,46 @@ async function populateFullMenu() {
             sort_order: 4,
         },
         {
+            name: 'Platters',
+            slug: 'platters',
+            description: 'Value sharing platters with rolls, wings, fries and dips',
+            sort_order: 5,
+        },
+        {
             name: 'Pastas',
             slug: 'pastas',
             description: 'Creamy Alfredo fettuccine and oven-baked crispy pasta',
-            sort_order: 5,
+            sort_order: 6,
         },
         {
             name: 'Sandwiches',
             slug: 'sandwiches',
             description: 'Crispy chicken sandwiches and stuffed chunks with fries',
-            sort_order: 6,
+            sort_order: 7,
         },
         {
             name: 'Burgers',
             slug: 'burgers',
             description: 'Juicy chicken burgers, Zinger fillet burgers and crispy patties',
-            sort_order: 7,
+            sort_order: 8,
         },
         {
             name: 'Premium Pizzas',
             slug: 'premium-pizzas',
             description: 'Extreme chicken toppings, stuffed & crown crusts and premium mozzarella',
-            sort_order: 8,
+            sort_order: 9,
         },
         {
             name: 'Classic Pizzas',
             slug: 'classic-pizzas',
             description: 'Traditional favorite pizzas loaded with rich cheese, tikka, fajita & tandoori chicken',
-            sort_order: 9,
+            sort_order: 10,
         },
         {
             name: 'Drinks',
             slug: 'drinks',
             description: 'Chilled soft drinks and purified mineral water',
-            sort_order: 10,
+            sort_order: 11,
         },
     ];
 
@@ -311,7 +317,24 @@ async function populateFullMenu() {
         ],
     });
 
-    // 5. Pastas
+    // 5. Platters
+    console.log('\n🍱 Populating Platters...');
+    await addItem({
+        categoryName: 'Platters',
+        name: 'Premium Platter',
+        slug: 'premium-platter',
+        description: '4 pcs behari roll, 6 pcs options wings served with Fries & Sauce',
+        basePrice: 1099,
+    });
+    await addItem({
+        categoryName: 'Platters',
+        name: 'Cheese Roll Platter',
+        slug: 'cheese-roll-platter',
+        description: '4 pcs behari roll, 4 arabic roll served with Fries & Sauce',
+        basePrice: 1099,
+    });
+
+    // 6. Pastas
     console.log('\n🍝 Populating Pastas...');
     await addItem({
         categoryName: 'Pastas',
@@ -704,27 +727,6 @@ async function populateFullMenu() {
             items: [
                 { item: zingerItem, variant: null, qty: 3 },
                 { item: softDrinkItem, variant: variantCache['Soft Drink_1 liter'], qty: 1 },
-            ],
-        },
-        {
-            name: 'Premium Platter',
-            slug: 'deal-premium-platter',
-            price: 1099,
-            sort_order: 13,
-            items: [
-                { item: itemCache['Behari Roll'], variant: null, qty: 4 },
-                { item: itemCache['Hot Wings'], variant: variantCache['Hot Wings_6 pcs'], qty: 1 },
-                { item: friesItem, variant: null, qty: 1 },
-            ],
-        },
-        {
-            name: 'Cheese Roll Platter',
-            slug: 'deal-cheese-roll-platter',
-            price: 1099,
-            sort_order: 14,
-            items: [
-                { item: itemCache['Behari Roll'], variant: null, qty: 4 },
-                { item: friesItem, variant: null, qty: 1 },
             ],
         },
     ];
