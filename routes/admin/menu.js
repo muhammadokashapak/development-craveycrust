@@ -220,15 +220,17 @@ const cardUpload = multer({
 
 // Helper to extract parsed image array from DB settings
 function parseSettingImages(settingsMap, arrayKey, singleKey, defaultAsset) {
-    if (settingsMap[arrayKey]) {
+    if (settingsMap[arrayKey] !== undefined && settingsMap[arrayKey] !== null) {
         try {
             const parsed = JSON.parse(settingsMap[arrayKey]);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter(Boolean);
+            if (Array.isArray(parsed)) return parsed.filter(Boolean);
         } catch (_) {
-            if (settingsMap[arrayKey].trim()) return [settingsMap[arrayKey].trim()];
+            if (typeof settingsMap[arrayKey] === 'string' && settingsMap[arrayKey].trim()) {
+                return [settingsMap[arrayKey].trim()];
+            }
         }
     }
-    if (settingsMap[singleKey] && settingsMap[singleKey].trim()) {
+    if (settingsMap[singleKey] !== undefined && typeof settingsMap[singleKey] === 'string' && settingsMap[singleKey].trim()) {
         return [settingsMap[singleKey].trim()];
     }
     return [defaultAsset];
@@ -475,21 +477,35 @@ router.delete('/cards', async (req, res) => {
         const type = (req.body?.type || req.query?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
         const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
         const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+        const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
 
-        const index = req.body?.index !== undefined ? parseInt(req.body.index, 10) : -1;
+        const index = req.body?.index !== undefined && req.body?.index !== null && req.body?.index !== ''
+            ? parseInt(req.body.index, 10)
+            : -1;
         const targetUrl = req.body?.url ? String(req.body.url).trim() : '';
 
-        const currentSetting = await prisma.restaurantSetting.findUnique({
-            where: { restaurant_id_key: { restaurant_id: restaurantId, key: arrayKey } },
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
+
+        // Load existing settings across all target restaurants
+        const currentSettings = await prisma.restaurantSetting.findMany({
+            where: {
+                restaurant_id: { in: Array.from(targetRestIds) },
+                key: { in: [arrayKey, singleKey] },
+            },
+            orderBy: { updated_at: 'desc' },
         });
 
-        let currentImages = [];
-        if (currentSetting?.value) {
-            try {
-                const parsed = JSON.parse(currentSetting.value);
-                if (Array.isArray(parsed)) currentImages = parsed.filter(Boolean);
-            } catch (_) {}
-        }
+        const settingsMap = {};
+        currentSettings.forEach(s => {
+            if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
+        });
+
+        const currentImages = parseSettingImages(settingsMap, arrayKey, singleKey, defaultAsset);
 
         let updatedImages = [...currentImages];
         let removedItem = null;
@@ -497,13 +513,18 @@ router.delete('/cards', async (req, res) => {
         if (index >= 0 && index < updatedImages.length) {
             removedItem = updatedImages.splice(index, 1)[0];
         } else if (targetUrl) {
-            const idx = updatedImages.findIndex(u => u === targetUrl || u.endsWith(targetUrl));
+            const idx = updatedImages.findIndex(u => u === targetUrl || u.endsWith(targetUrl) || targetUrl.endsWith(u));
             if (idx !== -1) {
                 removedItem = updatedImages.splice(idx, 1)[0];
             }
         }
 
-        if (!removedItem && updatedImages.length === currentImages.length) {
+        // Fallback: if only 1 item existed and index is 0 or target not matched, delete that single item
+        if (!removedItem && updatedImages.length > 0 && (index === 0 || updatedImages.length === 1)) {
+            removedItem = updatedImages.shift();
+        }
+
+        if (!removedItem) {
             return res.status(404).json({ success: false, error: { message: 'Card item not found to delete' } });
         }
 
@@ -513,13 +534,6 @@ router.delete('/cards', async (req, res) => {
                 try { fs.unlinkSync(localFile); } catch (_) {}
             }
         }
-
-        const targetRestIds = new Set([restaurantId]);
-        if (defaultRestId) targetRestIds.add(defaultRestId);
-        try {
-            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
-            allActiveRests.forEach(r => targetRestIds.add(r.id));
-        } catch (_) {}
 
         for (const tId of targetRestIds) {
             await prisma.restaurantSetting.upsert({

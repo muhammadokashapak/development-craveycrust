@@ -6972,6 +6972,8 @@ window.deleteCardPage = async function(idx) {
   const currentTab = menuCardsState.activeTab;
   const isMenu = currentTab === 'menu';
   const label = isMenu ? `Page ${idx + 1}` : `Flyer ${idx + 1}`;
+  const list = isMenu ? menuCardsState.data.menuImages : menuCardsState.data.dealsImages;
+  const targetUrl = list && list[idx] ? list[idx] : '';
 
   if (!confirm(`Are you sure you want to delete ${label}?`)) return;
 
@@ -6979,7 +6981,7 @@ window.deleteCardPage = async function(idx) {
     const res = await fetch('/api/admin/menu/cards', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: currentTab, index: idx })
+      body: JSON.stringify({ type: currentTab, index: idx, url: targetUrl })
     });
     const data = await res.json();
     if (data.success) {
