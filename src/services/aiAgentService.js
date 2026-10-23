@@ -793,8 +793,37 @@ const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE
 
 export function sanitizeOutput(text) {
     if (!text || typeof text !== 'string') return '';
+    let clean = text;
+
+    // 0. Remove leaked system prompt instructions or prefixes
+    clean = clean.replace(/^(?:(?:aur\s+)?customer\s+(?:se\s+poocho|ko\s+bolo|se\s+kahein|ko\s+kahein)|aap\s+(?:ko\s+customer\s+se|customer\s+se)\s+(?:poochna|kehna)\s+hai|prompt|system|assistant)\s*:\s*"?/gi, '');
+    clean = clean.replace(/\n(?:(?:aur\s+)?customer\s+(?:se\s+poocho|ko\s+bolo|se\s+kahein|ko\s+kahein)|aap\s+(?:ko\s+customer\s+se|customer\s+se)\s+(?:poochna|kehna)\s+hai|prompt|system|assistant)\s*:\s*"?/gi, '\n');
+    clean = clean.replace(/"\s*$/g, '');
+
+    // 0b. Catch and sanitize raw tool calls / JSON objects leaking to WhatsApp
+    if (/^\s*\{[\s\S]*"(?:tool|name)"[\s\S]*\}\s*$/.test(clean) || clean.includes('"tool":') || clean.includes('"add_to_cart"')) {
+        try {
+            const cleanJson = clean.replace(/```(?:json)?/g, '').trim();
+            const jMatch = cleanJson.match(/\{[\s\S]*\}/);
+            if (jMatch) {
+                const parsed = JSON.parse(jMatch[0]);
+                if (parsed.tool === 'add_to_cart' || parsed.name === 'add_to_cart') {
+                    const item = parsed.args?.itemName || 'Item';
+                    return `Zabardast! *${item}* aapke cart mein add kar diya gaya hai! 🎉\n\nKya iske sath mazeed kuch add karna chahenge ya order finalize karein?`;
+                }
+                if (parsed.tool === 'check_delivery_availability' || parsed.name === 'check_delivery_availability') {
+                    return 'Aap ki delivery location check ki ja rahi hai. Baraye meherbani apna mukammal address ya location pin share karein. 📍';
+                }
+                if (parsed.tool === 'create_confirmed_order' || parsed.name === 'create_confirmed_order') {
+                    return 'Aap ka order process kiya ja raha hai. Shukriya!';
+                }
+            }
+        } catch (_) {}
+        return 'Aap ki request note kar li gayi hai! Kya iske sath mazeed kuch add karna chahenge ya order finalize karein? 😊';
+    }
+
     // 1. Remove all internal IDs (menuItemId, variantId, dealId, cartItemId, id)
-    let clean = text.replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '');
+    clean = clean.replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '');
     // 2. Remove all asterisks
     clean = clean.replace(/\*/g, '');
     // 3. Remove all emojis and symbols
@@ -917,12 +946,18 @@ async function runAgentLoop(messages, context) {
 
         const aiResponse = aiResult.content || '';
 
-        // Parse tool call from response
+        // Parse tool call from response (strip markdown fences, support {"tool": ...} or {"name": ...})
         let toolCall = null;
         try {
-            const jsonMatch = aiResponse.match(/\{[\s\S]*"tool"[\s\S]*\}/);
+            const cleanContent = aiResponse.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, '$1').trim();
+            const jsonMatch = cleanContent.match(/\{[\s\S]*"(?:tool|name)"\s*:\s*"[^"]+"[\s\S]*\}/);
             if (jsonMatch) {
-                toolCall = JSON.parse(jsonMatch[0]);
+                const parsed = JSON.parse(jsonMatch[0]);
+                const toolName = parsed.tool || parsed.name;
+                const toolArgs = parsed.args || parsed.arguments || {};
+                if (toolName) {
+                    toolCall = { tool: toolName, args: toolArgs };
+                }
             }
         } catch (_) {}
 
@@ -932,6 +967,22 @@ async function runAgentLoop(messages, context) {
 
             const result = await executeTool(toolCall.tool, toolCall.args || {}, context);
             allToolResults.push(result);
+
+            // If we are at the last allowable tool round, do not loop again: produce customer answer directly from tool result
+            if (round === MAX_TOOL_ROUNDS - 1) {
+                if (toolCall.tool === 'add_to_cart') {
+                    const item = toolCall.args?.itemName || 'Item';
+                    return {
+                        text: `Zabardast! *${item}* cart mein add kar diya gaya hai! 🎉\n\nKya iske sath kuch aur add karna chahenge ya order finalize karein?`,
+                        imageUrl: null,
+                        imageUrls: null,
+                        toolResults: allToolResults,
+                        calledToolNames,
+                        tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
+                        providerInfo: { provider: lastProvider, model: lastModel, keyIndex: lastKeyIndex },
+                    };
+                }
+            }
 
             messages.push({ role: 'assistant', content: aiResponse });
             messages.push({
@@ -986,20 +1037,8 @@ async function runAgentLoop(messages, context) {
     };
 }
 
-// ─── Main Entry Point: processMessage ─────────────────────────────────────
-/**
- * Process an incoming WhatsApp message through the standalone AI Agent.
- *
- * @param {Object} params
- * @param {Object} params.sock              Baileys socket
- * @param {Object} params.msg               Raw Baileys message
- * @param {Object} params.session           WhatsAppSession instance
- * @param {string} params.text              Extracted message text
- * @param {Object} params.identity          resolveSenderIdentity() result
- * @param {Object} [params.locationData]    extractLocation() result
- * @returns {Promise<string>}               Reply text to send back to customer
- */
-export async function processMessage({ sock, msg, session, text, identity, locationData }) {
+// ─── Internal Implementation: _processMessageInternal ───────────────────
+async function _processMessageInternal({ sock, msg, session, text, identity, locationData }) {
     const jid = msg?.key?.remoteJid || identity?.chatId || identity?.phone || 'default';
     const sessionKey = jid || identity?.phone || 'default';
     const syncEpoch = getSyncEpoch();
@@ -1135,8 +1174,15 @@ export async function processMessage({ sock, msg, session, text, identity, locat
         context.confirmIntent = true;
     }
 
-    if (extracted.name && (!sessionDetails.name || extracted.nameExplicit || (extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase() && !sessionDetails.name))) {
-        updatePayload.name = extracted.name;
+    if (extracted.name) {
+        if (!sessionDetails.name) {
+            updatePayload.name = extracted.name;
+        } else if (extracted.nameExplicit) {
+            const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(effectiveText);
+            if (isExplicitRename && extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase()) {
+                updatePayload.name = extracted.name;
+            }
+        }
     }
     if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase())) {
         updatePayload.address = extracted.address;
@@ -1396,6 +1442,30 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     appendSessionHistory(sessionKey, 'assistant', cleanFinalReply, syncEpoch);
 
     return aiImageUrl ? { text: cleanFinalReply, imageUrl: aiImageUrl } : cleanFinalReply;
+}
+
+// ─── Per-Chat Sequential Message Processing Queue (Prevents Race Conditions) ───
+const _chatMessageQueues = new Map();
+
+/**
+ * Process incoming message with per-chat sequential queuing to guarantee
+ * that parallel messages from the same chat are never processed concurrently.
+ */
+export async function processMessage(params) {
+    const jid = params?.msg?.key?.remoteJid || params?.identity?.chatId || params?.identity?.phone || 'default';
+    const prevPromise = _chatMessageQueues.get(jid) || Promise.resolve();
+
+    const currentPromise = prevPromise
+        .catch(() => {})
+        .then(() => _processMessageInternal(params))
+        .finally(() => {
+            if (_chatMessageQueues.get(jid) === currentPromise) {
+                _chatMessageQueues.delete(jid);
+            }
+        });
+
+    _chatMessageQueues.set(jid, currentPromise);
+    return currentPromise;
 }
 
 export default processMessage;

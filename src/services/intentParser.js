@@ -40,8 +40,8 @@ export function setLastDiscussedItem(sessionKey, item, variant = null) {
 export function getLastDiscussedItem(sessionKey) {
     if (!sessionKey || !_lastDiscussedItemBySession.has(sessionKey)) return null;
     const entry = _lastDiscussedItemBySession.get(sessionKey);
-    // Expire after 3 minutes
-    if (Date.now() - entry.timestamp > 3 * 60 * 1000) {
+    // Expire after 5 minutes
+    if (Date.now() - entry.timestamp > 5 * 60 * 1000) {
         _lastDiscussedItemBySession.delete(sessionKey);
         return null;
     }
@@ -57,17 +57,20 @@ export function clearLastDiscussedItem(sessionKey) {
 export function isDeliveryAreaInquiry(text) {
     if (!text || typeof text !== 'string') return false;
     const lower = text.toLowerCase().trim();
-    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|zone|radius)\b/i.test(lower) ||
-           /\b(?:range|area|zone|radius)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s*(?:area|range|zone)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|chali|possible|available|allowed|allow|hai|he|hy|h|\?)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|available|possible|allowed|allow)\s*(?:hai|he|hy|h|\?)?/i.test(lower) ||
-           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|range|zone|allowed|karein|karte|krte|hoti)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s*(?:area|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|\?)/i.test(lower) ||
+    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|areas|zone|zones|radius|charges|fee)\b/i.test(lower) ||
+           /\b(?:range|area|areas|zone|zones|radius)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s*(?:areas?|ranges?|zones?)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia|kons[ey]|list)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|krty|karty|chali|possible|available|allowed|allow|hai|he|hy|h|hain|hen|\?)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|krty|karty|available|possible|allowed|allow)\s*(?:hai|he|hy|h|hain|hen|\?)?/i.test(lower) ||
+           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|areas|range|zone|allowed|karein|karte|krte|krty|hoti)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s*(?:area|areas|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|hain|hen|\?)/i.test(lower) ||
            /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?delivery\b/i.test(lower) ||
-           /\b(?:area|range)\s*(?:mein|me|mai|pe|par)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
+           /\b(?:area|areas|range)\s*(?:mein|me|mai|pe|par)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
            /\b(?:area\s*of\s*radius|delivery\s*radius|radius)\b/i.test(lower) ||
            (/\b(?:deliver|delivery)\b/i.test(lower) && /\b(?:allowed|allow|ho\s*sakti|kar\s*sakte|kar\s*skte|karoge|karogy|karty|karte|krte|krty|available|possible|charges|fee)\b/i.test(lower)) ||
-           (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kon\s*kon\s*se\s*area|which\s*areas?)\b.*?\b(?:deliver|delivery)\b/i.test(lower));
+           (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan|kidhar|kon\s*kon\s*se\s*areas?|which\s*areas?|kis\s*kis\s*area)\b.*?\b(?:deliver|delivery)\b/i.test(lower)) ||
+           /\b(?:delivery\s*areas?|coverage\s*areas?|approved\s*areas?)\b/i.test(lower) ||
+           /\b(?:kahan|kidhar)\s*(?:kahan|kidhar)?\s*(?:pe\s*)?(?:delivery|deliver)\s*(?:krte|karte|karty|krty|hoti|hogi|hoga)\b/i.test(lower) ||
+           /\b(?:delivery|deliver)\s+(?:kahan|kidhar|kis\s*taraf|kdr)\s*(?:hoti|krte|karte|krty|karty|hogi|hoga|hai|he|hy|h)?\b/i.test(lower);
 }
 
 export function cleanExtractedAddress(text) {
@@ -132,7 +135,7 @@ export function cleanExtractedAddress(text) {
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
 // Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
 /**
  * Extracts customer checkout details (name, delivery address, payment method, phone) from conversational text.
@@ -226,12 +229,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
 
     // 3. Name (Strictly excluded if matches location indicators, greetings, or known action words)
 
-    // Explicit name change or assignment patterns (supports "kr du", "kar du", "naam hatim", "mera naam hatim", "my name is okasha", etc.)
+    // Explicit name change or assignment patterns (supports "naam hatim", "mera naam hatim", "my name is okasha", etc.)
     const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:bhi\s*)?(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)?|likh\s*(?:do|dein|lo|karo|du)?|kar\s*(?:do|dein|karo|du)?|kr\s*(?:do|dein|kro|du)?|ab\s+|(?:\b(?:is|hai|he|hy|h)\b)|:|=|-|\s+)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:my\s+name\s+is|name\s+is)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
-                           raw.match(/\b(?:pehle\s+.*?\s+tha\s+ab\s+|nahi\s+)([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
-                           raw.match(/^(?:ab\s+)?([A-Za-z]{2,20})\s*(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du)/i);
+                           raw.match(/\b(?:pehle\s+.*?\s+tha\s+ab\s+|nahi\s+)([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i);
 
     const nameBefore = raw.match(/\b([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\s+(?:meara|mera)\s+(?:name|naam)\b/i);
     const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:\b(?:is|hai|he|hy|h)\b|:|=|-)?\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
@@ -239,8 +241,10 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
 
     let nameCandidate = (nameUpdateMatch ? nameUpdateMatch[1] : (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null)))?.trim();
     if (nameCandidate) {
-        // Strip leading common prefixes e.g. "same ", "wahi ", "yehi ", "yahi ", "naam ", "kr du ", "kar du ", "my name is", "is "
-        nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|meara|apna|my\s+name\s+is|name\s+is|is|kr\s*du|kar\s*du|likh\s*du|rakh\s*du)\s+/i, '').trim();
+        // Repeatedly strip leading common prefixes e.g. "same ", "wahi ", "yehi ", "yahi ", "naam ", "kr du ", "kar du ", "my name is", "is "
+        while (/^(?:is|am|my|name|naam|nam|apna|apni|mera|meara|kr\s*du|kar\s*du|likh\s*du|rakh\s*du|same|wahi|yahi|yehi|isi)\s+/i.test(nameCandidate)) {
+            nameCandidate = nameCandidate.replace(/^(?:is|am|my|name|naam|nam|apna|apni|mera|meara|kr\s*du|kar\s*du|likh\s*du|rakh\s*du|same|wahi|yahi|yehi|isi)\s+/i, '').trim();
+        }
         // Strip trailing sentence filler e.g. "bki sari details same ha", "baki sab same hai"
         nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
         // Strip trailing action verbs/honorifics
@@ -268,7 +272,15 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         }
     }
     if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate)) {
-        name = nameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        const parsedName = nameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        if (!knownDetails.name) {
+            name = parsedName;
+        } else if (nameExplicit) {
+            const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(raw);
+            if (isExplicitRename) {
+                name = parsedName;
+            }
+        }
     }
 
     // 4. Address (including address updates)
@@ -2260,10 +2272,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
-    const isSizeFollowup = /^(?:small|medium|med|large|lrg|party(?:\s*size)?|regular|reg|chota|chhota|bara|bada)(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
+    const isSizeFollowup = /^(?:small|smal|medium|medum|med|large|larg|lrg|party(?:b?\s*size)?|partyb?size|regular|reg|chota|chhota|bara|bada)(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
     if (isSizeFollowup && userSessionId && _lastDiscussedItemBySession.has(userSessionId)) {
         const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId);
-        if (lastItemEntry && (Date.now() - lastItemEntry.timestamp < 180 * 1000)) {
+        if (lastItemEntry && (Date.now() - lastItemEntry.timestamp < 300 * 1000)) {
             try {
                 const { getActiveCart, addItemToCart, matchVariant } = await import('./cartService.js');
                 const cache = await getCatalogCache();
@@ -2483,28 +2495,52 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : {};
             const cache = await getCatalogCache();
             const restId = cache?.restId || (await (await import('./restaurantService.js')).getDefaultRestaurantId());
+            const configuredRadius = cache?.maxDeliveryRadiusKm || 10;
 
-            let targetAddr = currDetails.address || currDetails.location?.address;
-            let targetLat = currDetails.location?.latitude;
-            let targetLng = currDetails.location?.longitude;
+            const isGeneralInquiry = /\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan\s*(?:pe\s*)?delivery|delivery\s*(?:kahan|kidhar)|kis\s*kis\s*area|kon\s*kon\s*se\s*areas?|which\s*areas?|delivery\s*areas?|coverage\s*areas?|approved\s*areas?|areas?\s*(?:kia|kya|list)|areas?\s*batao|areas?\s*bhejo)\b/i.test(lower);
 
-            // If no address in session, check if an area was mentioned in the text itself
-            if (!targetAddr && targetLat == null) {
-                const { extractLocationFromText } = await import('../../utils/location.js');
-                const loc = extractLocationFromText(raw);
-                if (loc?.latitude != null && loc?.longitude != null) {
-                    targetLat = loc.latitude;
-                    targetLng = loc.longitude;
-                } else {
-                    const withoutQuestions = raw.replace(/[?.,!]/g, ' ');
-                    const cleanedCandidate = withoutQuestions
-                        .replace(/\b(?:delivery|deliver|allowed|allow|area|areas|range|zone|mein|me|mai|pe|par|aati|aata|ata|ati|hoti|hota|hogi|hoga|krte|karte|krty|karty|karoge|karogy|possible|available|hai|he|hy|h|kya|kia|ye|yeh|is|idhar|yahan)\b/gi, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-                    if (cleanedCandidate && cleanedCandidate.length >= 3) {
-                        targetAddr = cleanedCandidate;
-                    }
+            if (isGeneralInquiry) {
+                return {
+                    handled: true,
+                    routeName: 'delivery_areas_list',
+                    reply: `Hamari delivery restaurant se *${configuredRadius} KM* circular radius ke andar in tamam approved areas mein dastiyab hai: 🚚\n\n` +
+                           `• *Ghauri Town* (All Phases & VIP Block)\n` +
+                           `• *Khana Pull* & Sanam Chowk\n` +
+                           `• *Tarlai* & Taramari\n` +
+                           `• *Burma* & Shakral\n` +
+                           `• *Rehman Enclave*\n` +
+                           `• *Madina Town* & Bilal Town\n` +
+                           `• *Gulberg Green* & Gulzar-e-Quaid\n\n` +
+                           `Agar aapka delivery address in areas mein hai to baraye meherbani apna mukammal address ya WhatsApp location pin bhej dein! 📍`,
+                };
+            }
+
+            let targetAddr = null;
+            let targetLat = null;
+            let targetLng = null;
+
+            // Check if user provided GPS pin/link in this message
+            const { extractLocationFromText } = await import('../../utils/location.js');
+            const loc = extractLocationFromText(raw);
+            if (loc?.latitude != null && loc?.longitude != null) {
+                targetLat = loc.latitude;
+                targetLng = loc.longitude;
+            } else {
+                const withoutQuestions = raw.replace(/[?.,!]/g, ' ');
+                const cleanedCandidate = withoutQuestions
+                    .replace(/\b(?:delivery|deliver|allowed|allow|area|areas|range|zone|mein|me|mai|pe|par|aati|aata|ata|ati|hoti|hota|hogi|hoga|krte|karte|krty|karty|karoge|karogy|possible|available|hai|he|hy|h|kya|kia|ye|yeh|is|idhar|yahan)\b/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (cleanedCandidate && cleanedCandidate.length >= 3 && ADDRESS_INDICATORS.test(cleanedCandidate)) {
+                    targetAddr = cleanedCandidate;
                 }
+            }
+
+            // Fallback to session address ONLY if user explicitly asks about their previous address
+            if (!targetAddr && targetLat == null && /\b(?:meri|mera|apni|yehi|yahi|wahi|previous|pichla|address)\b/i.test(lower)) {
+                targetAddr = currDetails.address || currDetails.location?.address;
+                targetLat = currDetails.location?.latitude;
+                targetLng = currDetails.location?.longitude;
             }
 
             if (targetAddr || targetLat != null) {
@@ -2595,9 +2631,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 let isPaymentUpdated = false;
                 let isPhoneUpdated = false;
 
-                if (extracted.name && (!currDetails.name || extracted.name.toLowerCase() !== currDetails.name.toLowerCase())) {
-                    updatePayload.name = extracted.name;
-                    isNameUpdated = Boolean(currDetails.name);
+                if (extracted.name) {
+                    if (!currDetails.name) {
+                        updatePayload.name = extracted.name;
+                    } else if (extracted.nameExplicit) {
+                        const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(raw);
+                        if (isExplicitRename && extracted.name.toLowerCase() !== currDetails.name.toLowerCase()) {
+                            updatePayload.name = extracted.name;
+                            isNameUpdated = true;
+                        }
+                    }
                 }
 
                 if (extracted.address && (!currDetails.address || extracted.address.toLowerCase() !== currDetails.address.toLowerCase())) {
@@ -2739,10 +2782,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                const isDifferent = !details.name || details.name.toLowerCase() !== customerName.toLowerCase();
-                if (isDifferent) {
-                    const isUpdate = Boolean(details.name);
+                // STRICT IMMUTABILITY: Bare string name extraction is ONLY for initial name entry when details.name is NOT set!
+                // An already established name cannot be overwritten by random bare words!
+                if (!details.name) {
+                    const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                     updateSessionOrderDetails(userSessionId, { name: customerName }, cleanPhone);
                     const updated = getSessionOrderDetails(userSessionId, cleanPhone);
 
@@ -2755,16 +2798,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         }).catch(() => {});
                     } catch (_) {}
 
-                    const introMessage = isUpdate
-                        ? `Theek hai ${customerName} bhai! Aap ka naam update kar diya hai (*${customerName}*). 😊`
-                        : `Theek hai ${customerName} bhai! Aap ka naam note kar liya hai. 😊`;
-
                     return await getNextCheckoutStepResponse({
                         details: updated,
                         whatsappPhone,
                         cart,
                         cache,
-                        introMessage,
+                        introMessage: `Shukriya *${customerName}*! Aap ka naam note kar liya hai. 😊`,
                     });
                 }
             }

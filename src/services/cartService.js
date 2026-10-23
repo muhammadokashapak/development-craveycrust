@@ -92,11 +92,11 @@ export function matchVariant(variants, query) {
     const bySlug = variants.find(v => v.name.toLowerCase().replace(/[^a-z0-9]/g, '') === qSlug);
     if (bySlug) return bySlug;
 
-    // 4. Normalized alias match
-    const isParty = /\b(?:party|family)\b/i.test(q) || qSlug.includes('partysize') || qSlug.startsWith('party');
-    const isLarge = !isParty && (/\b(?:large|lrg|bada|bara)\b/i.test(q) || /^(?:l|large)$/i.test(q.trim()));
-    const isMedium = /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q) || /^(?:m|med|medium)$/i.test(q.trim());
-    const isSmall = /\b(?:small|chota|chhota)\b/i.test(q) || /^(?:s|sm|small)$/i.test(q.trim());
+    // 4. Normalized alias match (with typo tolerance e.g. 'Partybsize', 'medum', 'larg')
+    const isParty = /\b(?:party|family|partyb?size)\b/i.test(q) || qSlug.includes('partysize') || qSlug.includes('partybsize') || qSlug.startsWith('party');
+    const isLarge = !isParty && (/\b(?:large|larg|lrg|bada|bara)\b/i.test(q) || /^(?:l|large|larg)$/i.test(q.trim()) || qSlug.includes('largesize'));
+    const isMedium = /\b(?:medium|medum|med|darmiyan|darmiyana)\b/i.test(q) || /^(?:m|med|medium|medum)$/i.test(q.trim()) || qSlug.includes('mediumsize');
+    const isSmall = /\b(?:small|smal|chota|chhota)\b/i.test(q) || /^(?:s|sm|small|smal)$/i.test(q.trim()) || qSlug.includes('smallsize');
     const isRegular = /\b(?:regular|reg)\b/i.test(q);
 
     if (isParty) {

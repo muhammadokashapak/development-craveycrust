@@ -247,6 +247,8 @@ function findAreaByText(areas, text) {
         } else {
             found = areas.find(a => a.slug === 'ghauri-town-all-phase');
         }
+    } else if (!found && (cleanLower.includes('vip') || cleanLower.includes('vvip'))) {
+        found = areas.find(a => a.slug === 'ghauri-vip');
     }
 
     if (!found) {
