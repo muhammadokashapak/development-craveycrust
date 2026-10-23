@@ -3368,9 +3368,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
             }
 
-            const { haveMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
+            const { hasMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-            const menuAlreadySent = userSessionId ? haveMenuBeenSent(userSessionId, cleanPhone) : false;
+            const menuAlreadySent = userSessionId ? hasMenuBeenSent(userSessionId, cleanPhone) : false;
             const isSpecificMenuFilter = /\b(koi|konsa|konse|best|acha|achi|ache|recommend|pizza|burger|fries|drink)\b/i.test(lower);
 
             if (targetMenuImages.length > 0 && !menuAlreadySent && !isSpecificMenuFilter) {

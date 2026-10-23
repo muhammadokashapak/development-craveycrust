@@ -1046,11 +1046,11 @@ async function runAgentLoop(messages, context) {
         const asksDeals = calledToolNames.includes('get_current_deals') || /\b(deals?|deal|offers?)\b/i.test(lowerEff);
         const asksMenu = calledToolNames.includes('get_menu_categories') || /\b(menu|menue|catalog|card|rate\s*list)\b/i.test(lowerEff);
 
-        const { haveDealsBeenSent, markDealsSent, haveMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
+        const { haveDealsBeenSent, markDealsSent, hasMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
         const sessionKey = context?.sessionKey;
         const cleanPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
         const dealsAlreadySent = sessionKey ? haveDealsBeenSent(sessionKey, cleanPhone) : false;
-        const menuAlreadySent = sessionKey ? haveMenuBeenSent(sessionKey, cleanPhone) : false;
+        const menuAlreadySent = sessionKey ? hasMenuBeenSent(sessionKey, cleanPhone) : false;
 
         const isSpecificDealOrHeadcount = /\b(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch)\s*(?:k\s*lie|ke\s*lie|k\s*liye|ke\s*liye|liye|lie)?\s*(?:bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lowerEff) ||
             /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon)\b/i.test(lowerEff);

@@ -398,6 +398,7 @@ export function hasMenuBeenSent(sessionKey, altKey, maxAgeMs = 30 * 60 * 1000) {
     }
     return true;
 }
+export const haveMenuBeenSent = hasMenuBeenSent;
 
 export function markDealsSent(sessionKey, altKey) {
     if (!sessionKey && !altKey) return;
@@ -422,6 +423,7 @@ export function haveDealsBeenSent(sessionKey, altKey, maxAgeMs = 30 * 60 * 1000)
     }
     return true;
 }
+export const hasDealsBeenSent = haveDealsBeenSent;
 
 export function clearMenuSentTracking(sessionKey, altKey) {
     if (sessionKey) _menuSentTracker.delete(sessionKey);
