@@ -1039,6 +1039,34 @@ export class DeterministicIntentProvider {
             };
         }
 
+        // Add item Pattern E: "burger deal 3 kr da", "burger deal 3 kardo", "deal 2 kr do", "burger deal 3"
+        const orderSuffixMatch = lower.match(/^(.+?)\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|pack\s*karo|pack\s*krdo)$/i);
+        if (orderSuffixMatch && !/^(?:deals?|all\s+deals|menu)$/i.test(orderSuffixMatch[1].trim())) {
+            const inner = orderSuffixMatch[1].trim();
+            const qtyMatch = inner.match(/^(\d+)\s+(?:x\s+)?(.+)$/);
+            return {
+                intent: 'ADD_ITEM',
+                entities: {
+                    quantity: qtyMatch ? parseInt(qtyMatch[1], 10) : 1,
+                    itemQuery: qtyMatch ? qtyMatch[2].trim() : inner,
+                },
+                confidence: 0.94,
+            };
+        }
+
+        // Add item Pattern F: "burger deal 1", "burger meal 2", "pizza deal 3", "pizza meal 1"
+        const mealDealMatch = lower.match(/^(?:burger|pi[z]+a)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-4]$/i);
+        if (mealDealMatch) {
+            return {
+                intent: 'ADD_ITEM',
+                entities: {
+                    quantity: 1,
+                    itemQuery: lower.trim(),
+                },
+                confidence: 0.95,
+            };
+        }
+
         // Pure View Cart (checked ONLY after add/remove patterns have been exhausted)
         if (CART_VIEW_REGEX.test(lower)) {
             return { intent: 'SHOW_CART', entities: {}, confidence: 0.95 };
@@ -1316,6 +1344,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
     const hasCartOrOrderAction = /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
+        /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
         /^(?:add|order)\s+\d+/i.test(lower) ||
         /^\d+\s*(?:x\s+)?(?:pizza|burger|deal|zinger|roll)/i.test(lower);
 
@@ -2007,13 +2036,20 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
             if (currDetails?.locationAwaitingConfirmation) {
-                const isAffirmativeLocation = /^(?:haan|han|hn|jee|ji|yes|yep|theek\s*hai?|ok|done|confirm|yahi|yehi|isi\s*(?:location|jagah|par|pe)?|isi\s*pe)[\s.!?]*$/i.test(lower.trim());
+                const isAffirmativeLocation = /^(?:(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|sahi|theek|thk)\s+)?(?:g|jee?|ji|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|ok|okay|done|confirm|bilkul|zaroor|yahi|yehi|wahi|isi\s*(?:location|jagah|par|pe)?|isi\s*pe|yahi\s*(?:hai|location|ha|jagah|h)|yehi\s*(?:hai|location|ha|jagah|h))[\s.!?]*$/i.test(lower.trim());
                 const isNegativeLocation = /^(?:nahi|nahin|na|no|nope|wrong|galat|ghalat|ye\s*nahi|yahan\s*nahi)[\s.!?]*$/i.test(lower.trim());
 
                 if (isAffirmativeLocation) {
                     currDetails.locationConfirmed = true;
                     currDetails.locationAwaitingConfirmation = false;
-                    updateSessionOrderDetails(userSessionId, { locationConfirmed: true, locationAwaitingConfirmation: false }, cleanPhone);
+                    currDetails.phoneConfirmed = true;
+                    if (!currDetails.phone) currDetails.phone = cleanPhone;
+                    updateSessionOrderDetails(userSessionId, {
+                        locationConfirmed: true,
+                        locationAwaitingConfirmation: false,
+                        phoneConfirmed: true,
+                        phone: currDetails.phone || cleanPhone
+                    }, cleanPhone);
 
                     const { getActiveCart } = await import('./cartService.js');
                     const cache = await getCatalogCache();
@@ -2550,7 +2586,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                 // Guard: if phone already confirmed or extraItemsAnswered — skip re-triggering those steps
                 const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed && !currDetails.phone) &&
-                    /^(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
+                    /^(?:(?:g|ji|jee|haan?|han|hn|yes|theek\s*(?:hai|hy)?|ok|done)\s*)?(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
 
                 const extracted = extractCustomerDetails(raw, currDetails);
                 const updatePayload = {};
@@ -2739,7 +2775,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
     const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
-        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
+        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
         /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower.trim())
     );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
@@ -2869,12 +2905,22 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Specific Deal Inquiry (Zero Tokens, e.g. "deal 5 mai kya kya h?", "deal 5", "deal 1 details") ──
-    const specificDealMatch = lower.match(/\b(deal\s*#?\s*[1-5]|pi[z]+a\s*meal\s*(?:for\s*)?[1-4]|burger\s*meal\s*(?:for\s*)?[1-3])\b/i);
+    const specificDealMatch = lower.match(/\b(burger\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-3]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-4]|deal\s*#?\s*[1-5])\b/i);
     if (specificDealMatch && wordCount <= 12 && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
             const rawDeals = cache.rawDeals || [];
-            const queryNorm = specificDealMatch[1].replace(/#|\s+/g, '').replace(/piza/gi, 'pizza').toLowerCase();
+            let queryNorm = specificDealMatch[1].replace(/#|\s+/g, '').replace(/piza/gi, 'pizza').toLowerCase();
+
+            // Normalize burger / pizza deal aliases to match actual deal names
+            const bMealMatch = queryNorm.match(/burger(?:deal|meal)(?:for)?([1-3])/);
+            if (bMealMatch) {
+                queryNorm = `burgermealfor${bMealMatch[1]}`;
+            }
+            const pMealMatch = queryNorm.match(/pizza(?:deal|meal)(?:for)?([1-4])/);
+            if (pMealMatch) {
+                queryNorm = `pizzamealfor${pMealMatch[1]}`;
+            }
 
             const matchedDeal = rawDeals.find(d => {
                 const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
@@ -3028,6 +3074,49 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Early Greeting Routing (Zero Tokens, prioritized before deals/menu) ──
+    if (FAST_GREETING_REGEX.test(lower)) {
+        try {
+            const cache = await getCatalogCache();
+            const rawStore = cache.storeName || '';
+            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
+
+            let salutation = 'Assalam o Alaikum!';
+            if (/^(?:hi+|hello+|hey+|helo+|hellow+)\b/i.test(lower)) {
+                salutation = 'Hello!';
+            } else if (/salam|assalam|aoa/i.test(lower)) {
+                salutation = 'Walaikum Assalam!';
+            }
+
+            return {
+                handled: true,
+                routeName: 'quick_reply',
+                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+            };
+        } catch (_) {}
+    }
+
+    // ── Early Standalone Affirmative with Active Cart (Zero Tokens, advances checkout) ──
+    const isStandaloneAffirmativeEarly = /^(?:(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|sahi|theek|thk)\s+)?(?:g|jee?|ji|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|thk\s*hai?|thk\s*hy|ok|okay|acha|achha|done|bilkul|zaroor|confirm|yahi|yehi|wahi|isi)[\s.!?]*$/i.test(lower.trim());
+    if (isStandaloneAffirmativeEarly && wordCount <= 4 && userSessionId) {
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (cart?.items && cart.items.length > 0) {
+                const { getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart,
+                    cache,
+                });
+            }
+        } catch (_) {}
+    }
+
     // ── 3. Live Deals (General Deals List) (<= 7 words, no deal number, no order action) ──
     const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?)\b/i.test(lower);
     const hasSpecificDealNumber = /\b(deal\s*#?\d|meal\s*#?\d)\b/i.test(lower);
@@ -3164,78 +3253,99 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (num >= 1 && num <= allCats.length) {
                 targetCat = await getCategoryWithItems(allCats[num - 1].id, restId);
             }
-        } else if (wordCount <= 8 && !hasCartOrOrderAction) {
-            // Strip filler words: me, mai, mei, mein, men, ka, ke, ki, dikhao, bhejo, options, list, items, kya, kia, kay, kon, konse, konsa, sa, se, hain, hen, ha, hai, hy, dekhna, dein, btao, batao, chahiye, menu, flavor, flavour, available
-            const stripped = lower
-                .replace(/\b(?:me|mai|mei|mein|men|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|kia|kay|kon|konse|konsa|sa|se|hain|hen|ha|hai|hy|dekhna|dein|btao|batao|chahiye|menu|flavor|flavors|flavour|flavours|available)\b/gi, '')
-                .replace(/[^\w\s]/g, '')
-                .trim();
-
-            if (stripped) {
-                const strippedSingular = stripped.replace(/s$/, '');
-
-                // Handle general "pizza" inquiry: Cravey Crust has Classic Pizzas and Premium Pizzas
-                if (stripped === 'pizza' || strippedSingular === 'pizza') {
-                    const classicCat = allCats.find(c => /classic\s*pi[z]+as?/i.test(c.name));
-                    const premiumCat = allCats.find(c => /premium\s*pi[z]+as?/i.test(c.name));
-                    const [fullClassic, fullPremium] = await Promise.all([
-                        classicCat ? getCategoryWithItems(classicCat.id, restId) : null,
-                        premiumCat ? getCategoryWithItems(premiumCat.id, restId) : null,
-                    ]);
-
-                    if (fullClassic || fullPremium) {
-                        const { formatCategoryResponse } = await import('./whatsappOrderOrchestrator.js');
-                        const { getGlobalDiscountSettings } = await import('./discountService.js');
-                        const cache = await getCatalogCache();
-                        const globalDiscount = await getGlobalDiscountSettings(restId).catch(() => null);
-
-                        const parts = [];
-                        if (fullClassic) parts.push(formatCategoryResponse(fullClassic, globalDiscount, cache));
-                        if (fullPremium) parts.push(formatCategoryResponse(fullPremium, globalDiscount, cache));
-
-                        return {
-                            handled: true,
-                            routeName: 'category_menu_all_pizzas',
-                            reply: `${parts.join('\n\n')}\n\n_Sizes: Small (Rs. 599/699), Medium (Rs. 1199/1399), Large (Rs. 1599/1799), Party Size (Rs. 2499/2799)_\nOrder karne ke liye kisi bhi pizza ka naam aur size bata dein (jaise *Chicken Tikka Medium* ya *Chicken Extreme Large*)!`,
-                            imageUrl: (fullPremium?.image_url || fullClassic?.image_url || 'assets/menu/cravey_crust_main_menu.png'),
-                        };
+        } else if (wordCount <= 8 && !hasCartOrOrderAction && !FAST_GREETING_REGEX.test(lower)) {
+            // Guard: Do not interrupt active cart checkout with category views unless explicit category request
+            let isActivelyCheckingOut = false;
+            if (userSessionId) {
+                try {
+                    const { getActiveCart } = await import('./cartService.js');
+                    const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: restId, chatId });
+                    if (cart?.items && cart.items.length > 0) {
+                        const isExplicitCatRequest = /\b(?:dikhao|dekhao|bhejo|options|list|menu|category)\b/i.test(lower);
+                        if (!isExplicitCatRequest) isActivelyCheckingOut = true;
                     }
-                }
+                } catch (_) {}
+            }
 
-                // 1. Exact match against category name or slug
-                for (const c of allCats) {
-                    const cName = c.name.toLowerCase();
-                    const cSlug = c.slug.toLowerCase();
-                    const cSingular = cName.replace(/s$/, '');
-                    if (stripped === cName || stripped === cSlug || stripped === cSingular || strippedSingular === cSingular) {
-                        targetCat = await getCategoryWithItems(c.id, restId);
-                        break;
+            if (!isActivelyCheckingOut) {
+                // Strip filler words: me, mai, mei, mein, men, ka, ke, ki, dikhao, bhejo, options, list, items, kya, kia, kay, kon, konse, konsa, sa, se, hain, hen, ha, hai, hy, dekhna, dein, btao, batao, chahiye, menu, flavor, flavour, available
+                const stripped = lower
+                    .replace(/\b(?:me|mai|mei|mein|men|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|kia|kay|kon|konse|konsa|sa|se|hain|hen|ha|hai|hy|dekhna|dein|btao|batao|chahiye|menu|flavor|flavors|flavour|flavours|available)\b/gi, '')
+                    .replace(/[^\w\s]/g, '')
+                    .trim();
+
+                const isAffirmativeOrGreetingShort = /^(?:g|ji|jee|haan?|han|hn|yes|yep|theek|thk|ok|done|sahi|bilkul|hi+|hello+|hey+|salam|aoa)$/i.test(stripped);
+
+                if (stripped && stripped.length >= 3 && !isAffirmativeOrGreetingShort) {
+                    const strippedSingular = stripped.replace(/s$/, '');
+
+                    // Handle general "pizza" inquiry: Cravey Crust has Classic Pizzas and Premium Pizzas
+                    if (stripped === 'pizza' || strippedSingular === 'pizza') {
+                        const classicCat = allCats.find(c => /classic\s*pi[z]+as?/i.test(c.name));
+                        const premiumCat = allCats.find(c => /premium\s*pi[z]+as?/i.test(c.name));
+                        const [fullClassic, fullPremium] = await Promise.all([
+                            classicCat ? getCategoryWithItems(classicCat.id, restId) : null,
+                            premiumCat ? getCategoryWithItems(premiumCat.id, restId) : null,
+                        ]);
+
+                        if (fullClassic || fullPremium) {
+                            const { formatCategoryResponse } = await import('./whatsappOrderOrchestrator.js');
+                            const { getGlobalDiscountSettings } = await import('./discountService.js');
+                            const cache = await getCatalogCache();
+                            const globalDiscount = await getGlobalDiscountSettings(restId).catch(() => null);
+
+                            const parts = [];
+                            if (fullClassic) parts.push(formatCategoryResponse(fullClassic, globalDiscount, cache));
+                            if (fullPremium) parts.push(formatCategoryResponse(fullPremium, globalDiscount, cache));
+
+                            return {
+                                handled: true,
+                                routeName: 'category_menu_all_pizzas',
+                                reply: `${parts.join('\n\n')}\n\n_Sizes: Small (Rs. 599/699), Medium (Rs. 1199/1399), Large (Rs. 1599/1799), Party Size (Rs. 2499/2799)_\nOrder karne ke liye kisi bhi pizza ka naam aur size bata dein (jaise *Chicken Tikka Medium* ya *Chicken Extreme Large*)!`,
+                                imageUrl: (fullPremium?.image_url || fullClassic?.image_url || 'assets/menu/cravey_crust_main_menu.png'),
+                            };
+                        }
                     }
-                }
 
-                // 2. Substring match: e.g. "wings" matches "Wings"
-                if (!targetCat) {
-                    const matches = allCats.filter(c => {
-                        const cName = c.name.toLowerCase();
-                        const cSlug = c.slug.toLowerCase();
-                        return cName.includes(stripped) || cName.includes(strippedSingular) || cSlug.includes(stripped);
-                    });
-
-                    if (matches.length > 0) {
-                        // Prioritize category that has an uploaded image!
-                        const withImg = matches.find(c => Boolean(c.image_url));
-                        targetCat = await getCategoryWithItems((withImg || matches[0]).id, restId);
-                    }
-                }
-
-                // 3. Reverse substring match: e.g. text contains category name
-                if (!targetCat) {
+                    // 1. Exact match against category name or slug
                     for (const c of allCats) {
                         const cName = c.name.toLowerCase();
+                        const cSlug = c.slug.toLowerCase();
                         const cSingular = cName.replace(/s$/, '');
-                        if (lower.includes(cName) || lower.includes(cSingular)) {
+                        if (stripped === cName || stripped === cSlug || stripped === cSingular || strippedSingular === cSingular) {
                             targetCat = await getCategoryWithItems(c.id, restId);
                             break;
+                        }
+                    }
+
+                    // 2. Word boundary match: e.g. "wings" matches "Wings", but "hi" does not match "Chicken Box"
+                    if (!targetCat) {
+                        const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const matches = allCats.filter(c => {
+                            const cName = c.name.toLowerCase();
+                            const cSlug = c.slug.toLowerCase();
+                            const wordRegex = new RegExp(`\\b${escapeReg(stripped)}\\b`, 'i');
+                            const wordSingularRegex = new RegExp(`\\b${escapeReg(strippedSingular)}\\b`, 'i');
+                            return wordRegex.test(cName) || wordSingularRegex.test(cName) || cSlug === stripped || cSlug === strippedSingular;
+                        });
+
+                        if (matches.length > 0) {
+                            // Prioritize category that has an uploaded image!
+                            const withImg = matches.find(c => Boolean(c.image_url));
+                            targetCat = await getCategoryWithItems((withImg || matches[0]).id, restId);
+                        }
+                    }
+
+                    // 3. Reverse word match: e.g. text contains category name as whole word
+                    if (!targetCat) {
+                        const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        for (const c of allCats) {
+                            const cName = c.name.toLowerCase();
+                            const cSingular = cName.replace(/s$/, '');
+                            if (cName.length >= 4 && (new RegExp(`\\b${escapeReg(cName)}\\b`, 'i').test(lower) || new RegExp(`\\b${escapeReg(cSingular)}\\b`, 'i').test(lower))) {
+                                targetCat = await getCategoryWithItems(c.id, restId);
+                                break;
+                            }
                         }
                     }
                 }

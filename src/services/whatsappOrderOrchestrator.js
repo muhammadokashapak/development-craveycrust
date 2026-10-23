@@ -604,14 +604,24 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
 
     if (intent === 'SHOW_CATEGORY' || entities?.categoryName) {
         matchedCategory = await getCategoryWithItems(catQuery, restaurantId);
-    } else if (!/^(?:deals?|special\s+deals|offers|menu)$/i.test(cleanText.trim())) {
+    } else if (
+        !/^(?:deals?|special\s+deals|offers|menu)$/i.test(cleanText.trim()) &&
+        !/^(?:g|ji|jee|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|thk|ok|okay|confirm|sahi|bilkul|hi+|hello+|hey+|salam|slam|aoa)[\s.!?]*$/i.test(cleanText.trim()) &&
+        cleanText.trim().length >= 3 &&
+        convSession.stage !== 'COLLECTING_DETAILS' &&
+        convSession.stage !== 'CONFIRMING_ORDER' &&
+        convSession.stage !== 'AWAITING_PAYMENT'
+    ) {
         // Check if query matches or contains any active category name (e.g. "drinks", "drinks mai kya ha", "premium pizzas")
         const allCategories = await getActiveCategories(restaurantId);
         const lowerQ = cleanText.toLowerCase().replace(/piza\b/g, 'pizza');
+        const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         for (const c of allCategories) {
             const cName = c.name.toLowerCase();
             const cSingular = cName.replace(/s$/, '');
-            if (lowerQ === cName || lowerQ === cSingular || lowerQ.includes(cName) || lowerQ.includes(cSingular)) {
+            const isExact = lowerQ === cName || lowerQ === cSingular;
+            const isWordMatch = cName.length >= 4 && (new RegExp(`\\b${escapeReg(cName)}\\b`, 'i').test(lowerQ) || new RegExp(`\\b${escapeReg(cSingular)}\\b`, 'i').test(lowerQ));
+            if (isExact || isWordMatch) {
                 matchedCategory = await getCategoryWithItems(c.id, restaurantId);
                 break;
             }

@@ -1235,6 +1235,12 @@ export async function processMessage({ sock, msg, session, text, identity, locat
     const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
     const displayPhone = updatedDetails.phone || (rawCleanPhone.startsWith('923') ? '03' + rawCleanPhone.slice(2) : (rawCleanPhone || '03XXXXXXXXX'));
 
+    // If customer has already provided address or location, auto-confirm phone so Step 2 is not re-asked
+    if ((updatedDetails.address || updatedDetails.location || activeLocation?.formattedAddress) && !updatedDetails.phoneConfirmed) {
+        updatedDetails.phoneConfirmed = true;
+        if (!updatedDetails.phone) updatedDetails.phone = displayPhone;
+    }
+
     let checkoutStepGuidance = '';
     const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
@@ -1269,7 +1275,7 @@ export async function processMessage({ sock, msg, session, text, identity, locat
 - Customer ka cart active hai lekin Naam missing hai.
 - Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
 - SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
-        } else if (!updatedDetails.phoneConfirmed && !updatedDetails.phone) {
+        } else if (!updatedDetails.phoneConfirmed && !updatedDetails.phone && !updatedDetails.address && !activeLocation?.formattedAddress && !updatedDetails.location && !updatedDetails.paymentMethod) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 2 (CONTACT PHONE).
 - Customer ka Naam (${updatedDetails.name}) mil chuka hai.

@@ -211,7 +211,7 @@ export function extractSizeFromQuery(query) {
     // Strip size keywords and common ordering verbs to extract item name
     let clean = q
         .replace(/\b(?:party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
-        .replace(/\b(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
+        .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
         .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -263,6 +263,41 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             type: 'DEAL',
             deal: exactDeal,
         };
+    }
+
+    // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "burger meal 3", "pizza deal 2")
+    const burgerDealMatch = cleanQ.match(/\bburger\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-3])\b/i) ||
+        (strippedQ && strippedQ.match(/\bburger\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-3])\b/i));
+    if (burgerDealMatch) {
+        const bNum = burgerDealMatch[1];
+        const bDeal = activeDeals.find(d => 
+            new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${bNum}\\b`, 'i').test(d.name) ||
+            new RegExp(`\\bburger\\s*deal\\s*#?${bNum}\\b`, 'i').test(d.name)
+        );
+        if (bDeal) {
+            return {
+                status: 'EXACT_MATCH',
+                type: 'DEAL',
+                deal: bDeal,
+            };
+        }
+    }
+
+    const pizzaDealMatch = cleanQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-4])\b/i) ||
+        (strippedQ && strippedQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-4])\b/i));
+    if (pizzaDealMatch) {
+        const pNum = pizzaDealMatch[1];
+        const pDeal = activeDeals.find(d => 
+            new RegExp(`\\bpi[z]+a\\s*meal\\s*(?:for\\s*)?${pNum}\\b`, 'i').test(d.name) ||
+            new RegExp(`\\bpi[z]+a\\s*deal\\s*#?${pNum}\\b`, 'i').test(d.name)
+        );
+        if (pDeal) {
+            return {
+                status: 'EXACT_MATCH',
+                type: 'DEAL',
+                deal: pDeal,
+            };
+        }
     }
 
     // Check numbered deal (e.g. "deal 5", "deal #1")

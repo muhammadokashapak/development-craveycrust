@@ -405,8 +405,23 @@ export async function checkDeliveryAvailability(params) {
     // 3. If GPS coordinates provided, match by circular radius first
     if (!matchedArea && lat != null && lng != null) {
         const distToRestaurant = calculateHaversineDistance(lat, lng, centerLat, centerLng);
+        const activeAreas = allAreas.filter(a => a.is_active);
 
-        if (distToRestaurant > maxRadiusKm) {
+        // Check if GPS pin falls within any explicitly configured active delivery area
+        const matchingApprovedArea = activeAreas.find(a => {
+            const coords = DELIVERY_AREA_COORDINATES[a.slug];
+            const areaLat = (a.latitude != null && a.latitude !== 0) ? a.latitude : coords?.lat;
+            const areaLng = (a.longitude != null && a.longitude !== 0) ? a.longitude : coords?.lng;
+            if (areaLat == null || areaLng == null) return false;
+            const distToAreaCenter = calculateHaversineDistance(lat, lng, areaLat, areaLng);
+            const radiusKm = (a.radius_km != null && a.radius_km > 0) ? a.radius_km : (coords?.radiusKm || 1.5);
+            return distToAreaCenter <= radiusKm;
+        });
+
+        // 0.35 km soft tolerance buffer for boundary landmarks (e.g. Khanna Pul at 3.05 - 3.1 km)
+        const effectiveMaxRadius = maxRadiusKm + 0.35;
+
+        if (distToRestaurant > effectiveMaxRadius && !matchingApprovedArea) {
             const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, distToRestaurant, maxRadiusKm);
             return {
                 available: false,
@@ -416,8 +431,6 @@ export async function checkDeliveryAvailability(params) {
                 maxRadiusKm,
             };
         }
-
-        const activeAreas = allAreas.filter(a => a.is_active);
 
         // Rank areas by distance from the shared coordinates to each area's known center
         const rankedAreas = activeAreas.map(a => {
@@ -510,7 +523,8 @@ export async function checkDeliveryAvailability(params) {
 
             if (geocodeResult && geocodeResult.success) {
                 const geoDist = geocodeResult.distanceKm;
-                if (geoDist > maxRadiusKm) {
+                const effectiveMaxRadius = maxRadiusKm + 0.35;
+                if (geoDist > effectiveMaxRadius) {
                     const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, geoDist, maxRadiusKm);
                     return {
                         available: false,
