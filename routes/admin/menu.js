@@ -233,7 +233,7 @@ function parseSettingImages(settingsMap, arrayKey, singleKey, defaultAsset) {
     if (settingsMap[singleKey] !== undefined && typeof settingsMap[singleKey] === 'string' && settingsMap[singleKey].trim()) {
         return [settingsMap[singleKey].trim()];
     }
-    return [defaultAsset];
+    return [];
 }
 
 /**
@@ -708,16 +708,23 @@ router.post('/cards/reset', async (req, res) => {
             allActiveRests.forEach(r => targetRestIds.add(r.id));
         } catch (_) {}
 
+        const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
+
         for (const tId of targetRestIds) {
-            await prisma.restaurantSetting.deleteMany({
-                where: { restaurant_id: tId, key: { in: [arrayKey, singleKey] } },
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: arrayKey } },
+                update: { value: JSON.stringify([defaultAsset]) },
+                create: { restaurant_id: tId, key: arrayKey, value: JSON.stringify([defaultAsset]) },
+            });
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: singleKey } },
+                update: { value: defaultAsset },
+                create: { restaurant_id: tId, key: singleKey, value: defaultAsset },
             });
         }
 
         bumpSyncEpoch();
         await refreshCatalogCache().catch(() => {});
-
-        const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
 
         return res.json({
             success: true,

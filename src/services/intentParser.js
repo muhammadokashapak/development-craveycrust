@@ -3193,7 +3193,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                 let targetDealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
                     ? cache.dealsImageUrls
-                    : [cache.dealsImageUrl || 'assets/menu/cravey_crust_deals_menu.png'];
+                    : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
 
                 const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
                 const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
@@ -3206,12 +3206,29 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     if (pCat?.image_url) targetDealsImages = [pCat.image_url];
                 }
 
+                if (targetDealsImages.length > 0) {
+                    return {
+                        handled: true,
+                        routeName: 'live_deals_image',
+                        reply: '',
+                        imageUrls: targetDealsImages,
+                        imageUrl: targetDealsImages[0],
+                    };
+                }
+
+                // If NO deals flyers exist (e.g. deleted by admin), deliver textual deals menu directly!
+                const textReply = (isBurger && !isPizza)
+                    ? cache.customerBurgerDeals
+                    : (isPizza && !isBurger)
+                        ? cache.customerPizzaDeals
+                        : (cache.customerAllDeals || 'Hamare paas is waqt deals dastiyab nahi hain.');
+
                 return {
                     handled: true,
-                    routeName: 'live_deals_image',
-                    reply: '',
-                    imageUrls: targetDealsImages,
-                    imageUrl: targetDealsImages[0],
+                    routeName: 'live_deals_text',
+                    reply: textReply,
+                    imageUrls: [],
+                    imageUrl: null,
                 };
             } catch (err) {
                 console.error('[FAST_ROUTE] Deals cache error:', err.message);
@@ -3267,14 +3284,25 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cache = await getCatalogCache();
             const targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
                 ? cache.menuImageUrls
-                : [cache.menuImageUrl || 'assets/menu/cravey_crust_main_menu.png'];
+                : (cache.menuImageUrl ? [cache.menuImageUrl] : []);
 
+            if (targetMenuImages.length > 0) {
+                return {
+                    handled: true,
+                    routeName: 'live_menu_images',
+                    reply: '',
+                    imageUrls: targetMenuImages,
+                    imageUrl: targetMenuImages[0],
+                };
+            }
+
+            // If admin deleted all menu page images, deliver the text menu catalog directly!
             return {
                 handled: true,
-                routeName: 'live_menu_images',
-                reply: '',
-                imageUrls: targetMenuImages,
-                imageUrl: targetMenuImages[0],
+                routeName: 'live_menu_text',
+                reply: cache.customerMenuCatalog || 'Main Menu dastiyab hai.',
+                imageUrls: [],
+                imageUrl: null,
             };
         } catch (_) {}
     }

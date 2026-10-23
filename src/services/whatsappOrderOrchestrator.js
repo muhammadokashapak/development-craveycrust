@@ -676,8 +676,11 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         const cache = await getCatalogCache();
         const menuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
             ? cache.menuImageUrls
-            : [cache.menuImageUrl || 'assets/menu/cravey_crust_main_menu.png'];
-        return { text: '', imageUrls: menuImages, imageUrl: menuImages[0], intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
+            : (cache.menuImageUrl ? [cache.menuImageUrl] : []);
+        if (menuImages.length > 0) {
+            return { text: '', imageUrls: menuImages, imageUrl: menuImages[0], intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
+        }
+        return { text: cache.customerMenuCatalog || 'Main Menu dastiyab hai.', imageUrls: [], imageUrl: null, intent: 'SHOW_MENU', stage: 'BROWSING_MENU' };
     }
 
     // SHOW_DEALS
@@ -686,8 +689,11 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         const cache = await getCatalogCache();
         const dealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
             ? cache.dealsImageUrls
-            : [cache.dealsImageUrl || 'assets/menu/cravey_crust_deals_menu.png'];
-        return { text: '', imageUrls: dealsImages, imageUrl: dealsImages[0], intent: 'SHOW_DEALS' };
+            : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
+        if (dealsImages.length > 0) {
+            return { text: '', imageUrls: dealsImages, imageUrl: dealsImages[0], intent: 'SHOW_DEALS' };
+        }
+        return { text: cache.customerAllDeals || 'Deals dastiyab nahi hain.', imageUrls: [], imageUrl: null, intent: 'SHOW_DEALS' };
     }
 
     // DEAL_INQUIRY

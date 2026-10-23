@@ -316,41 +316,35 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
         const menuImgsSetting = (restaurant?.settings || []).find(s => s.key === 'menu_image_urls');
         const menuImgSetting = (restaurant?.settings || []).find(s => s.key === 'menu_image_url');
         let menuImageUrls = [];
+
         if (menuImgsSetting?.value) {
             try {
                 const parsed = JSON.parse(menuImgsSetting.value);
-                if (Array.isArray(parsed) && parsed.length > 0) menuImageUrls = parsed.filter(Boolean);
+                if (Array.isArray(parsed)) menuImageUrls = parsed.filter(Boolean);
             } catch (_) {
                 if (menuImgsSetting.value.trim()) menuImageUrls = [menuImgsSetting.value.trim()];
             }
-        }
-        if (menuImageUrls.length === 0 && menuImgSetting?.value && menuImgSetting.value.trim()) {
+        } else if (menuImgSetting?.value && menuImgSetting.value.trim()) {
             menuImageUrls = [menuImgSetting.value.trim()];
         }
-        if (menuImageUrls.length === 0) {
-            menuImageUrls = ['assets/menu/cravey_crust_main_menu.png'];
-        }
-        const menuImageUrl = menuImageUrls[0];
+        const menuImageUrl = menuImageUrls[0] || null;
 
         // Parse multi-page deals flyers
         const dealsImgsSetting = (restaurant?.settings || []).find(s => s.key === 'deals_image_urls');
         const dealsImgSetting = (restaurant?.settings || []).find(s => s.key === 'deals_image_url');
         let dealsImageUrls = [];
+
         if (dealsImgsSetting?.value) {
             try {
                 const parsed = JSON.parse(dealsImgsSetting.value);
-                if (Array.isArray(parsed) && parsed.length > 0) dealsImageUrls = parsed.filter(Boolean);
+                if (Array.isArray(parsed)) dealsImageUrls = parsed.filter(Boolean);
             } catch (_) {
                 if (dealsImgsSetting.value.trim()) dealsImageUrls = [dealsImgsSetting.value.trim()];
             }
-        }
-        if (dealsImageUrls.length === 0 && dealsImgSetting?.value && dealsImgSetting.value.trim()) {
+        } else if (dealsImgSetting?.value && dealsImgSetting.value.trim()) {
             dealsImageUrls = [dealsImgSetting.value.trim()];
         }
-        if (dealsImageUrls.length === 0) {
-            dealsImageUrls = ['assets/menu/cravey_crust_deals_menu.png'];
-        }
-        const dealsImageUrl = dealsImageUrls[0];
+        const dealsImageUrl = dealsImageUrls[0] || null;
 
         // ── 5. Compact Knowledge & FAQ Summary for AI Prompt (Saves 4,000+ Tokens) ──
         const cachedFaqs = `• Free Delivery Areas: Ghauri Town (All Phases), Ghauri VIP, Taramari, Tarlai, Burma, Khana Pull, Rehman Enclave, Sanam Chowk, Shakral, Madina Town, Bilal Town, Gulzar-e-Quaid, Gulberg Green. Delivery radius ${maxDeliveryRadiusKm}KM.

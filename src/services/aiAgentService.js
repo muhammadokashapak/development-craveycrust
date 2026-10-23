@@ -999,22 +999,26 @@ async function runAgentLoop(messages, context) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();
-                aiImageUrls = cache.menuImageUrls || ['assets/menu/cravey_crust_main_menu.png'];
-                aiImageUrl = aiImageUrls[0];
-            } catch (_) {
-                aiImageUrl = 'assets/menu/cravey_crust_main_menu.png';
-                aiImageUrls = [aiImageUrl];
-            }
+                if (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0) {
+                    aiImageUrls = cache.menuImageUrls;
+                    aiImageUrl = aiImageUrls[0];
+                } else if (cache.menuImageUrl) {
+                    aiImageUrl = cache.menuImageUrl;
+                    aiImageUrls = [aiImageUrl];
+                }
+            } catch (_) {}
         } else if (calledToolNames.includes('get_current_deals')) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();
-                aiImageUrls = cache.dealsImageUrls || ['assets/menu/cravey_crust_deals_menu.png'];
-                aiImageUrl = aiImageUrls[0];
-            } catch (_) {
-                aiImageUrl = 'assets/menu/cravey_crust_deals_menu.png';
-                aiImageUrls = [aiImageUrl];
-            }
+                if (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0) {
+                    aiImageUrls = cache.dealsImageUrls;
+                    aiImageUrl = aiImageUrls[0];
+                } else if (cache.dealsImageUrl) {
+                    aiImageUrl = cache.dealsImageUrl;
+                    aiImageUrls = [aiImageUrl];
+                }
+            } catch (_) {}
         }
 
         return {
