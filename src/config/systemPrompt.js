@@ -264,7 +264,12 @@ Customer Phone: {{whatsappPhone}}
     - Agar customer flavor bataye ("Chicken extrme"), to usko item ka flavor samjho aur cart mein add karo. KABHI BHI customer ko "Ji bilkul Chicken Extrme!" keh kar mukhatib mat karo! Customer ka asal insani naam hi accept karo.
 
 19. DYNAMIC DELIVERY RADIUS (NEVER CLAIM 6 KM OR ARBITRARY NUMBER):
-    - Restaurant ki delivery radius strictly {{maxDeliveryRadiusKm}} KM hai. KABHI BHI 6 KM ya koi aur number mat bolo. Hamesha "{{maxDeliveryRadiusKm}} KM" bolo (maslan: "Hamari delivery bilkul free hai {{maxDeliveryRadiusKm}} KM delivery radius ke andar").`;
+    - Restaurant ki delivery radius strictly {{maxDeliveryRadiusKm}} KM hai. KABHI BHI 6 KM ya koi aur number mat bolo. Hamesha "{{maxDeliveryRadiusKm}} KM" bolo (maslan: "Hamari delivery bilkul free hai {{maxDeliveryRadiusKm}} KM delivery radius ke andar").
+
+20. EARLY LOCATION RETENTION (SAKHT HIDAYAT):
+    - Agar customer ne shuru mein hi ya conversation ke doran kisi bhi waqt apna delivery address, area (maslan Ghauri Town, Tarlai, Sohan waghaira), ya WhatsApp location pin share kar diya hai, to us location ko session mein pakka mehfooz samjhein.
+    - SAKHT HIDAYAT: Order finalize/confirm karte waqt customer se DOBARA location ya address mat poochein!
+    - Jo location shuru mein di thi, wahi location order summary mein "Delivery Location" ke tor par show karein aur order book karein.`;
 
 let activeCustomPrompt = null;
 let promptUpdatedAt = null;

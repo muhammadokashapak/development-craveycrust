@@ -3137,7 +3137,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_`,
             };
         } catch (_) {}
     }
@@ -3557,9 +3557,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── 6. Store Location & Address (Zero Tokens, live from Settings) ──
+    const isStandaloneAreaName = ADDRESS_INDICATORS.test(lower) && wordCount <= 12 &&
+        !/\b(?:menu|deals?|catalog|rate|price|timing|timings|hours|easypaisa|payment|cod|cancel|status)\b/i.test(lower) &&
+        !/\b(?:kahan|kidhar|outlet|shop|restaurant|branch)\s*(?:hai|h|hy|hotay?)\b/i.test(lower);
+
     const hasCustomerDeliveryLocation = !isAddressChangeRequest && Boolean(
         /maps\.google\.com|goo\.gl|maps\.app\.goo\.gl|lat=\s*-?\d+|lng=\s*-?\d+/i.test(raw) ||
-        /^(?:customer\s*ne\s*location|location\s*pin|meri\s*location|mera\s*ad(?:d)?re(?:e)?s(?:s)?|delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|yahan\s*deliver|yahan\s*order|idr)/i.test(lower)
+        /^(?:customer\s*ne\s*location|location\s*pin|meri\s*location|mera\s*ad(?:d)?re(?:e)?s(?:s)?|delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|yahan\s*deliver|yahan\s*order|idr)/i.test(lower) ||
+        isStandaloneAreaName
     ) && !/^(?:change|theek\s*nahi|galat|wrong|nahi|mat)/i.test(raw.replace(/^(?:location|address|pata|delivery\s*address)\s*[:=-]?\s*/i, '').trim());
 
     // If customer shared location pin/link/address during active session, capture it
@@ -3591,7 +3596,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'customer_location_out_of_range',
-                    reply: `${delCheck.message}\n\nBaraye meherbani koi doosra delivery address ya WhatsApp location pin share karein jo hamari delivery range mein ho. 📍`,
+                    reply: `${delCheck.message}\n\nLekin aap hamare Ghauri Town outlet se *Takeaway / Self-Pickup* karwa sakte hain! 🏪\nKya aap takeaway order karna chahenge?`,
                 };
             }
 
@@ -3625,7 +3630,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'location_saved_no_cart',
-                    reply: `Zabardast! Aap ki delivery location hamari delivery range ke andar hai${distText}! 🚚\n📍 Address note kar liya hai: *${addressStr.slice(0, 80)}*\n\nAb koi item ya deal select karein taake order place ho sake! Menu dekhne ke liye 'menu' ya 'deals' likhein.`,
+                    reply: `Zabardast! Aap ki delivery location (*${addressStr.slice(0, 80)}*) hamari delivery range ke andar hai${distText}! 🚚\n📍 Address note kar liya hai ✅\n\nAb bataiye aaj Cravey Crust se kya mangwana chahenge? Menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
                 };
             }
         } catch (err) {
@@ -3769,13 +3774,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!`,
+                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_`,
             };
         } catch (_) {
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!',
+                reply: 'Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_',
             };
         }
     }
