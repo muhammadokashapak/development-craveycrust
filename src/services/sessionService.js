@@ -50,8 +50,8 @@ export async function getOrCreateSession({ restaurantId, chatId, sessionKey, ver
     if (session) {
         const isExpired = session.expires_at < now;
 
-        // If expired and not already confirmed, reset stage to START and expire active cart
-        if (isExpired && session.stage !== 'ORDER_CONFIRMED') {
+        // If expired, reset stage to START and expire active cart
+        if (isExpired) {
             await prisma.cart.updateMany({
                 where: {
                     session_id: session.id,

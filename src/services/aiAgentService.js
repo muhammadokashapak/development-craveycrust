@@ -392,6 +392,8 @@ async function executeTool(toolName, args, context) {
                 try {
                     clearLastDiscussedDeal(sessionKey);
                     clearLastDiscussedItem(sessionKey);
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
                 } catch (_) {}
                 return { success: true, cartItemId: added.id, quantity: added.quantity };
             }
@@ -405,18 +407,30 @@ async function executeTool(toolName, args, context) {
                     quantity: parseInt(args.quantity, 10),
                     notes: args.notes,
                 });
+                try {
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                } catch (_) {}
                 return { success: true, cartItemId: updated.id, newQuantity: updated.quantity };
             }
 
             // 11. remove_cart_item
             case 'remove_cart_item': {
                 await removeCartItem({ sessionKey, restaurantId: restId, cartItemId: args.cartItemId });
+                try {
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                } catch (_) {}
                 return { success: true, cartItemId: args.cartItemId };
             }
 
             // 12. clear_cart
             case 'clear_cart': {
                 await clearCartService({ sessionKey, restaurantId: restId });
+                try {
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                } catch (_) {}
                 return { success: true, message: 'Cart khali kar diya gaya hai.' };
             }
 
@@ -501,6 +515,26 @@ async function executeTool(toolName, args, context) {
                     finalAddress = activeLoc.formattedAddress || activeLoc.address || `GPS Pin (${activeLoc.latitude}, ${activeLoc.longitude})`;
                 }
 
+                // ── Strict Validation 4a: Delivery Radius Check (5 KM Limit) ──
+                try {
+                    const { checkDeliveryAvailability } = await import('./deliveryService.js');
+                    const isPin = activeLoc?.latitude != null && activeLoc?.longitude != null;
+                    const delCheck = await checkDeliveryAvailability({
+                        restaurantId: restId,
+                        address: (!isPin ? finalAddress : null),
+                        latitude: activeLoc?.latitude,
+                        longitude: activeLoc?.longitude,
+                    });
+                    if (!delCheck.available) {
+                        return {
+                            error: 'LOCATION_OUT_OF_RANGE',
+                            message: `${delCheck.message || 'Yeh location hamari 5 KM delivery range se bahar hai.'} Lekin aap hamare Ghauri Town Phase 4B outlet se *Takeaway / Self-Pickup* karwa sakte hain! 🏪`
+                        };
+                    }
+                } catch (delErr) {
+                    console.error('[AI_AGENT] Delivery availability check error in create_confirmed_order:', delErr.message);
+                }
+
                 // ── Strict Validation 4b: Explicit Payment Method Selection (Robust normalization) ──
                 let rawPayment = (paymentMethod || savedDetails.paymentMethod || '').trim().toUpperCase();
                 let chosenPaymentMethod = 'COD';
@@ -514,11 +548,24 @@ async function executeTool(toolName, args, context) {
                     chosenPaymentMethod = 'COD';
                 }
 
-                // ── Strict Validation 4c: Customer Confirmation ──
+                // ── Strict Validation 4c: Mandatory Order Summary Review ──
+                // The customer MUST have been shown the complete final Order Summary card before the order is booked!
+                if (!savedDetails.summaryShown) {
+                    try {
+                        const { updateSessionOrderDetails } = await import('./sessionService.js');
+                        updateSessionOrderDetails(sessionKey, { summaryShown: true }, cleanPhoneDigitsForDetails);
+                    } catch (_) {}
+                    return {
+                        error: 'SUMMARY_REVIEW_REQUIRED',
+                        message: `Order confirm karne se pehle customer ko mukammal Order Summary dikhana laazmi hai! Abhi order place mat karein. Pehle customer ko yeh details dikhayein:\n\n📋 *ORDER SUMMARY*\n• Customer: ${trimmedName}\n• Contact Phone: ${cleanPhoneDigits}\n• Delivery Address: ${finalAddress}\n• Payment: ${chosenPaymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAur aakhri baar poochein: "Kya aap in tamam details ke sath order confirm karte hain? (Order book karne ke liye 'Confirm' ya 'Haan' likhein)"`
+                    };
+                }
+
+                // ── Strict Validation 4d: Customer Confirmation ──
                 if (!context.confirmIntent) {
                     return {
                         error: 'CONFIRMATION_REQUIRED',
-                        message: 'Customer ne abhi tak final confirmation nahi di. Pehle customer ko mukammal Order Summary dikhao (Items, Total Bill, Delivery Address, Contact Phone, Payment Method) aur poocho: "Ji, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?". Jab customer "Haan", "Confirm" ya "Order kar do" kahe, sirf tab order book karein.'
+                        message: 'Customer ne abhi tak final confirmation nahi di. Customer se poochein: "Kya aap yeh order confirm karte hain? (Order confirm karne ke liye Confirm ya Haan likhein)"'
                     };
                 }
 
@@ -1171,20 +1218,34 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const updatePayload = {};
 
     // Check if customer affirms previous/remembered order details (Re-order Confirmation)
-    const isAffirmativeForRemembered =
-        /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm|bilkul|same|yehi|yahi|wahi)[\s!.?]*$/i.test(effectiveText.trim()) ||
-        /\b(?:same|yehi|yahi|wahi)\s*(?:details?|rakho|rahygi|rahegi|hogi|hoga|pe|par|kardo|kar\s*do)?\b/i.test(effectiveText.toLowerCase()) ||
-        /\b(?:pichli|purani)\s*(?:details?|address|number)?\s*(?:pe|par|hi|theek|sahi)\b/i.test(effectiveText.toLowerCase()) ||
-        /\b(?:confirm\s*(?:kr|kar)?\s*d[ou]|order\s*confirm|order\s*book\s*kar\s*do|order\s*kardo)\b/i.test(effectiveText.toLowerCase());
+    const isExplicitPreviousRequest =
+        /\b(?:pichli|purani|previous)\s*(?:details?|address|location|pata|number)?\s*(?:pe|par|hi|theek|sahi|use|rakho)\b/i.test(effectiveText.toLowerCase()) ||
+        /\b(?:same|yehi|yahi|wahi)\s*(?:address|location|pata|jagah)\b/i.test(effectiveText.toLowerCase());
 
-    if (isAffirmativeForRemembered && rememberedDetails?.name && rememberedDetails?.address && (!sessionDetails.name || !sessionDetails.address)) {
+    const isAffirmativeForRemembered = Boolean(
+        (sessionDetails?.askedPreviousDetails && /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm|bilkul)[\s!.?]*$/i.test(effectiveText.trim())) ||
+        isExplicitPreviousRequest
+    );
+
+    let isRemAddressInRange = true;
+    if (rememberedDetails?.address) {
+        try {
+            const { checkDeliveryAvailability } = await import('./deliveryService.js');
+            const remCheck = await checkDeliveryAvailability({
+                restaurantId: restId,
+                address: rememberedDetails.address,
+            });
+            if (!remCheck.available) isRemAddressInRange = false;
+        } catch (_) {}
+    }
+
+    if (isAffirmativeForRemembered && isRemAddressInRange && rememberedDetails?.name && rememberedDetails?.address && (!sessionDetails.name || !sessionDetails.address)) {
         updatePayload.name = rememberedDetails.name;
         updatePayload.phone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
         updatePayload.phoneConfirmed = true;
         updatePayload.address = rememberedDetails.address;
         updatePayload.paymentMethod = rememberedDetails.paymentMethod || 'COD';
         updatePayload.previousDetailsConfirmed = true;
-        context.confirmIntent = true;
     }
 
     if (extracted.name) {
@@ -1304,19 +1365,22 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     let checkoutStepGuidance = '';
     const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
-        if (rememberedDetails?.name && rememberedDetails?.address && !updatedDetails.previousDetailsConfirmed && (!updatedDetails.name || !updatedDetails.address)) {
+        if (isRemAddressInRange && rememberedDetails?.name && rememberedDetails?.address && !updatedDetails.previousDetailsConfirmed && (!updatedDetails.name || !updatedDetails.address)) {
             const remName = rememberedDetails.name;
             const remPhone = rememberedDetails.phone || displayPhone;
             const remAddress = rememberedDetails.address;
             const remPayment = rememberedDetails.paymentMethod === 'EASYPAISA' ? 'EasyPaisa' : 'Cash on Delivery (COD)';
 
+            try {
+                updateSessionOrderDetails(sessionKey, { askedPreviousDetails: true }, whatsappPhone);
+            } catch (_) {}
+
             checkoutStepGuidance = `\n\n🚨 RE-ORDER CHECKOUT PROTOCOL (PICHLI DETAILS CONFIRMATION):
-- Customer ka cart active hai aur pichli order details hamare pas pehle se mojood hain:
+- Customer ka cart active hai aur pichli order details hamare pas pehle se mojood hain (in range):
   👤 Naam: ${remName}
   📞 Contact Phone: ${remPhone}
   📍 Delivery Address: ${remAddress}
   💵 Payment Method: ${remPayment}
-- 🚨 SAKHT HIDAYAT: Customer se dobaara naye siray se Naam, Phone ya Address ALAG ALAG MAT POOCHEIN!
 - Is turn mein customer ko cart items aur total batayein, aur pichli details confirm karne ka poochein:
   "Aap ka item cart mein add ho gaya hai! 🎉
 
@@ -1327,7 +1391,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
   💵 Payment: ${remPayment}
 
   Kya aap ka yeh order inhi pichli details par confirm kar dein? (Haan / Nahi)"
-- Agar customer "Haan", "Yes", "Same", "Yehi rahyga", "Confirm" kahe, to FORAN 'create_confirmed_order' tool call karke order book karein (customerName: "${remName}", phone: "${remPhone}", deliveryAddress: "${remAddress}", paymentMethod: "${rememberedDetails.paymentMethod || 'COD'}").
+- Agar customer pichli details confirm kare, to pehle mukammal Order Summary card dikhayein aur aakhri confirmation ke baad 'create_confirmed_order' call karein!
 - Agar customer koi detail badalna chahe (maslan "address yeh hai" ya "naam badal do"), to naye address/naam ke sath update karein.`;
         } else if (!updatedDetails.name) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:

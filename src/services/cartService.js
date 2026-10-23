@@ -49,6 +49,18 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
         },
     });
 
+    if (cart) {
+        const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
+        // If an abandoned cart has been idle for more than 30 minutes, expire it so old items don't leak into new orders
+        if (cartAgeMs > 30 * 60 * 1000) {
+            await prisma.cart.update({
+                where: { id: cart.id },
+                data: { status: 'EXPIRED' },
+            }).catch(() => null);
+            cart = null;
+        }
+    }
+
     if (!cart) {
         cart = await prisma.cart.create({
             data: {
