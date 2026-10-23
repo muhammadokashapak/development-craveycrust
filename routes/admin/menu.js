@@ -27,11 +27,13 @@ router.get('/', async (req, res) => {
             });
         }
 
-        const restaurantId = req.user?.restaurantId;
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const targetRestIds = Array.from(new Set([restaurantId, defaultRestId].filter(Boolean)));
         const { category_id, available, search } = req.query;
 
         const where = {
-            ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+            ...(targetRestIds.length > 0 ? { restaurant_id: { in: targetRestIds } } : {}),
         };
 
         if (category_id) {
@@ -244,15 +246,26 @@ router.get('/cards', async (req, res) => {
         }
 
         const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
+
         const settings = await prisma.restaurantSetting.findMany({
             where: {
-                restaurant_id: restaurantId,
+                restaurant_id: { in: Array.from(targetRestIds) },
                 key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
             },
+            orderBy: { updated_at: 'desc' },
         });
 
         const settingsMap = {};
-        settings.forEach(s => { settingsMap[s.key] = s.value; });
+        settings.forEach(s => {
+            if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
+        });
 
         const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
         const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
@@ -283,15 +296,26 @@ router.get('/bot-images', async (req, res) => {
         if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database not available' } });
 
         const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
+
         const settings = await prisma.restaurantSetting.findMany({
             where: {
-                restaurant_id: restaurantId,
+                restaurant_id: { in: Array.from(targetRestIds) },
                 key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
             },
+            orderBy: { updated_at: 'desc' },
         });
 
         const settingsMap = {};
-        settings.forEach(s => { settingsMap[s.key] = s.value; });
+        settings.forEach(s => {
+            if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
+        });
 
         const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
         const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
@@ -314,7 +338,8 @@ router.get('/bot-images', async (req, res) => {
 
 /**
  * POST /api/admin/menu/cards/upload
- * Upload 1 or multiple files (images or PDFs) to add as pages to Menu or Deals
+ * Upload 1 or multiple files (images or PDFs) to add as pages to Menu or Deals.
+ * Strictly preserves existing pages unless mode: 'replace' (single page update) or mode: 'replaceAll' is specified.
  */
 router.post('/cards/upload', (req, res) => {
     cardUpload.array('images', 20)(req, res, async (err) => {
@@ -344,25 +369,64 @@ router.post('/cards/upload', (req, res) => {
             const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
             const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
 
-            // Load existing array
-            const currentSetting = await prisma.restaurantSetting.findUnique({
-                where: { restaurant_id_key: { restaurant_id: restaurantId, key: arrayKey } },
+            const targetRestIds = new Set([restaurantId]);
+            if (defaultRestId) targetRestIds.add(defaultRestId);
+            try {
+                const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+                allActiveRests.forEach(r => targetRestIds.add(r.id));
+            } catch (_) {}
+
+            // Load existing array across active restaurants so previous menu is never lost
+            const currentSettings = await prisma.restaurantSetting.findMany({
+                where: {
+                    restaurant_id: { in: Array.from(targetRestIds) },
+                    key: { in: [arrayKey, singleKey] },
+                },
+                orderBy: { updated_at: 'desc' },
             });
 
             let currentImages = [];
-            if (currentSetting?.value) {
+            const arraySetting = currentSettings.find(s => s.key === arrayKey && s.value);
+            if (arraySetting?.value) {
                 try {
-                    const parsed = JSON.parse(currentSetting.value);
+                    const parsed = JSON.parse(arraySetting.value);
                     if (Array.isArray(parsed)) currentImages = parsed.filter(Boolean);
                 } catch (_) {}
             }
 
-            // Append new files
-            const newUrls = files.map(f => `uploads/menu/${f.filename}`);
-            const updatedImages = [...currentImages, ...newUrls];
+            // Fallback to singleKey if array not set yet
+            if (currentImages.length === 0) {
+                const singleSetting = currentSettings.find(s => s.key === singleKey && s.value);
+                if (singleSetting?.value && singleSetting.value.trim()) {
+                    currentImages = [singleSetting.value.trim()];
+                }
+            }
 
-            const targetRestIds = new Set([restaurantId]);
-            if (defaultRestId) targetRestIds.add(defaultRestId);
+            const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
+            const mode = (req.body?.mode || 'append').toLowerCase();
+            const replaceIndex = req.body?.replaceIndex !== undefined && req.body?.replaceIndex !== ''
+                ? parseInt(req.body.replaceIndex, 10)
+                : -1;
+
+            const newUrls = files.map(f => `uploads/menu/${f.filename}`);
+            let updatedImages = [];
+
+            if (mode === 'replace' && replaceIndex >= 0 && replaceIndex < currentImages.length) {
+                // Replace ONLY the specific card page at replaceIndex, keeping all other pages intact
+                updatedImages = [...currentImages];
+                updatedImages[replaceIndex] = newUrls[0];
+            } else if (mode === 'replaceall') {
+                // Explicitly replace all pages
+                updatedImages = [...newUrls];
+            } else {
+                // Default: Append new files while strictly preserving all existing pages
+                const isDefaultOnly = currentImages.length === 1 && currentImages[0] === defaultAsset;
+                if (isDefaultOnly && (req.body?.keepDefault !== 'true')) {
+                    updatedImages = [...newUrls];
+                } else {
+                    updatedImages = [...currentImages, ...newUrls];
+                }
+            }
 
             for (const tId of targetRestIds) {
                 await prisma.restaurantSetting.upsert({
@@ -385,7 +449,9 @@ router.post('/cards/upload', (req, res) => {
                     type,
                     images: updatedImages,
                     addedCount: newUrls.length,
-                    message: `${newUrls.length} ${type === 'deals' ? 'deal file(s)' : 'menu file(s)'} successfully added!`,
+                    message: mode === 'replace' && replaceIndex >= 0
+                        ? `Page ${replaceIndex + 1} successfully updated!`
+                        : `${newUrls.length} ${type === 'deals' ? 'deal file(s)' : 'menu file(s)'} added successfully (previous pages preserved)!`,
                 },
             });
         } catch (dbErr) {
@@ -450,6 +516,10 @@ router.delete('/cards', async (req, res) => {
 
         const targetRestIds = new Set([restaurantId]);
         if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
 
         for (const tId of targetRestIds) {
             await prisma.restaurantSetting.upsert({
@@ -505,6 +575,10 @@ router.put('/cards/reorder', async (req, res) => {
 
         const targetRestIds = new Set([restaurantId]);
         if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
 
         for (const tId of targetRestIds) {
             await prisma.restaurantSetting.upsert({
@@ -552,6 +626,10 @@ router.post('/cards/reset', async (req, res) => {
 
         const targetRestIds = new Set([restaurantId]);
         if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
 
         for (const tId of targetRestIds) {
             await prisma.restaurantSetting.deleteMany({

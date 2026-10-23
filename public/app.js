@@ -2924,8 +2924,8 @@ if (settingsForm) {
         global_discount_type: setGlobalDiscountType ? setGlobalDiscountType.value : 'PERCENTAGE',
         global_discount_value: setGlobalDiscountValue && setGlobalDiscountValue.value.trim() ? setGlobalDiscountValue.value.trim() : '0',
         global_discount_title: setGlobalDiscountTitle ? setGlobalDiscountTitle.value.trim() : 'Special Discount',
-        menu_image_url: setMenuImageUrl ? setMenuImageUrl.value.trim() : '',
-        deals_image_url: setDealsImageUrl ? setDealsImageUrl.value.trim() : '',
+        ...(setMenuImageUrl ? { menu_image_url: setMenuImageUrl.value.trim() } : {}),
+        ...(setDealsImageUrl ? { deals_image_url: setDealsImageUrl.value.trim() } : {}),
       },
     };
 
@@ -6915,10 +6915,16 @@ function renderMenuCardsGallery() {
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
             </button>
           </div>
-          <button type="button" class="btn btn-danger-outline btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.deleteCardPage(${idx})" title="Remove this page">
-            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            <span>Delete</span>
-          </button>
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.triggerReplaceCardPage(${idx})" title="Change photo for this page without deleting others">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              <span>Replace</span>
+            </button>
+            <button type="button" class="btn btn-danger-outline btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.deleteCardPage(${idx})" title="Remove this page">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              <span>Delete</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -6987,6 +6993,16 @@ window.deleteCardPage = async function(idx) {
   }
 };
 
+let replaceCardTargetIndex = -1;
+window.triggerReplaceCardPage = function(idx) {
+  replaceCardTargetIndex = idx;
+  const replaceInput = document.getElementById('cardsReplaceFileInput');
+  if (replaceInput) {
+    replaceInput.value = '';
+    replaceInput.click();
+  }
+};
+
 function setupMenuCardsStudioHandlers() {
   if (menuCardsState.initialized) return;
   menuCardsState.initialized = true;
@@ -6998,6 +7014,7 @@ function setupMenuCardsStudioHandlers() {
 
   const dropzone = document.getElementById('cardsUploadDropzone');
   const fileInput = document.getElementById('cardsMultiFileInput');
+  const replaceInput = document.getElementById('cardsReplaceFileInput');
   const uploadStatus = document.getElementById('uploadStatusBadge');
   const uploadText = document.getElementById('uploadStatusText');
 
@@ -7046,17 +7063,28 @@ function setupMenuCardsStudioHandlers() {
     });
   }
 
-  async function handleFilesUpload(files) {
+  async function handleFilesUpload(files, options = {}) {
     if (!files || files.length === 0) return;
     const currentTab = menuCardsState.activeTab;
 
+    const mode = options.mode || (document.querySelector('input[name="cardUploadMode"]:checked')?.value || 'append');
+    const replaceIndex = options.replaceIndex !== undefined ? options.replaceIndex : -1;
+
     if (uploadStatus) {
       uploadStatus.classList.remove('hidden');
-      if (uploadText) uploadText.textContent = `Uploading ${files.length} image(s)...`;
+      if (uploadText) {
+        uploadText.textContent = mode === 'replace' && replaceIndex >= 0
+          ? `Updating page ${replaceIndex + 1}...`
+          : `Uploading ${files.length} image(s)...`;
+      }
     }
 
     const formData = new FormData();
     formData.append('type', currentTab);
+    formData.append('mode', mode);
+    if (replaceIndex >= 0) {
+      formData.append('replaceIndex', String(replaceIndex));
+    }
     for (let i = 0; i < files.length; i++) {
       formData.append('images', files[i]);
     }
@@ -7074,7 +7102,7 @@ function setupMenuCardsStudioHandlers() {
         throw new Error(res.ok ? 'Unexpected response from server' : `Server error (${res.status}): ${resText.slice(0, 100)}`);
       }
       if (data.success) {
-        showToast(data.data?.message || `${files.length} file(s) uploaded successfully!`, 'success');
+        showToast(data.data?.message || `${files.length} file(s) processed successfully!`, 'success');
         await loadMenuCardsStudio();
       } else {
         showToast(data.error?.message || 'Upload failed', 'error');
@@ -7084,12 +7112,14 @@ function setupMenuCardsStudioHandlers() {
     } finally {
       if (uploadStatus) uploadStatus.classList.add('hidden');
       if (fileInput) fileInput.value = '';
+      if (replaceInput) replaceInput.value = '';
+      replaceCardTargetIndex = -1;
     }
   }
 
   if (dropzone && fileInput) {
     dropzone.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'INPUT') {
+      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
         fileInput.click();
       }
     });
@@ -7117,6 +7147,14 @@ function setupMenuCardsStudioHandlers() {
       dropzone.style.background = 'var(--bg-card)';
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         handleFilesUpload(e.dataTransfer.files);
+      }
+    });
+  }
+
+  if (replaceInput) {
+    replaceInput.addEventListener('change', () => {
+      if (replaceInput.files && replaceInput.files.length > 0) {
+        handleFilesUpload(replaceInput.files, { mode: 'replace', replaceIndex: replaceCardTargetIndex });
       }
     });
   }

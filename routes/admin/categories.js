@@ -23,19 +23,16 @@ router.get('/', async (req, res) => {
         }
 
         let restaurantId = req.user?.restaurantId || req.user?.restaurant_id;
-        if (!restaurantId) {
-            try {
-                restaurantId = await getDefaultRestaurantId();
-            } catch (_) {}
-        }
+        const defaultRestId = await getDefaultRestaurantId();
+        const targetRestIds = Array.from(new Set([restaurantId, defaultRestId].filter(Boolean)));
 
-        const buildWhere = (rid) => (rid ? { restaurant_id: rid } : {});
+        const buildWhere = (rids) => (rids && rids.length > 0 ? { restaurant_id: { in: rids } } : {});
 
         let categories = [];
         try {
-            // Attempt 1: with restaurant_id and _count
+            // Attempt 1: with targetRestIds and _count
             categories = await prisma.category.findMany({
-                where: buildWhere(restaurantId),
+                where: buildWhere(targetRestIds),
                 orderBy: { sort_order: 'asc' },
                 include: {
                     _count: {

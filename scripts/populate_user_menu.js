@@ -12,7 +12,7 @@ import { getDbClient } from '../src/db/client.js';
 import { getDefaultRestaurantId } from '../src/services/restaurantService.js';
 import { refreshCatalogCache } from '../src/services/catalogCacheService.js';
 
-async function populateFullMenu() {
+async function populateFullMenu(options = {}) {
     console.log('🚀 Starting complete Cravey Crust Google Maps menu population...');
     const prisma = getDbClient();
     if (!prisma) {
@@ -51,27 +51,31 @@ async function populateFullMenu() {
     }
     console.log('✅ Updated restaurant profile & settings.');
 
-    // ── 1. Clean previous menu data ──────────────────────────────────────────
-    console.log('🧹 Cleaning previous menu & deal data...');
-    await prisma.cartItem.deleteMany({
-        where: { cart: { restaurant_id: restaurantId } },
-    });
-    await prisma.dealItem.deleteMany({
-        where: { deal: { restaurant_id: restaurantId } },
-    });
-    await prisma.deal.deleteMany({
-        where: { restaurant_id: restaurantId },
-    });
-    await prisma.menuVariant.deleteMany({
-        where: { menu_item: { restaurant_id: restaurantId } },
-    });
-    await prisma.menuItem.deleteMany({
-        where: { restaurant_id: restaurantId },
-    });
-    await prisma.category.deleteMany({
-        where: { restaurant_id: restaurantId },
-    });
-    console.log('✅ Cleaned previous menu & deals data.');
+    // ── 1. Clean previous menu data (skipped if options.skipClean is set) ─────
+    if (!options.skipClean) {
+        console.log('🧹 Cleaning previous menu & deal data...');
+        await prisma.cartItem.deleteMany({
+            where: { cart: { restaurant_id: restaurantId } },
+        });
+        await prisma.dealItem.deleteMany({
+            where: { deal: { restaurant_id: restaurantId } },
+        });
+        await prisma.deal.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+        await prisma.menuVariant.deleteMany({
+            where: { menu_item: { restaurant_id: restaurantId } },
+        });
+        await prisma.menuItem.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+        await prisma.category.deleteMany({
+            where: { restaurant_id: restaurantId },
+        });
+        console.log('✅ Cleaned previous menu & deals data.');
+    } else {
+        console.log('⏩ Preserving existing menu & deal items (clean skipped).');
+    }
 
     // ── 2. Categories ────────────────────────────────────────────────────────
     const categoriesData = [

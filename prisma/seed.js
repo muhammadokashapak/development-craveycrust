@@ -108,8 +108,14 @@ async function main() {
     console.log(`✅ Restaurant settings: ${settings.length} seeded`);
 
     // ── Seed Complete Live Cravey Crust Menu, Deals, and Categories ──────
-    const { populateFullMenu } = await import('../scripts/populate_user_menu.js');
-    await populateFullMenu();
+    const existingMenuCount = await prisma.menuItem.count();
+    if (existingMenuCount === 0) {
+        console.log('🌱 No menu items found, seeding initial Cravey Crust menu & deals...');
+        const { populateFullMenu } = await import('../scripts/populate_user_menu.js');
+        await populateFullMenu({ skipClean: true });
+    } else {
+        console.log(`ℹ️ Preserving existing ${existingMenuCount} menu items in database (wipe skipped on seed/restart).`);
+    }
 
     console.log('\n🌱 Seed complete!\n');
     console.log('═══════════════════════════════════════════════');
