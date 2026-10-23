@@ -195,10 +195,24 @@ async function runTest() {
 
     // ─── Multi-Order Tests ───────────────────────────────────────────────
     console.log('\n--- MULTI-ORDER FLOW TESTS ---');
-    // Reactivate CC-000011 so customer now has 2 active orders
-    await prisma.order.update({
+    // Ensure CC-000011 exists so customer now has 2 active orders
+    await prisma.order.upsert({
         where: { order_number: 'CC-000011' },
-        data: {
+        create: {
+            restaurant_id: restId,
+            order_number: 'CC-000011',
+            customer_name: 'Smilekashii',
+            phone: cleanPhone,
+            whatsapp_phone: cleanPhone,
+            source_chat_id: chatId,
+            source_session_id: sessionKey,
+            delivery_address: 'Tarlai',
+            payment_method: 'COD',
+            order_status: 'CONFIRMED',
+            subtotal: 999,
+            total: 999,
+        },
+        update: {
             order_status: 'CONFIRMED',
             phone: cleanPhone,
             whatsapp_phone: cleanPhone,
@@ -249,7 +263,51 @@ async function runTest() {
         throw new Error('Turn 8 failed! Expected direct staging for CC-000011.');
     }
 
-    console.log('\n✅ ALL SINGLE & MULTI-ORDER TEST STEPS PASSED SUCCESSFULLY!');
+    // ─── Turn 9 & 10: Explicit User Phrasing ("pichly order mein yeh cheez update kr do") ───
+    // Cancel CC-000011 so only 1 latest active order remains
+    await prisma.order.update({
+        where: { order_number: 'CC-000011' },
+        data: { order_status: 'CANCELLED' },
+    });
+    clearPendingOrderUpdate(sessionKey, cleanPhone);
+
+    console.log('\n[Turn 9] Customer: "pichly order mein yeh cheez update kr do" (with 92 international WhatsApp phone)');
+    const res9 = await checkFastRoute({
+        text: 'pichly order mein yeh cheez update kr do',
+        whatsappPhone: '923199947554', // Different format from DB 03199947554!
+        sessionKey: '240071710126199@lid',
+        chatId: '240071710126199@lid',
+    });
+    console.log('Bot:', res9.reply);
+    if (!res9.handled || !res9.reply.includes('CC-000012') || !res9.reply.includes('kya change karwana chahte hain')) {
+        throw new Error('Turn 9 failed! Expected prompt for field update on active order CC-000012.');
+    }
+
+    console.log('\n[Turn 10] Customer: "Ghauri vip block kr do"');
+    const res10 = await checkFastRoute({
+        text: 'Ghauri vip block kr do',
+        whatsappPhone: '923199947554',
+        sessionKey: '240071710126199@lid',
+        chatId: '240071710126199@lid',
+    });
+    console.log('Bot:', res10.reply);
+    if (!res10.handled || !res10.reply.includes('Ghauri VIP Block') || !res10.reply.includes('UPDATED ORDER SUMMARY') || !res10.reply.includes('Kya aap tamam details check karke is order update ko confirm karte hain?')) {
+        throw new Error('Turn 10 failed! Expected full UPDATED ORDER SUMMARY confirmation card.');
+    }
+
+    console.log('\n[Turn 11] Customer: "Haan"');
+    const res11 = await checkFastRoute({
+        text: 'Haan',
+        whatsappPhone: '923199947554',
+        sessionKey: '240071710126199@lid',
+        chatId: '240071710126199@lid',
+    });
+    console.log('Bot:', res11.reply);
+    if (!res11.handled || !res11.reply.includes('update ho gayi hain') || !res11.reply.includes('Ghauri VIP Block')) {
+        throw new Error('Turn 11 failed! Expected update confirmation.');
+    }
+
+    console.log('\n✅ ALL ORDER UPDATE TEST SCENARIOS PASSED 100%!');
     process.exit(0);
 }
 

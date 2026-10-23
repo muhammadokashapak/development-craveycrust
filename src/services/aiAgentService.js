@@ -92,6 +92,89 @@ TOOL CALL FORMAT:
 If no tool is needed, respond directly with customer reply text in Roman Urdu.
 `;
 
+async function getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone }) {
+    const orConditions = [];
+    const phoneVariants = new Set();
+    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+    if (cleanPhone) {
+        phoneVariants.add(cleanPhone);
+        let b10 = null;
+        if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) b10 = cleanPhone.slice(1);
+        else if (cleanPhone.length === 12 && cleanPhone.startsWith('92')) b10 = cleanPhone.slice(2);
+        else if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) b10 = cleanPhone;
+        if (b10) {
+            phoneVariants.add(b10);
+            phoneVariants.add('0' + b10);
+            phoneVariants.add('92' + b10);
+            phoneVariants.add('+92' + b10);
+        }
+    }
+
+    let dbSession = null;
+    if (sessionKey || chatId) {
+        dbSession = await prisma.conversationSession.findFirst({
+            where: {
+                OR: [
+                    ...(sessionKey ? [{ session_key: sessionKey }, { id: sessionKey }, { chat_id: sessionKey }] : []),
+                    ...(chatId ? [{ chat_id: chatId }, { session_key: chatId }] : []),
+                ],
+            },
+            select: { id: true, chat_id: true, verified_phone: true },
+        }).catch(() => null);
+    }
+
+    if (dbSession) {
+        orConditions.push({ source_session_id: dbSession.id });
+        if (dbSession.chat_id) orConditions.push({ source_chat_id: dbSession.chat_id });
+        if (dbSession.verified_phone) {
+            const vClean = dbSession.verified_phone.replace(/\D/g, '');
+            if (vClean) {
+                phoneVariants.add(vClean);
+                let vb10 = null;
+                if (vClean.length === 11 && vClean.startsWith('0')) vb10 = vClean.slice(1);
+                else if (vClean.length === 12 && vClean.startsWith('92')) vb10 = vClean.slice(2);
+                else if (vClean.length === 10 && vClean.startsWith('3')) vb10 = vClean;
+                if (vb10) {
+                    phoneVariants.add(vb10);
+                    phoneVariants.add('0' + vb10);
+                    phoneVariants.add('92' + vb10);
+                    phoneVariants.add('+92' + vb10);
+                }
+            }
+        }
+    }
+
+    if (sessionKey) {
+        orConditions.push({ source_session_id: sessionKey });
+        orConditions.push({ source_chat_id: sessionKey });
+    }
+    if (chatId && chatId !== sessionKey) {
+        orConditions.push({ source_chat_id: chatId });
+    }
+
+    if (phoneVariants.size > 0) {
+        const pList = Array.from(phoneVariants);
+        for (const p of pList) {
+            orConditions.push({ phone: p });
+            orConditions.push({ whatsapp_phone: p });
+        }
+        const customer = await prisma.customer.findFirst({
+            where: {
+                OR: [
+                    ...pList.map(p => ({ phone: p })),
+                    ...pList.map(p => ({ whatsapp_phone: p })),
+                ],
+            },
+            select: { id: true },
+        }).catch(() => null);
+        if (customer) {
+            orConditions.push({ customer_id: customer.id });
+        }
+    }
+
+    return orConditions;
+}
+
 // ─── Tool Executor (Direct Local Services) ─────────────────────────────────
 async function executeTool(toolName, args, context) {
     const { sessionKey, chatId, whatsappPhone, restId, sock, locationData } = context;
@@ -638,17 +721,7 @@ async function executeTool(toolName, args, context) {
                     }
                     const prisma = getDbClient();
                     if (prisma) {
-                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                        const orConditions = [];
-                        if (sessionKey) {
-                            orConditions.push({ source_session_id: sessionKey });
-                            orConditions.push({ source_chat_id: sessionKey });
-                        }
-                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
-                        if (cleanPhone) {
-                            orConditions.push({ phone: cleanPhone });
-                            orConditions.push({ whatsapp_phone: cleanPhone });
-                        }
+                        const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
                         const recent = orConditions.length > 0 ? await prisma.order.findFirst({
                             where: {
                                 restaurant_id: restId,
@@ -685,17 +758,7 @@ async function executeTool(toolName, args, context) {
                 if (!orderNum) {
                     const prisma = getDbClient();
                     if (prisma) {
-                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                        const orConditions = [];
-                        if (sessionKey) {
-                            orConditions.push({ source_session_id: sessionKey });
-                            orConditions.push({ source_chat_id: sessionKey });
-                        }
-                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
-                        if (cleanPhone) {
-                            orConditions.push({ phone: cleanPhone });
-                            orConditions.push({ whatsapp_phone: cleanPhone });
-                        }
+                        const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
                         const recent = orConditions.length > 0 ? await prisma.order.findFirst({
                             where: {
                                 restaurant_id: restId,
@@ -790,22 +853,12 @@ async function executeTool(toolName, args, context) {
                 if (!orderNum) {
                     const prisma = getDbClient();
                     if (prisma) {
-                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                        const orConditions = [];
-                        if (sessionKey) {
-                            orConditions.push({ source_session_id: sessionKey });
-                            orConditions.push({ source_chat_id: sessionKey });
-                        }
-                        if (chatId && chatId !== sessionKey) orConditions.push({ source_chat_id: chatId });
-                        if (cleanPhone) {
-                            orConditions.push({ phone: cleanPhone });
-                            orConditions.push({ whatsapp_phone: cleanPhone });
-                        }
+                        const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
                         const recent = orConditions.length > 0 ? await prisma.order.findFirst({
                             where: {
                                 restaurant_id: restId,
                                 OR: orConditions,
-                                order_status: { in: ['PENDING', 'CONFIRMED', 'PREPARING'] },
+                                order_status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'] },
                             },
                             orderBy: { created_at: 'desc' },
                             select: { id: true, order_number: true, order_status: true },

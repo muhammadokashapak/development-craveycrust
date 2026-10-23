@@ -241,19 +241,60 @@ export function clearSessionOrderDetails(sessionKey, altKey) {
 // ─── In-Memory Active Placed Order Update Tracker ────────────────────────
 const _pendingOrderUpdate = new Map();
 
+function _extractPhoneAliases(phoneInput) {
+    if (!phoneInput) return [];
+    const digits = String(phoneInput).replace(/\D/g, '');
+    if (!digits) return [];
+    const set = new Set();
+    set.add(digits);
+    let b10 = null;
+    if (digits.length === 11 && digits.startsWith('0')) b10 = digits.slice(1);
+    else if (digits.length === 12 && digits.startsWith('92')) b10 = digits.slice(2);
+    else if (digits.length === 10 && digits.startsWith('3')) b10 = digits;
+    if (b10) {
+        set.add(b10);
+        set.add('0' + b10);
+        set.add('92' + b10);
+    }
+    return Array.from(set);
+}
+
 export function setPendingOrderUpdate(sessionKey, data, altKey) {
     if (!sessionKey && !altKey) return;
-    const primary = sessionKey || altKey;
-    _pendingOrderUpdate.set(primary, data);
-    if (altKey) _pendingOrderUpdate.set(altKey, data);
-    if (sessionKey) _pendingOrderUpdate.set(sessionKey, data);
+    const keys = new Set();
+    if (sessionKey) keys.add(sessionKey);
+    if (altKey) {
+        keys.add(altKey);
+        _extractPhoneAliases(altKey).forEach(k => keys.add(k));
+    }
+    if (data?.orderNumber) {
+        keys.add(data.orderNumber.toUpperCase());
+        keys.add(data.orderNumber.replace(/^CC-0*/i, ''));
+    }
+    if (data?.orderId) keys.add(data.orderId);
+    if (data?.originalPhone) {
+        _extractPhoneAliases(data.originalPhone).forEach(k => keys.add(k));
+    }
+
+    data._storedKeys = Array.from(keys);
+    for (const k of keys) {
+        _pendingOrderUpdate.set(k, data);
+    }
 }
 
 export function getPendingOrderUpdate(sessionKey, altKey) {
     if (!sessionKey && !altKey) return null;
-    const primary = sessionKey || altKey;
-    let entry = _pendingOrderUpdate.get(primary);
-    if (!entry && altKey) entry = _pendingOrderUpdate.get(altKey);
+    let entry = sessionKey ? _pendingOrderUpdate.get(sessionKey) : null;
+    if (!entry && altKey) {
+        entry = _pendingOrderUpdate.get(altKey);
+        if (!entry) {
+            const aliases = _extractPhoneAliases(altKey);
+            for (const alias of aliases) {
+                entry = _pendingOrderUpdate.get(alias);
+                if (entry) break;
+            }
+        }
+    }
     if (!entry) return null;
     // Expire pending modification after 15 minutes
     if (entry.timestamp && Date.now() - entry.timestamp > 15 * 60 * 1000) {
@@ -264,8 +305,17 @@ export function getPendingOrderUpdate(sessionKey, altKey) {
 }
 
 export function clearPendingOrderUpdate(sessionKey, altKey) {
+    const entry = getPendingOrderUpdate(sessionKey, altKey);
+    if (entry?._storedKeys) {
+        for (const k of entry._storedKeys) {
+            _pendingOrderUpdate.delete(k);
+        }
+    }
     if (sessionKey) _pendingOrderUpdate.delete(sessionKey);
     if (altKey) _pendingOrderUpdate.delete(altKey);
+    if (altKey) {
+        _extractPhoneAliases(altKey).forEach(k => _pendingOrderUpdate.delete(k));
+    }
 }
 
 // ─── Pending Cancellation Confirmation Tracker ──────────────────────────

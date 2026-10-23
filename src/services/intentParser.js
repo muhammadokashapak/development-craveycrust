@@ -110,7 +110,9 @@ export function cleanExtractedAddress(text) {
     // 1. Strip leading greetings and honorifics (e.g. "bhai", "aoa", "salam", "ustaad")
     cleaned = cleaned.replace(/^(?:aoa|assalam\s*o?\s*alaikum|salam|helo|hello|hi|hey|suno|oye)?\s*(?:bhai\s*jan|bhaiya|bhai|yaar|yar|bro|janab|paji|ustaad|sir|boss)?\s*/i, '');
 
-    // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
+    // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:", "pichly order ka address", etc.
+    cleaned = cleaned.replace(/^(?:pichl[ae]y?|puran[ae]y?|last|previous|confirmed?)(?:\s+wal[ae]y?)?\s*(?:order|oder)?\s*(?:ka|mein|me|mai|pe|par|per)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)?\s*(?:badal\s*k[e]?|change\s*k[e]?|update\s*k[e]?|rakh\s*k[e]?|kar\s*k[e]?|kr\s*k[e]?)?\s*[:=-]?\s*/i, ' ');
+    cleaned = cleaned.replace(/^(?:order|oder)\s*(?:ka|mein|me|mai|pe|par|per)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)?\s*(?:badal\s*k[e]?|change\s*k[e]?|update\s*k[e]?|rakh\s*k[e]?|kar\s*k[e]?|kr\s*k[e]?)?\s*[:=-]?\s*/i, ' ');
     cleaned = cleaned.replace(/^(?:mera|meri|apna|apni|hamara|humari)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|pata|location|jagah)\s*(?:hai|h|he|hy)?\s*[:=-]?\s*/i, ' ');
 
     // 2b. Strip leading intent phrases like "yahan delivery karni hai", "delivery krni hai", etc.
@@ -1653,29 +1655,119 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
         const activeOrderUpdate = getPendingOrderUpdate(userSessionId, cleanPhone);
 
+        function getPhoneVariations(phoneInput) {
+            if (!phoneInput) return [];
+            const digits = String(phoneInput).replace(/\D/g, '');
+            if (!digits) return [];
+            const set = new Set();
+            set.add(digits);
+            let b10 = null;
+            if (digits.length === 11 && digits.startsWith('0')) b10 = digits.slice(1);
+            else if (digits.length === 12 && digits.startsWith('92')) b10 = digits.slice(2);
+            else if (digits.length === 10 && digits.startsWith('3')) b10 = digits;
+            if (b10) {
+                set.add(b10);
+                set.add('0' + b10);
+                set.add('92' + b10);
+                set.add('+92' + b10);
+            }
+            return Array.from(set);
+        }
+
+        async function buildCustomerOrderOrConditions(prisma) {
+            const orConditions = [];
+            const phoneVariants = new Set();
+            if (cleanPhone) {
+                getPhoneVariations(cleanPhone).forEach(p => phoneVariants.add(p));
+            }
+            if (whatsappPhone) {
+                getPhoneVariations(whatsappPhone).forEach(p => phoneVariants.add(p));
+            }
+
+            // Look up session in DB to get UUID and chat_id and verified_phone
+            let dbSession = null;
+            if (userSessionId || chatId) {
+                dbSession = await prisma.conversationSession.findFirst({
+                    where: {
+                        OR: [
+                            ...(userSessionId ? [{ session_key: userSessionId }, { id: userSessionId }, { chat_id: userSessionId }] : []),
+                            ...(chatId ? [{ chat_id: chatId }, { session_key: chatId }] : []),
+                        ],
+                    },
+                    select: { id: true, chat_id: true, verified_phone: true },
+                }).catch(() => null);
+            }
+
+            if (dbSession) {
+                orConditions.push({ source_session_id: dbSession.id });
+                if (dbSession.chat_id) orConditions.push({ source_chat_id: dbSession.chat_id });
+                if (dbSession.verified_phone) {
+                    getPhoneVariations(dbSession.verified_phone).forEach(p => phoneVariants.add(p));
+                }
+            }
+
+            if (userSessionId) {
+                orConditions.push({ source_session_id: userSessionId });
+                orConditions.push({ source_chat_id: userSessionId });
+            }
+            if (chatId && chatId !== userSessionId) {
+                orConditions.push({ source_chat_id: chatId });
+            }
+
+            // Customer record lookup by phone
+            if (phoneVariants.size > 0) {
+                const pList = Array.from(phoneVariants);
+                for (const p of pList) {
+                    orConditions.push({ phone: p });
+                    orConditions.push({ whatsapp_phone: p });
+                }
+                const customer = await prisma.customer.findFirst({
+                    where: {
+                        OR: [
+                            ...pList.map(p => ({ phone: p })),
+                            ...pList.map(p => ({ whatsapp_phone: p })),
+                        ],
+                    },
+                    select: { id: true },
+                }).catch(() => null);
+                if (customer) {
+                    orConditions.push({ customer_id: customer.id });
+                }
+            }
+
+            return orConditions;
+        }
+
         // Helper: Find all customer's active orders
         async function getCustomerActiveOrders() {
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
             if (!prisma) return [];
 
-            const orConditions = [];
-            if (userSessionId) {
-                orConditions.push({ source_session_id: userSessionId });
-                orConditions.push({ source_chat_id: userSessionId });
-            }
-            if (chatId && chatId !== userSessionId) orConditions.push({ source_chat_id: chatId });
-            if (cleanPhone) {
-                orConditions.push({ phone: cleanPhone });
-                orConditions.push({ whatsapp_phone: cleanPhone });
-            }
+            const orConditions = await buildCustomerOrderOrConditions(prisma);
             if (orConditions.length === 0) return [];
 
             return await prisma.order.findMany({
                 where: {
-                    order_status: { in: ['CONFIRMED', 'PREPARING', 'PENDING', 'OUT_FOR_DELIVERY'] },
+                    order_status: { in: ['CONFIRMED', 'PREPARING', 'READY', 'PENDING', 'OUT_FOR_DELIVERY'] },
                     OR: orConditions,
                 },
+                orderBy: { created_at: 'desc' },
+                include: { order_items: true, customer: true },
+            });
+        }
+
+        // Helper: Find customer's latest order regardless of status (e.g. DELIVERED, CANCELLED)
+        async function getCustomerLatestOrderAnyStatus() {
+            const { getDbClient } = await import('../db/client.js');
+            const prisma = getDbClient();
+            if (!prisma) return null;
+
+            const orConditions = await buildCustomerOrderOrConditions(prisma);
+            if (orConditions.length === 0) return null;
+
+            return await prisma.order.findFirst({
+                where: { OR: orConditions },
                 orderBy: { created_at: 'desc' },
                 include: { order_items: true, customer: true },
             });
@@ -1706,11 +1798,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             }
 
             const allActive = await getCustomerActiveOrders();
-            if (allActive.length === 0) return null;
+            if (allActive.length === 0) {
+                const latestAny = await getCustomerLatestOrderAnyStatus();
+                if (latestAny) {
+                    return { isRecentInactive: true, order: latestAny };
+                }
+                return null;
+            }
             if (allActive.length === 1) return allActive[0];
 
             // If customer explicitly says "pichla / purana / last / aakhri / recent / latest", pick the newest
-            const isExplicitLatest = /\b(?:pichl[ae]y?|puran[ae]y?|last|aakhri|recent|latest)\b/i.test(textInput);
+            const isExplicitLatest = /\b(?:pichl[aeiy]+|puran[aeiy]+|last|aakhri|recent|latest)\b/i.test(textInput);
             if (isExplicitLatest) {
                 return allActive[0];
             }
@@ -1719,8 +1817,33 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return { isMultiple: true, orders: allActive };
         }
 
-        // Sub-case 1: Customer confirms pending order update (e.g. "Nahi bss yehi confirm kr do", "Haan confirm kr do", "Confirm")
-        const isUpdateConfirmKeyword = /^(?:(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?\s*)?(?:confirm|co?n?f[iy]?r[mn]+|haan|han|hn|yes|theek\s*hai?|thk\s*hai?|ok|okay|done|bilkul|kar\s*do|kr\s*do|kardo|krdo|kr\s*du|kar\s*du|update\s*(?:kr\s*do|kar\s*do|kr\s*du|kar\s*du)?)(?:\s+(?:kr\s*do|kar\s*do|kardo|krdo|kr\s*du|kar\s*du|bhai|please|plz))*$/i.test(lower.trim());
+        // Helper: Format single consolidated confirmation summary card
+        function buildOrderUpdateConfirmationCard(update) {
+            const finalName = update.pendingChanges.name || update.originalName || 'Customer';
+            const finalAddress = update.pendingChanges.address || update.originalAddress || 'Registered Address';
+            const rawPhone = update.pendingChanges.phone || update.originalPhone || cleanPhone;
+            const finalPhone = formatPakistaniPhone(rawPhone);
+            const finalPay = update.pendingChanges.paymentMethod || update.originalPaymentMethod || 'COD';
+            const payStr = finalPay === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
+            const totalFormatted = Number(update.total).toLocaleString('en-PK');
+
+            const changedBullets = [];
+            if (update.pendingChanges.address) changedBullets.push(`• Naya Delivery Address: *${update.pendingChanges.address}* 📍`);
+            if (update.pendingChanges.phone) changedBullets.push(`• Naya Contact Phone: *${formatPakistaniPhone(update.pendingChanges.phone)}* 📞`);
+            if (update.pendingChanges.name) changedBullets.push(`• Naya Customer Name: *${update.pendingChanges.name}* 👤`);
+            if (update.pendingChanges.paymentMethod) changedBullets.push(`• Naya Payment Method: *${payStr}* 💵`);
+
+            const changesHeader = changedBullets.length > 0
+                ? `Aap ke order (*#${update.orderNumber}*) mein ye changes note kar li hain:\n${changedBullets.join('\n')}\n\n`
+                : `Aap ke order (*#${update.orderNumber}*) ki details ye hain:\n\n`;
+
+            return `${changesHeader}📋 *UPDATED ORDER SUMMARY*\n• Items: ${update.itemsSummary}\n• Total Bill: Rs. ${totalFormatted} (${payStr})\n• Customer Name: *${finalName}*\n• Contact Phone: *${finalPhone}*\n• Delivery Address: *${finalAddress}*\n• Payment Method: *${payStr}*\n\nKya aap tamam details check karke is order update ko confirm karte hain?\nUpdate karne ke liye *"Confirm"* ya *"Haan"* likhein. (Agar koi aur detail change karni hai to bata dein)`;
+        }
+
+        // Sub-case 1: Customer confirms pending order update (e.g. "Nahi bss yehi confirm kr do", "Haan confirm kr do", "Confirm", "Theek hai", "Haan")
+        const isAffirmativeSequence = /^(?:(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?\s*)?(?:haan?|han|hn|ji|jee|yes|yep|yup|theek|thk|hai|hy|he|ok|okay|done|bilkul|sure|sahi|bhai|janab|sir|please|plz|\s+)+[\s.!?]*$/i.test(lower.trim());
+        const isConfirmOrUpdateWord = /\b(?:confirm|co?n?f[iy]?r[mn]+|update\s*(?:kr\s*do|kar\s*do|kardo|krdo)?|kar\s*do|kr\s*do|kardo|krdo|kar\s*du|kr\s*du)\b/i.test(lower) && !/\b(?:mat|cancel|rok|address|naam|name|phone|number|pata|gali)\b/i.test(lower) && !/^(?:nahi|na|no)\b/i.test(lower.replace(/^(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?/i, ''));
+        const isUpdateConfirmKeyword = isAffirmativeSequence || isConfirmOrUpdateWord;
         if (activeOrderUpdate && isUpdateConfirmKeyword && activeOrderUpdate.pendingChanges && Object.keys(activeOrderUpdate.pendingChanges).length > 0) {
             const cache = await getCatalogCache();
             const { updateOrderDetails } = await import('./orderService.js');
@@ -1739,15 +1862,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (res.success) {
                 clearPendingOrderUpdate(userSessionId, cleanPhone);
                 const finalOrder = res.order;
-                const nameLine = activeOrderUpdate.pendingChanges.name ? `• Customer Name: *${activeOrderUpdate.pendingChanges.name}*\n` : '';
-                const addrLine = activeOrderUpdate.pendingChanges.address ? `• Delivery Address: *${activeOrderUpdate.pendingChanges.address}*\n` : '';
-                const phoneLine = activeOrderUpdate.pendingChanges.phone ? `• Contact Phone: *${activeOrderUpdate.pendingChanges.phone}*\n` : '';
-                const payLine = activeOrderUpdate.pendingChanges.paymentMethod ? `• Payment Method: *${activeOrderUpdate.pendingChanges.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n` : '';
+                const finalName = activeOrderUpdate.pendingChanges.name || activeOrderUpdate.originalName || finalOrder.customer_name;
+                const finalAddr = activeOrderUpdate.pendingChanges.address || activeOrderUpdate.originalAddress || finalOrder.delivery_address;
+                const finalPhone = formatPakistaniPhone(activeOrderUpdate.pendingChanges.phone || activeOrderUpdate.originalPhone || finalOrder.phone);
+                const finalPay = (activeOrderUpdate.pendingChanges.paymentMethod || activeOrderUpdate.originalPaymentMethod || finalOrder.payment_method) === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
 
                 return {
                     handled: true,
                     routeName: 'fast_order_update_confirmed',
-                    reply: `Zabardast! Aap ke order (*#${activeOrderUpdate.orderNumber}*) ki details kamyabi se update ho gayi hain! 🎉\n\n${nameLine}${addrLine}${phoneLine}${payLine}• Items: ${activeOrderUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(finalOrder.total).toLocaleString('en-PK')} (${finalOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nCravey Crust kitchen team aur rider ko update bhej di gayi hai. Mazay se khana enjoy karein! 🍕🛵`,
+                    reply: `Zabardast! Aap ke order (*#${activeOrderUpdate.orderNumber}*) ki details kamyabi se update ho gayi hain! 🎉\n\n• Customer Name: *${finalName}*\n• Contact Phone: *${finalPhone}*\n• Delivery Address: *${finalAddr}* 📍\n• Payment Method: *${finalPay}*\n• Items: ${activeOrderUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(finalOrder.total).toLocaleString('en-PK')}\n\nCravey Crust kitchen team aur rider ko updated details bhej di gayi hain. Mazay se khana enjoy karein! 🍕🛵`,
                 };
             } else {
                 return {
@@ -1812,7 +1935,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             }
 
             // Check if user is asking to change address or name (prompt request)
-            if (/\b(?:address\s*(?:change|badal|update|theek|sahi|galat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|badal|badalna|karna|krna)|pichl[ae]y?\s*order\s*ka\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower)) {
+            if (/\b(?:address\s*(?:change|badal|update|theek|sahi|galat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|badal|badalna|karna|krna)|pichl[aeiy]+\s*order\s*ka\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower)) {
                 activeOrderUpdate.awaitingField = 'address';
                 activeOrderUpdate.timestamp = Date.now();
                 setPendingOrderUpdate(userSessionId, activeOrderUpdate, cleanPhone);
@@ -1865,12 +1988,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 hasNewChange = true;
                 activeOrderUpdate.awaitingField = null;
             } else if (explicitAddrMatch) {
-                newChanges.address = explicitAddrMatch;
+                newChanges.address = formatAddressTitle(explicitAddrMatch);
                 newChanges.location = null;
                 hasNewChange = true;
                 activeOrderUpdate.awaitingField = null;
             } else if ((activeOrderUpdate.awaitingField === 'address' || (!extracted.name && hasAddressSignal)) && cleanedAddr && cleanedAddr.length >= 3 && !/^(?:order|change|update|address|naam|name|pichla|purana|confirm|haan|nahi)[\s.!?]*$/i.test(cleanedAddr)) {
-                newChanges.address = cleanedAddr;
+                newChanges.address = formatAddressTitle(cleanedAddr);
                 newChanges.location = null;
                 hasNewChange = true;
                 activeOrderUpdate.awaitingField = null;
@@ -1893,21 +2016,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 activeOrderUpdate.timestamp = Date.now();
                 setPendingOrderUpdate(userSessionId, activeOrderUpdate, cleanPhone);
 
-                const nameLine = newChanges.name ? `• Naya Customer Name: *${newChanges.name}*\n` : '';
-                const addrLine = newChanges.address ? `• Naya Delivery Address: *${newChanges.address}*\n` : '';
-                const phoneLine = newChanges.phone ? `• Naya Contact Phone: *${newChanges.phone}*\n` : '';
-                const payLine = newChanges.paymentMethod ? `• Naya Payment Method: *${newChanges.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*\n` : '';
-
                 return {
                     handled: true,
                     routeName: 'fast_order_update_staged',
-                    reply: `Theek hai Ji! Aap ke order (*#${activeOrderUpdate.orderNumber}*) mein ye changes note kar li hain:\n\n${nameLine}${addrLine}${phoneLine}${payLine}• Items: ${activeOrderUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(activeOrderUpdate.total).toLocaleString('en-PK')} (${newChanges.paymentMethod || activeOrderUpdate.originalPaymentMethod || 'COD'})\n\nKya aap is order update ko confirm karte hain?\n(Confirm karne ke liye *"Haan"*, *"Confirm"* ya *"Yehi confirm kr do"* likhein)`,
+                    reply: buildOrderUpdateConfirmationCard(activeOrderUpdate),
                 };
             }
         }
 
         // Sub-case 3: Customer inquires about current/previous order details (e.g. "Purany order ka adress kia ha ab?", "Order status kya hai?")
-        const isOrderInquiry = /\b(?:puran[ae]y?|pichl[ae]y?|mera|previous|last)\s*(?:order|oder)?\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam|details|detail|bill|total)\b/i.test(lower) ||
+        const isOrderInquiry = /\b(?:puran[aeiy]+|pichl[aeiy]+|mera|previous|last)\s*(?:order|oder)?\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam|details|detail|bill|total)\b/i.test(lower) ||
             /\b(?:order|oder)\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam)\s*(?:kia|kya|kahan|kidhar)\b/i.test(lower) ||
             /\b(?:mera\s+order\s*(?:kahan|kidhar|status))\b/i.test(lower);
 
@@ -1915,7 +2033,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const allActive = await getCustomerActiveOrders();
             const explicitMatch = lower.match(/(?:#?CC-?(\d{1,6})|\border\s*#?\s*(\d{1,6})\b)/i);
 
-            if (allActive.length > 1 && !explicitMatch && !/\b(?:pichl[ae]y?|puran[ae]y?|last|aakhri|recent|latest)\b/i.test(lower)) {
+            if (allActive.length > 1 && !explicitMatch && !/\b(?:pichl[aeiy]+|puran[aeiy]+|last|aakhri|recent|latest)\b/i.test(lower)) {
                 const listText = allActive.map((ord, idx) => {
                     const itemsStr = (ord.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
                     return `*${idx + 1}. Order #${ord.order_number}* (${ord.order_status})\n   • Delivery Address: *${ord.delivery_address || 'Registered Address'}*\n   • Items: ${itemsStr}\n   • Total Bill: Rs. ${Number(ord.total).toLocaleString('en-PK')}`;
@@ -1929,9 +2047,21 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             }
 
             const targetOrder = await findCustomerTargetOrder();
+            if (targetOrder?.isRecentInactive) {
+                const ord = targetOrder.order;
+                const statusDesc = ord.order_status === 'DELIVERED' ? 'Deliver ho chuka hai' :
+                                   ord.order_status === 'CANCELLED' ? 'Cancel ho chuka hai' : ord.order_status;
+                return {
+                    handled: true,
+                    routeName: 'fast_order_status_inquiry_inactive',
+                    reply: `Ji! Aap ka pichla order (*#${ord.order_number}*) ${statusDesc.toLowerCase()}. Naya order place karne ke liye hamara 'menu' ya 'deals' dekh kar order de sakte hain! 😊`,
+                };
+            }
+
             if (targetOrder && !targetOrder.isMultiple) {
                 const statusDesc = targetOrder.order_status === 'CONFIRMED' ? 'Bhatti mein taiyar ho raha hai' :
                                    targetOrder.order_status === 'PREPARING' ? 'Kitchen mein taiyar ho raha hai' :
+                                   targetOrder.order_status === 'READY' ? 'Taiyar ho chuka hai' :
                                    targetOrder.order_status === 'OUT_FOR_DELIVERY' ? 'Rider delivery ke liye nikal chuka hai' :
                                    targetOrder.order_status === 'DELIVERED' ? 'Deliver ho chuka hai' :
                                    targetOrder.order_status === 'CANCELLED' ? 'Cancel ho chuka hai' : targetOrder.order_status;
@@ -1941,7 +2071,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_order_status_inquiry',
-                    reply: `Ji ${targetOrder.customer_name ? targetOrder.customer_name + ' bhai!' : 'Ji!'} Aap ke order (*#${targetOrder.order_number}*) ki current details ye hain:\n\n• Status: *${targetOrder.order_status}* (${statusDesc})\n• Delivery Address: *${targetOrder.delivery_address || 'Registered Address'}*\n• Customer Name: *${targetOrder.customer_name}*\n• Contact Phone: *${targetOrder.phone}*\n• Items: ${itemsStr}\n• Total Bill: *Rs. ${Number(targetOrder.total).toLocaleString('en-PK')}* (${targetOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nAgar is mein kuch change karwana ho to batayein! 😊`,
+                    reply: `Ji ${targetOrder.customer_name ? targetOrder.customer_name + ' bhai!' : 'Ji!'} Aap ke order (*#${targetOrder.order_number}*) ki current details ye hain:\n\n• Status: *${targetOrder.order_status}* (${statusDesc})\n• Delivery Address: *${targetOrder.delivery_address || 'Registered Address'}*\n• Customer Name: *${targetOrder.customer_name}*\n• Contact Phone: *${formatPakistaniPhone(targetOrder.phone)}*\n• Items: ${itemsStr}\n• Total Bill: *Rs. ${Number(targetOrder.total).toLocaleString('en-PK')}* (${targetOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nAgar is mein kuch change karwana ho to batayein! 😊`,
                 };
             }
         }
@@ -1955,16 +2085,44 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
 
         const hasActiveCartItems = Boolean(cartForUpdateCheck?.items && cartForUpdateCheck.items.length > 0);
-        const isExplicitPreviousOrder = /\b(?:pichl[ae]y?|puran[ae]y?|last|previous|confirmed?)\s*(?:order|oder)\b/i.test(lower);
+        const isExplicitPreviousOrder = /\b(?:pichl[aeiy]+|puran[aeiy]+|last|previous|confirmed?)(?:\s+wal[aeiy]+)?\s*(?:order|oder)?\b/i.test(lower);
+        const hasOrderUpdatePhrase = /\b(?:order|oder)\s*(?:mein|me|mai|pe|par|per|ko)?(?:\s+(?:kuch|yeh|ye|cheez|bhi|koi))*\s*(?:update|change|badal|sahi|theek)\b/i.test(lower) ||
+            /\b(?:update|change|badal)\s*(?:kr\s*do|kar\s*do|kardo|krdo|krna|karna|karein)?\s*(?:pichl[aeiy]+|puran[aeiy]+|last|previous)\s*(?:order|oder)?\b/i.test(lower);
         const hasOrderNumberAndField = /(?:#?CC-?\d{1,6}|\border\s*#?\s*\d{1,6}\b)/i.test(lower) && /\b(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|naam|name|number|phone)\b/i.test(lower);
-        const isGenericChangeIntent = hasOrderNumberAndField ||
+        const isGenericChangeIntent = hasOrderNumberAndField || hasOrderUpdatePhrase ||
             /\b(?:address\s*(?:change|badal|update|theek|sahi|galat|ghalat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|theek|sahi|galat|ghalat)|ad(?:d)?re(?:e)?s(?:s)?\s*(?:nahi|ni)\s*hai|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|ghalat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower) ||
             /\b(?:naam|name)\s*(?:bhi\s*)?(?:change|badal|update)\b/i.test(lower) ||
             /\b(?:number|phone)\s*(?:bhi\s*)?(?:change|badal|update)\b/i.test(lower) ||
             /\b(?:order|oder)\s*(?:update|change|badal)\b/i.test(lower);
 
-        if ((isExplicitPreviousOrder || hasOrderNumberAndField || (!hasActiveCartItems && isGenericChangeIntent)) && userSessionId) {
+        if ((isExplicitPreviousOrder || hasOrderUpdatePhrase || hasOrderNumberAndField || (!hasActiveCartItems && isGenericChangeIntent)) && userSessionId) {
             const targetOrder = await findCustomerTargetOrder();
+
+            if (targetOrder?.isRecentInactive) {
+                const ord = targetOrder.order;
+                if (ord.order_status === 'DELIVERED') {
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_update_already_delivered',
+                        reply: `Aap ka pichla order (*#${ord.order_number}*) deliver ho chuka hai, is liye is mein tabdeeli nahi ho sakti. 😊\n\nAgar naya order place karna chahte hain to 'menu' ya 'deals' likhein!`,
+                    };
+                }
+                if (ord.order_status === 'CANCELLED') {
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_update_already_cancelled',
+                        reply: `Aap ka pichla order (*#${ord.order_number}*) cancel ho chuka hai. Agar naya order place karna chahte hain to 'menu' ya 'deals' likhein! 😊`,
+                    };
+                }
+            }
+
+            if (!targetOrder) {
+                return {
+                    handled: true,
+                    routeName: 'fast_order_update_no_active_order',
+                    reply: `Aap ka koi active order nahi mila jise update kiya ja sake. 😊\n\nAgar naya order place karna chahte hain to 'menu' ya 'deals' likhein!`,
+                };
+            }
 
             if (targetOrder?.isMultiple) {
                 const listText = targetOrder.orders.map((ord, idx) => {
@@ -1986,7 +2144,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 };
             }
 
-            if (targetOrder) {
+            if (targetOrder && !targetOrder.isMultiple && !targetOrder.isRecentInactive) {
                 const itemsStr = (targetOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
 
                 const newUpdate = {
@@ -2017,25 +2175,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     newUpdate.pendingChanges.location = loc;
                     newUpdate.pendingChanges.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
                 } else if (explicitAddrMatch) {
-                    newUpdate.pendingChanges.address = explicitAddrMatch;
+                    newUpdate.pendingChanges.address = formatAddressTitle(explicitAddrMatch);
                 } else if (!extracted.name && hasAddressSignal && cleanedAddr && cleanedAddr.length >= 3 && !/^(?:order|change|update|address|naam|name|pichla|purana)[\s.!?]*$/i.test(cleanedAddr)) {
-                    newUpdate.pendingChanges.address = cleanedAddr;
+                    newUpdate.pendingChanges.address = formatAddressTitle(cleanedAddr);
                 }
                 if (extracted.phone && extracted.phone !== 'SAME_WHATSAPP') {
                     newUpdate.pendingChanges.phone = extracted.phone;
+                }
+                if (extracted.paymentMethod) {
+                    newUpdate.pendingChanges.paymentMethod = extracted.paymentMethod;
                 }
 
                 setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
 
                 if (Object.keys(newUpdate.pendingChanges).length > 0) {
-                    const nameLine = newUpdate.pendingChanges.name ? `• Naya Customer Name: *${newUpdate.pendingChanges.name}*\n` : '';
-                    const addrLine = newUpdate.pendingChanges.address ? `• Naya Delivery Address: *${newUpdate.pendingChanges.address}*\n` : '';
-                    const phoneLine = newUpdate.pendingChanges.phone ? `• Naya Contact Phone: *${newUpdate.pendingChanges.phone}*\n` : '';
-
                     return {
                         handled: true,
                         routeName: 'fast_order_update_staged',
-                        reply: `Theek hai Ji! Aap ke order (*#${newUpdate.orderNumber}*) mein ye changes note kar li hain:\n\n${nameLine}${addrLine}${phoneLine}• Items: ${newUpdate.itemsSummary}\n• Total Bill: Rs. ${Number(newUpdate.total).toLocaleString('en-PK')} (${newUpdate.originalPaymentMethod === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nKya aap is order update ko confirm karte hain?\n(Confirm karne ke liye *"Haan"*, *"Confirm"* ya *"Yehi confirm kr do"* likhein)`,
+                        reply: buildOrderUpdateConfirmationCard(newUpdate),
                     };
                 }
 
@@ -2062,7 +2219,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_order_update_prompt_generic',
-                    reply: `Ji! Aap ke order (*#${newUpdate.orderNumber}*) mein kya change karwana chahenge? (Address, Name, Contact Number ya Payment Method?)`,
+                    reply: `Ji ${targetOrder.customer_name ? targetOrder.customer_name + ' bhai!' : 'Ji!'} Aap ke active order (*#${newUpdate.orderNumber}*) mein kya change karwana chahte hain?\n\n(Aap Delivery Address, Contact Phone, Customer Name ya Payment Method update karwa sakte hain) 📍`,
                 };
             }
         }
