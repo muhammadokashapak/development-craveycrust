@@ -2996,9 +2996,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── 2g. Headcount / Person-based Deal Recommendations (Zero Tokens, e.g. "3 bandon k lie best deal batao pizza ki") ──
-    const personQueryMatch = lower.match(/\b(?:(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch|one|two|three|four|five)\s*(?:bandon|bande|bando|persons?|logon?|logo|people|afraad|members?|friends?|heads?|pax)|(?:for\s*)(\d+)\s*(?:persons?|people|pax)?)\b/i);
-    const isDealOrRecommendQuery = /\b(deal|deals|offer|offers|best|recommend|mangwa|mangwayen|kya\s*(?:loun|lein|mangwayen|h)|chahiye|batao|bataiye|dikhao)\b/i.test(lower);
+    // ── 2g. Headcount / Person-based Deal Recommendations (Zero Tokens, e.g. "3 bandon k lie best deal batao pizza ki", "4 bndo k lie koi pizza deal de") ──
+    const personQueryMatch = lower.match(/\b(?:(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch|one|two|three|four|five)\s*(?:k\s*liye|ke\s*liye|k\s*lie|ke\s*lie|liye|lie)?\s*(?:bandon|bande|bando|banday|bndon|bnde|bndo|bnday|persons?|logon?|logo|log|people|afraad|members?|friends?|heads?|pax)|(?:for\s*)(\d+)\s*(?:persons?|people|pax)?)\b/i);
+    const isDealOrRecommendQuery = /\b(deal|deals|offer|offers|best|recommend|mangwa|mangwayen|kya\s*(?:loun|lein|mangwayen|h)|chahiye|batao|bataiye|dikhao|de|den|kro|karo|bhejo)\b/i.test(lower);
 
     if (personQueryMatch && isDealOrRecommendQuery && !hasCartOrOrderAction) {
         let count = 0;
@@ -3217,11 +3217,22 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     } catch (_) {}
                 }
 
-                if (targetDealsImages.length > 0) {
+                const { haveDealsBeenSent, markDealsSent, getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const dealsAlreadySent = userSessionId ? haveDealsBeenSent(userSessionId, cleanPhone) : false;
+                const isSpecificRecommendation = /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lower);
+
+                if (targetDealsImages.length > 0 && !dealsAlreadySent && !isSpecificRecommendation) {
+                    if (userSessionId) markDealsSent(userSessionId, cleanPhone);
+                    const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
+                    let dealsCaption = '';
+                    if (!currDetails?.address && !currDetails?.location) {
+                        dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                    }
                     return {
                         handled: true,
                         routeName: 'live_deals_image',
-                        reply: '',
+                        reply: dealsCaption,
                         imageUrls: targetDealsImages,
                         imageUrl: targetDealsImages[0],
                     };
@@ -3357,11 +3368,22 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
             }
 
-            if (targetMenuImages.length > 0) {
+            const { haveMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const menuAlreadySent = userSessionId ? haveMenuBeenSent(userSessionId, cleanPhone) : false;
+            const isSpecificMenuFilter = /\b(koi|konsa|konse|best|acha|achi|ache|recommend|pizza|burger|fries|drink)\b/i.test(lower);
+
+            if (targetMenuImages.length > 0 && !menuAlreadySent && !isSpecificMenuFilter) {
+                if (userSessionId) markMenuSent(userSessionId, cleanPhone);
+                const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
+                let menuCaption = '';
+                if (!currDetails?.address && !currDetails?.location) {
+                    menuCaption = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                }
                 return {
                     handled: true,
                     routeName: 'live_menu_images',
-                    reply: '',
+                    reply: menuCaption,
                     imageUrls: targetMenuImages,
                     imageUrl: targetMenuImages[0],
                 };

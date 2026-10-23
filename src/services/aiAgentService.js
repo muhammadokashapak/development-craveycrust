@@ -1046,33 +1046,54 @@ async function runAgentLoop(messages, context) {
         const asksDeals = calledToolNames.includes('get_current_deals') || /\b(deals?|deal|offers?)\b/i.test(lowerEff);
         const asksMenu = calledToolNames.includes('get_menu_categories') || /\b(menu|menue|catalog|card|rate\s*list)\b/i.test(lowerEff);
 
-        if (asksDeals) {
+        const { haveDealsBeenSent, markDealsSent, haveMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
+        const sessionKey = context?.sessionKey;
+        const cleanPhone = (context?.whatsappPhone || '').replace(/\D/g, '');
+        const dealsAlreadySent = sessionKey ? haveDealsBeenSent(sessionKey, cleanPhone) : false;
+        const menuAlreadySent = sessionKey ? haveMenuBeenSent(sessionKey, cleanPhone) : false;
+
+        const isSpecificDealOrHeadcount = /\b(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch)\s*(?:k\s*lie|ke\s*lie|k\s*liye|ke\s*liye|liye|lie)?\s*(?:bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lowerEff) ||
+            /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon)\b/i.test(lowerEff);
+
+        const isGenericDealsRequest = /\b(?:show\s+|send\s+|bhejo\s+|dikhao\s+|dekhao\s+)?deals?[\s.!?]*$/i.test(lowerEff) ||
+            /\b(?:deals?\s*(?:dikhao|dekhao|bhejo|send|flyer|images?|pics?))\b/i.test(lowerEff);
+
+        if (asksDeals && !dealsAlreadySent && !isSpecificDealOrHeadcount && isGenericDealsRequest) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();
-                if (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0) {
-                    aiImageUrls = cache.dealsImageUrls;
-                    aiImageUrl = aiImageUrls[0];
-                    // User strict rule: If deals images exist, send only images without extra text
-                    aiResponse = '';
-                } else if (cache.dealsImageUrl) {
-                    aiImageUrl = cache.dealsImageUrl;
-                    aiImageUrls = [aiImageUrl];
-                    aiResponse = '';
+                let images = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
+                    ? cache.dealsImageUrls
+                    : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
+                if (images.length > 0) {
+                    aiImageUrls = images;
+                    aiImageUrl = images[0];
+                    if (sessionKey) markDealsSent(sessionKey, cleanPhone);
+                    const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
+                    if (!sDetails?.address && !sDetails?.location) {
+                        aiResponse = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                    } else {
+                        aiResponse = '';
+                    }
                 }
             } catch (_) {}
-        } else if (asksMenu) {
+        } else if (asksMenu && !menuAlreadySent && !/\b(koi|konsa|konse|best|acha|achi|ache|pizza|burger|fries|drink)\b/i.test(lowerEff)) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();
-                if (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0) {
-                    aiImageUrls = cache.menuImageUrls;
-                    aiImageUrl = aiImageUrls[0];
-                    aiResponse = '';
-                } else if (cache.menuImageUrl) {
-                    aiImageUrl = cache.menuImageUrl;
-                    aiImageUrls = [aiImageUrl];
-                    aiResponse = '';
+                let images = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
+                    ? cache.menuImageUrls
+                    : (cache.menuImageUrl ? [cache.menuImageUrl] : []);
+                if (images.length > 0) {
+                    aiImageUrls = images;
+                    aiImageUrl = images[0];
+                    if (sessionKey) markMenuSent(sessionKey, cleanPhone);
+                    const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
+                    if (!sDetails?.address && !sDetails?.location) {
+                        aiResponse = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                    } else {
+                        aiResponse = '';
+                    }
                 }
             } catch (_) {}
         }
