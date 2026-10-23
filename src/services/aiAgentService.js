@@ -491,6 +491,11 @@ async function executeTool(toolName, args, context) {
                     return { error: 'CONTACT_NUMBER_REQUIRED', message: 'Valid 11-digit phone number zaroori hai.' };
                 }
 
+                // ── Strict Validation 2a: Phone Confirmation Required ──
+                if (!savedDetails.phoneConfirmed) {
+                    return { error: 'PHONE_CONFIRMATION_REQUIRED', message: 'Order process karne se pehle contact phone number confirm karwana LAZMI hai. Baraye meherbani customer se phone number confirm karwayein.' };
+                }
+
                 // ── Strict Validation 3: Delivery Address (Reject outlet branch) ──
                 let trimmedAddress = (deliveryAddress || savedDetails.address || '').trim();
                 const isRestaurantBranchAddress = /\b(school\s*stop|lehtrar\s*road|lehtrar|fazal\s*e?\s*haq|tarlai\s*kalan|tarlai)\b/i.test(trimmedAddress);
@@ -1291,8 +1296,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     }
     // If name is already known and phone is awaiting confirmation, check if affirmative reply
     if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
-        const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(effectiveText.trim()) ||
-            /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(effectiveText.trim()) ||
+        const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(effectiveText.trim()) ||
             /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(effectiveText.trim());
         if (isAffirmativePhone) {
             updatePayload.phone = (whatsappPhone || '').replace(/\D/g, '');
@@ -1300,11 +1305,11 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         }
     }
     // Lock in phoneConfirmed so that phone confirmation is never asked twice
-    if (sessionDetails.phoneConfirmed || sessionDetails.phone) {
+    if (sessionDetails.phoneConfirmed) {
         updatePayload.phoneConfirmed = true;
     }
     // If name & phone are confirmed and awaiting address (Step 3) or explicit address update provided
-    if (sessionDetails.name && (sessionDetails.phoneConfirmed || sessionDetails.phone) && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
+    if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
         const candidate = cleanExtractedAddress(effectiveText);
         const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim());
         if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
@@ -1377,12 +1382,6 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
     const displayPhone = updatedDetails.phone || (rawCleanPhone.startsWith('923') ? '03' + rawCleanPhone.slice(2) : (rawCleanPhone || '03XXXXXXXXX'));
 
-    // If customer has already provided address or location, auto-confirm phone so Step 2 is not re-asked
-    if ((updatedDetails.address || updatedDetails.location || activeLocation?.formattedAddress) && !updatedDetails.phoneConfirmed) {
-        updatedDetails.phoneConfirmed = true;
-        if (!updatedDetails.phone) updatedDetails.phone = displayPhone;
-    }
-
     let checkoutStepGuidance = '';
     const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
@@ -1420,12 +1419,12 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - Customer ka cart active hai lekin Naam missing hai.
 - Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
 - SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
-        } else if (!updatedDetails.phoneConfirmed && !updatedDetails.phone && !updatedDetails.address && !activeLocation?.formattedAddress && !updatedDetails.location && !updatedDetails.paymentMethod) {
+        } else if (!updatedDetails.phoneConfirmed) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 2 (CONTACT PHONE).
 - Customer ka Naam (${updatedDetails.name}) mil chuka hai.
-- Aap ko is turn mein SIRF rabta phone number confirm karna hai: "Shukriya ${updatedDetails.name}! Rabtay ke liye rider ko yahi WhatsApp number (${displayPhone}) dein ya koi doosra contact number likhna hai?".
-- SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+- Aap ko is turn mein LAZMI rabta phone number confirm karna hai: "Shukriya ${updatedDetails.name}! Rabtay ke liye rider ko yahi WhatsApp number (${displayPhone}) dein ya koi doosra contact number likhna hai? 📞".
+- SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Phone confirmation ke baghair order aage process BILKUL nahi karna!`;
         } else if (!updatedDetails.address && !activeLocation?.formattedAddress) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 3 (DELIVERY ADDRESS).

@@ -73,6 +73,24 @@ export function isDeliveryAreaInquiry(text) {
            /\b(?:delivery|deliver)\s+(?:kahan|kidhar|kis\s*taraf|kdr)\s*(?:hoti|krte|karte|krty|karty|hogi|hoga|hai|he|hy|h)?\b/i.test(lower);
 }
 
+export function formatAddressTitle(addr) {
+    if (!addr || typeof addr !== 'string') return addr;
+    if (/https?:\/\//i.test(addr) || /\[.*\]\(.*\)/.test(addr)) return addr;
+    return addr.split(/\s+/).map(word => {
+        const lower = word.toLowerCase();
+        if (/^(?:vip|dha|pwd|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|cod)$/i.test(lower)) {
+            return lower.toUpperCase();
+        }
+        if (/^(?:phase|block|sector|street|road|chowk|chok|pull|pul|town|colony|scheme|market|plaza|near|nearby)$/i.test(lower)) {
+            return lower.charAt(0).toUpperCase() + lower.slice(1);
+        }
+        if (word.length <= 2 && !/^(?:no|st)$/i.test(lower)) {
+            return word;
+        }
+        return word.charAt(0).toUpperCase() + word.slice(1);
+    }).join(' ');
+}
+
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
     let cleaned = text.trim();
@@ -89,10 +107,17 @@ export function cleanExtractedAddress(text) {
         }
     }
 
-    // 1. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
-    cleaned = cleaned.replace(/^(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|mera\s*ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|ad(?:d)?re(?:e)?s(?:s)?|pata|location)\s*[:=-]?\s*/i, ' ');
+    // 1. Strip leading greetings and honorifics (e.g. "bhai", "aoa", "salam", "ustaad")
+    cleaned = cleaned.replace(/^(?:aoa|assalam\s*o?\s*alaikum|salam|helo|hello|hi|hey|suno|oye)?\s*(?:bhai\s*jan|bhaiya|bhai|yaar|yar|bro|janab|paji|ustaad|sir|boss)?\s*/i, '');
 
-    // 2. Canonical mapping for common typos and delivery areas
+    // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:"
+    cleaned = cleaned.replace(/^(?:mera|meri|apna|apni|hamara|humari)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|pata|location|jagah)\s*(?:hai|h|he|hy)?\s*[:=-]?\s*/i, ' ');
+
+    // 2b. Strip leading intent phrases like "yahan delivery karni hai", "delivery krni hai", etc.
+    cleaned = cleaned.replace(/^(?:yahan|idhar|idr|idher|yhn)?\s*(?:pe|par)?\s*(?:bhi)?\s*(?:delivery|deliver|order|parcel)?\s*(?:karni|krni|karna|krna|karwana|krwana|bhejna|bhej|send)?\s*(?:hai|ha|h|he|hy|chahiye)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
+    cleaned = cleaned.replace(/^(?:delivery|deliver|parcel)\s*(?:karni|krni|karna|krna|karwana|krwana|bhejna)?\s*(?:hai|ha|h|he|hy)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
+
+    // 3. Canonical mapping for common typos and delivery areas
     cleaned = cleaned.replace(/\b(?:khann?a)\s+(?:pull?l?|pool|pol)\b/gi, 'Khana Pull');
     cleaned = cleaned.replace(/\b(?:khana|khanna)\s*pull?l?\b/gi, 'Khana Pull');
     cleaned = cleaned.replace(/\b(?:ghori|gauri|ghawri)\s+town\b/gi, 'Ghauri Town');
@@ -100,23 +125,24 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/\b(?:tarmari|taramary)\b/gi, 'Taramari');
     cleaned = cleaned.replace(/\b(?:sanam\s+chow?k)\b/gi, 'Sanam Chok');
 
-    // 3. Remove conversational filler phrases only when combined with action verbs
+    // 4. Remove conversational filler phrases only when combined with action verbs
     cleaned = cleaned.replace(/\b(?:es|is|yeh|ye|yahi|yehi|wahi|meri|mera|apni)\s+(?:location|pata|address|jagah)\s*(?:par|pe|idhar|bhi)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:par|pe|idhar|idr|yahan|wahan)\s+(?:send|bhej|bhejo|deliver|parcel)\s*(?:kro|karo|krdo|kardo|kar\s*do|kr\s*do)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:ye|yeh|is|mera|apna|sab)?\s*(?:deals?|order|items?)\s*(?:bhi)?\s*(?:parcel|deliver|delivery|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|karo|kro|krna|karna|karein|chahiye)?\s*(?:ha|hai|h|ho)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:khana)\s+(?:bhi\s+)?(?:deliver|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|karo|kro|karein|chahiye)?\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:mein|me|mai|mei|mn|par|pe|ko)\s+(?:delivery\s+)?(?:krni|karni|h|hai|karein)\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|kro|karo|krna|karna)?\s*(?:ha|hai|h)?\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:mein|me|mai|mei|mn|par|pe|ko)\s+(?:delivery\s+)?(?:krni|karni|krna|karna|krwani|karwani|krwana|karwana|h|hai|karein)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhej|bhejo|send|pack)\s*(?:krdo|kardo|kar\s*do|kr\s*do|kr\s*du|kar\s*du|kro|karo|krna|karna|krwana|karwana)?\s*(?:ha|hai|h)?\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:bhej\s*do|kar\s*do|kr\s*do|kar\s*du|kr\s*du|bhejo|kardo|krdo|dein)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:idhar|idr|yahan|wahan)\s+(?:deliver|bhej|kardo|krdo)\b/gi, ' ');
-    cleaned = cleaned.replace(/\b(?:krni|karni|krna|karna)\s+(?:ha|hai|h|he|hy|chahiye)\b/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:krni|karni|krna|karna|krwani|karwani|krwana|karwana)\s+(?:ha|hai|h|he|hy|chahiye)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:deliver|delivery|parcel|bhejna|bhej)\b/gi, ' ');
     cleaned = cleaned.replace(/\b(?:same\s*(?:number|numbr|no|whatsapp)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega))?|easypaisa|easy\s*paisa|ep|cod|cash\s*on\s*delivery|cash|payment\s*(?:method)?)\b/gi, ' ');
 
-    // 4. Strip trailing conversational endings cleanly (e.g. "par karni ha", "karni hai", "par", "ha", etc.)
+    // 5. Strip trailing conversational endings cleanly (e.g. "par karni ha", "mein delivery krni ha", "karni hai", "par", "ha", etc.)
     let prev;
     do {
         prev = cleaned;
+        cleaned = cleaned.replace(/\s+(?:mein|me|mai|pe|par|per|ko)?\s*(?:delivery|deliver|parcel|order)?\s*(?:krni|karni|krna|karna|karwana|krwana|karwani|krwani|krdo|kardo|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|bhejna|bhej|mangwana|mangwa\s*do|send\s*kar\s*do|send\s*kr\s*do|send|pack|available|hoti|hoga|hogi|hosi|ho\s*sakti|ho\s*skty|ho\s*sakta|mil\s*jayegi|karty|krty)?\s*(?:ha|hai|h|he|hy|ho|chahiye|dein|do|please|plz)?\s*\??$/i, '');
         cleaned = cleaned.replace(/\s+(?:par|pe|mein|me|mai|ko|karni|krni|karna|krna|karwana|krwana|karein|kar|kr|bhejo|bhej|bhejna|send|deliver|delivery|parcel|pack|do|dein|karo|kro|krdo|kardo|ha|hai|h|he|hy|ho|chahiye|hoga|hogi|plz|please)$/i, '');
     } while (cleaned !== prev);
 
@@ -172,10 +198,10 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         /\b(?:same|yahi|yehi|yehe|yhe|wahi|isi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do)\b/i.test(lower) ||
         /\b(?:yehe|yehi|yahi|same|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp)\b/i.test(lower) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower);
-    const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed && !knownDetails.phone;
+    const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed;
     const isContextualSamePhone = isAwaitingPhone && (
-        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(lower.trim()) ||
+        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(lower.trim()) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
     );
 
@@ -387,7 +413,8 @@ export function formatLocationDisplay(details) {
             return `[Google Maps par dekhein](https://www.google.com/maps?q=${latM[1]},${lngM[1]})`;
         }
     }
-    return addr;
+    const cleaned = cleanExtractedAddress(addr);
+    return formatAddressTitle(cleaned || addr);
 }
 
 /**
@@ -416,18 +443,15 @@ export async function getNextCheckoutStepResponse({
         };
     }
 
-    // STEP 2: Phone Confirmation (Never re-ask if phone already confirmed, or if customer has already progressed to address/location/payment)
-    const phoneAlreadyEstablished = Boolean(details.phoneConfirmed || details.phone || details.address || details.location || details.paymentMethod || details.extraItemsAnswered || details.awaitingFinalConfirmation);
-    if (!phoneAlreadyEstablished) {
+    // STEP 2: Phone Confirmation (Must be explicitly confirmed by customer)
+    if (!details.phoneConfirmed) {
         return {
             handled: true,
             routeName: 'step_phone_needed',
             step: 'PHONE',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Shukriya ${customerName}! Rabtay ke liye rider ko yahi WhatsApp number (*${displayPhone}*) dein ya koi doosra contact number likhna hai?`,
+                `Shukriya ${customerName}! Rabtay ke liye rider ko yahi WhatsApp number (*${displayPhone}*) dein ya koi doosra contact number likhna hai? 📞`,
         };
-    } else if (!details.phoneConfirmed) {
-        details.phoneConfirmed = true;
     }
 
     // STEP 3: Delivery Address or Location Pin
@@ -2060,13 +2084,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (isAffirmativeLocation) {
                     currDetails.locationConfirmed = true;
                     currDetails.locationAwaitingConfirmation = false;
-                    currDetails.phoneConfirmed = true;
-                    if (!currDetails.phone) currDetails.phone = cleanPhone;
                     updateSessionOrderDetails(userSessionId, {
                         locationConfirmed: true,
                         locationAwaitingConfirmation: false,
-                        phoneConfirmed: true,
-                        phone: currDetails.phone || cleanPhone
                     }, cleanPhone);
 
                     const { getActiveCart } = await import('./cartService.js');
@@ -2140,16 +2160,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const details = getSessionOrderDetails(userSessionId, cleanPhone);
 
-            // Guard: Do not confirm order if customer was specifically answering the Step 2 phone confirmation
-            const isWaitingForPhone = Boolean(details?.name && !details?.phoneConfirmed && !details?.phone && !details?.address && !details?.location && !details?.paymentMethod);
+            // Guard: Do not confirm order if customer has not yet confirmed their phone number
+            const isWaitingForPhone = Boolean(details?.name && !details?.phoneConfirmed);
             if (isWaitingForPhone) {
                 // Let isPhoneAffirmativeWhenAwaiting below handle this affirmative response!
             } else {
                 const { getActiveCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-                const readyToConfirm = details.name && (details.address || details.location) && (details.paymentMethod || 'COD') && (details.phoneConfirmed || details.phone);
-                if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation) {
+                const readyToConfirm = Boolean(details.name && (details.address || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
+                if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
                     const finalPayment = details.paymentMethod || 'COD';
                     const { createOrder } = await import('./orderService.js');
                     const res = await createOrder({
@@ -2627,8 +2647,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
                 // Guard: if phone already confirmed or extraItemsAnswered — skip re-triggering those steps
-                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed && !currDetails.phone) &&
-                    /^(?:(?:g|ji|jee|haan?|han|hn|yes|theek\s*(?:hai|hy)?|ok|done)\s*)?(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)[\s.!?]*$/i.test(lower.trim());
+                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) &&
+                    /^(?:(?:g|ji|jee|haan?|han|hn|yes|theek\s*(?:hai|hy)?|ok|done)\s*)?(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim());
 
                 const extracted = extractCustomerDetails(raw, currDetails);
                 const updatePayload = {};
@@ -2820,12 +2840,25 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
     const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
-        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(lower.trim()) ||
+        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(lower.trim()) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
     );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
     const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai))?$/i.test(lower.trim()) || !!rawPhoneMatch;
+
+    const isPhoneNegativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) &&
+        /^(?:nahi|nahin|na|no|nope|change|badal\s*do|badlo|doosra\s*number|dusra\s*number|koi\s*aur\s*number|different\s*number)[\s.!?]*$/i.test(lower.trim()) && !rawPhoneMatch;
+
+    if (isPhoneNegativeWhenAwaiting && userSessionId) {
+        const customerName = existingDetailsForPhone.name ? existingDetailsForPhone.name.trim() : 'Customer';
+        return {
+            handled: true,
+            routeName: 'awaiting_alternate_phone',
+            step: 'PHONE',
+            reply: `Theek hai ${customerName} bhai! Baraye meherbani rider ke rabtay ke liye apna 11-digit mobile number likh kar bhej dein (maslan: 03001234567). 📞`,
+        };
+    }
 
     if (isSameNumber && userSessionId) {
         try {
@@ -2857,7 +2890,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
             // Active checkout awaiting address: Name & Phone are confirmed, Address is missing
-            if (currDetails?.name && (currDetails?.phoneConfirmed || currDetails?.phone) && !currDetails?.address && !currDetails?.location) {
+            if (currDetails?.name && currDetails?.phoneConfirmed && !currDetails?.address && !currDetails?.location) {
                 const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
                 if (!isNotAddr && wordCount <= 25) {
                     const { extractLocationFromText } = await import('../../utils/location.js');
@@ -2921,7 +2954,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
-            if (currDetails?.name && (currDetails?.phoneConfirmed || currDetails?.phone) && (currDetails?.address || currDetails?.location) && !currDetails?.paymentMethod) {
+            if (currDetails?.name && currDetails?.phoneConfirmed && (currDetails?.address || currDetails?.location) && !currDetails?.paymentMethod) {
                 let selectedPayment = null;
                 if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(lower.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(lower)) {
                     selectedPayment = 'COD';
@@ -3599,11 +3632,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const loc = extractLocationFromText(raw);
             // Strip common prefixes like "location:", "address:", "pata:" etc. and conversational prefixes/suffixes
-            let strippedRaw = raw.replace(/^(?:location|address|pata|meri\s*location|delivery\s*address|mera\s*address)\s*[:=-]?\s*/i, '').trim();
+            let strippedRaw = cleanExtractedAddress(raw) || raw.replace(/^(?:location|address|pata|meri\s*location|delivery\s*address|mera\s*address)\s*[:=-]?\s*/i, '').trim();
             strippedRaw = strippedRaw.replace(/^(?:aoa|salam|assalam\s*o?\s*alaikum|hello|hi|hey)?\s*(?:ustaad|bhai|yaar|yar|bhai\s*jan|janab|paji)?\s*/i, '').trim();
-            strippedRaw = strippedRaw.replace(/\s*(?:mein|me|pe|par)?\s*(?:delivery\s*(?:hogi|hosi|hai|ho\s*sakti|mil\s*jayegi|karty|krty|available|ho\s*skty|h skti)|deliver\s*(?:ho\s*jaye\s*ga|hoga|ho\s*sakta))\s*\??$/i, '').trim();
+            strippedRaw = strippedRaw.replace(/\s*(?:mein|me|pe|par|per)?\s*(?:delivery\s*(?:hogi|hosi|hai|ha|ho\s*sakti|mil\s*jayegi|karty|krty|available|ho\s*skty|h skti|krni|karni|krna|karna|karwana|krwana)|deliver\s*(?:ho\s*jaye\s*ga|hoga|ho\s*sakta))\s*\??$/i, '').trim();
+            const formattedRaw = formatAddressTitle(cleanExtractedAddress(strippedRaw) || strippedRaw);
             // Prefer Google Maps URL (cleaner display), then formattedAddress, then stripped raw
-            const addressStr = loc?.mapUrl || (loc?.formattedAddress && !isStandaloneAreaName ? loc.formattedAddress : strippedRaw) || strippedRaw || raw;
+            const addressStr = loc?.mapUrl || (loc?.formattedAddress && !isStandaloneAreaName ? loc.formattedAddress : formattedRaw) || formattedRaw || strippedRaw || raw;
 
             const isPin = loc?.latitude != null && loc?.longitude != null;
 
