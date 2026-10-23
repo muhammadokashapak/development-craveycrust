@@ -3576,10 +3576,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const loc = extractLocationFromText(raw);
-            // Strip common prefixes like "location:", "address:", "pata:" etc.
-            const strippedRaw = raw.replace(/^(?:location|address|pata|meri\s*location|delivery\s*address|mera\s*address)\s*[:=-]?\s*/i, '').trim();
+            // Strip common prefixes like "location:", "address:", "pata:" etc. and conversational prefixes/suffixes
+            let strippedRaw = raw.replace(/^(?:location|address|pata|meri\s*location|delivery\s*address|mera\s*address)\s*[:=-]?\s*/i, '').trim();
+            strippedRaw = strippedRaw.replace(/^(?:aoa|salam|assalam\s*o?\s*alaikum|hello|hi|hey)?\s*(?:ustaad|bhai|yaar|yar|bhai\s*jan|janab|paji)?\s*/i, '').trim();
+            strippedRaw = strippedRaw.replace(/\s*(?:mein|me|pe|par)?\s*(?:delivery\s*(?:hogi|hosi|hai|ho\s*sakti|mil\s*jayegi|karty|krty|available|ho\s*skty|h skti)|deliver\s*(?:ho\s*jaye\s*ga|hoga|ho\s*sakta))\s*\??$/i, '').trim();
             // Prefer Google Maps URL (cleaner display), then formattedAddress, then stripped raw
-            const addressStr = loc?.mapUrl || loc?.formattedAddress || strippedRaw || raw;
+            const addressStr = loc?.mapUrl || (loc?.formattedAddress && !isStandaloneAreaName ? loc.formattedAddress : strippedRaw) || strippedRaw || raw;
 
             const isPin = loc?.latitude != null && loc?.longitude != null;
 
