@@ -134,8 +134,18 @@ export function cleanExtractedAddress(text) {
 // Comprehensive delivery location indicator regex covering all official delivery areas
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
-// Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+// Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors)
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|tikka|fajita|supreme|tandoori|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+
+/**
+ * Check if candidate string contains any food item, flavor, topping or size.
+ * Prevents pizza flavors (e.g. "Chicken extrme", "Fajita") from ever becoming customer name!
+ */
+export function isFoodOrFlavorWord(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.toLowerCase().trim();
+    return /\b(chicken|extrme|extreme|tikka|fajita|behari|bihari|peri|supreme|cheese|lover|crown|crust|zinger|zegy|burger|pizza|deal|deals|fries|nugget|nuggets|wing|wings|roll|pepsi|coke|sprite|fanta|dew|drink|drinks|sauce|dip|platter|box|shawarma|paratha|flavor|flavour|small|medium|large|party|regular)\b/i.test(clean);
+}
 
 /**
  * Extracts customer checkout details (name, delivery address, payment method, phone) from conversational text.
@@ -158,12 +168,15 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // 2. Phone (including phone updates and validation)
     let invalidPhone = null;
     const phoneUpdateMatch = raw.match(/(?:number|numbr|numebr|no|phone|rabta|contact)\s*(?:mera\s+|apna\s+)?(?:badal\s*(?:k\s*|ke\s*)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|rakh\s*(?:do|dein|lo|du)|likh\s*(?:do|dein|lo|du)|(?:\b(?:hai|he|hy|h)\b)|:|=|-|\s+)\s*([+\d\s-]{7,18})/i);
-    const isExplicitSamePhone = /\b(?:(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|hi|bhi|theek|hai|he|hy|h)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega|rahy\s*ga|rahe\s*ga))?)\b/i.test(lower) ||
-        /\b(?:same|yahi|yehi|wahi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower);
+    const isExplicitSamePhone = /\b(?:(?:same|yahi|yehi|yehe|yhe|wahi|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|hi|bhi|theek|hai|he|hy|h|yar|bhai)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega|rahy\s*ga|rahe\s*ga))?)\b/i.test(lower) ||
+        /\b(?:same|yahi|yehi|yehe|yhe|wahi|isi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do)\b/i.test(lower) ||
+        /\b(?:yehe|yehi|yahi|same|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp)\b/i.test(lower) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower);
     const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed && !knownDetails.phone;
     const isContextualSamePhone = isAwaitingPhone && (
-        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower.trim())
+        /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(lower.trim()) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
     );
 
     if (phoneUpdateMatch) {
@@ -249,7 +262,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
         // Strip trailing action verbs/honorifics
         nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
-        if (NOT_NAME_REGEX.test(nameCandidate)) {
+        if (NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate)) {
             nameCandidate = null;
         }
     }
@@ -266,12 +279,12 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
             direct = direct.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
             direct = direct.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|khan|jee|ji)$/i, '').trim();
             const directMatch = direct.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/);
-            if (directMatch && !NOT_NAME_REGEX.test(directMatch[1])) {
+            if (directMatch && !NOT_NAME_REGEX.test(directMatch[1]) && !isFoodOrFlavorWord(directMatch[1])) {
                 nameCandidate = directMatch[1].trim();
             }
         }
     }
-    if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate)) {
+    if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate) && !isFoodOrFlavorWord(nameCandidate)) {
         const parsedName = nameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
         if (!knownDetails.name) {
             name = parsedName;
@@ -454,21 +467,10 @@ export async function getNextCheckoutStepResponse({
         } catch (_) {}
     }
 
-    // STEP 3b: Location Confirmation (If GPS location shared but not yet confirmed by customer)
-    if (details.location?.latitude != null && details.location?.longitude != null && !details.locationConfirmed) {
-        details.locationAwaitingConfirmation = true;
-        const lat = details.location.latitude;
-        const lng = details.location.longitude;
-        const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
-        return {
-            handled: true,
-            routeName: 'step_location_confirm_needed',
-            step: 'LOCATION_CONFIRM',
-            reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `${customerName ? customerName + ' bhai, ' : ''}aap ki delivery location receive ho gayi hai.\n` +
-                `📍 Location: [Google Maps par apni location dekhein](${mapUrl})\n\n` +
-                `Kya delivery isi location par karwani hai? Baraye meherbani “Haan” ya “Nahi” mein confirm kar dein.`,
-        };
+    // STEP 3b: Location Confirmation (Auto-confirmed for verified GPS pins within delivery radius)
+    if (details.location?.latitude != null && details.location?.longitude != null) {
+        details.locationConfirmed = true;
+        details.locationAwaitingConfirmation = false;
     }
 
     // STEP 4: Payment Method (Guard: Never re-ask if paymentMethod is already set in session)
@@ -1234,8 +1236,8 @@ const FAST_CHITCHAT_REGEX = /\b(?:k[ae]se\s*(?:h[oi]|ho|hain|hen|h|hy)|kaise\s*(
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
 
-const FAST_MENU_REGEX = /^(?:(?:show\s+)?(?:menu|menue|meny|mainu|mainue|catalog|catlog)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhej\s*do|send|btao|batao|list|card|do|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy))[\s.!?]*$/i;
-const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list)\b/i;
+const FAST_MENU_REGEX = /^(?:(?:show\s+)?(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?)[\s.!?]*$/i;
+const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo)\b/i;
 
 // ─── Fast Route Regexes for Store Profile & Settings (Zero AI Tokens) ─────
 const FAST_TIMING_REGEX = /^(timing|timings|time|hours|auqat)[\s!?.]*$/i;
@@ -2667,8 +2669,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     if (loc?.latitude != null && loc?.longitude != null) {
                         updatePayload.location = loc;
                         updatePayload.address = loc.mapUrl || `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
-                        updatePayload.locationConfirmed = false;
-                        updatePayload.locationAwaitingConfirmation = true;
+                        updatePayload.locationConfirmed = true;
+                        updatePayload.locationAwaitingConfirmation = false;
                     } else {
                         updatePayload.address = extracted.address;
                         updatePayload.location = null;
@@ -2772,8 +2774,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     nameCandidate = nameCandidate.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|khan|jee|ji)$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
     const isActionOrStatusWord = /^(?:confirm|comfirm|konfirm|checkout|continue|proceed|next|book|booking|order|final|done|bill|billing|deliver|delivery|address|location|pin|yes|haan|han|jee|ji|theek|thk|ok|okay|no|nahi|nahii|nhi|nh|nai|na|menu|deal|deals|discount|discounts|riayat|sahi|shai|is|am|my|name)$/i.test(nameCandidate);
-    const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
-    if (nameMatch && !isNotNameCandidate && !isQuestionName && userSessionId && wordCount <= 4) {
+    const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|tikka|fajita|supreme|tandoori|same|yahi|yehi|yehe|yhe|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
+    if (nameMatch && !isNotNameCandidate && !isQuestionName && !isFoodOrFlavorWord(nameCandidate) && userSessionId && wordCount <= 4) {
         try {
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
@@ -2814,11 +2816,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
     const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
-        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(lower.trim())
+        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(lower.trim()) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
     );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
-    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|same\s*whatsapp)$/i.test(lower.trim()) || !!rawPhoneMatch;
+    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai))?$/i.test(lower.trim()) || !!rawPhoneMatch;
 
     if (isSameNumber && userSessionId) {
         try {
@@ -2881,8 +2884,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             const details = updateSessionOrderDetails(userSessionId, {
                                 address: cleanedAddr,
                                 location: loc,
-                                locationConfirmed: !isPin,
-                                locationAwaitingConfirmation: isPin,
+                                locationConfirmed: true,
+                                locationAwaitingConfirmation: false,
                             }, cleanPhone);
                             const distText = delCheck.distanceKm != null ? ` (approx. ${delCheck.distanceKm} km door)` : '';
                             return await getNextCheckoutStepResponse({
@@ -2890,7 +2893,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                                 whatsappPhone,
                                 cart,
                                 cache,
-                                introMessage: isPin ? '' : `Delivery address (*${cleanedAddr}*) note kar liya hai${distText}. 📍`,
+                                introMessage: isPin ? `Delivery location pin note kar li hai${distText}. 📍` : `Delivery address (*${cleanedAddr}*) note kar liya hai${distText}. 📍`,
                             });
                         }
                     } else if (raw.trim().length > 0 && raw.trim().length < 3) {
@@ -3216,12 +3219,25 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     };
                 }
 
-                // If NO deals flyers exist (e.g. deleted by admin), deliver textual deals menu directly!
-                const textReply = (isBurger && !isPizza)
-                    ? cache.customerBurgerDeals
-                    : (isPizza && !isBurger)
-                        ? cache.customerPizzaDeals
-                        : (cache.customerAllDeals || 'Hamare paas is waqt deals dastiyab nahi hain.');
+                // If NO deals flyers exist (e.g. deleted by admin), deliver concise textual deals highlights directly!
+                let textReply = '';
+                if (isBurger && !isPizza) {
+                    textReply = cache.customerBurgerDeals;
+                } else if (isPizza && !isBurger) {
+                    textReply = cache.customerPizzaDeals;
+                } else {
+                    textReply = `🔥 *Cravey Crust Popular Deals Highlights:*\n\n` +
+                        `🍕 *Pizza Deals:*\n` +
+                        `• *Pizza Meal For 1* (Rs. 599): Small Pizza + Regular Drink\n` +
+                        `• *Pizza Meal For 2* (Rs. 1,299): Medium Pizza + 2 Drinks\n` +
+                        `• *Pizza Meal For 3* (Rs. 1,599): Large Pizza + 1L Drink\n` +
+                        `• *Deal 1* (Rs. 1,099): 2x Small Pizzas + 2 Drinks\n\n` +
+                        `🍔 *Burger Deals:*\n` +
+                        `• *Burger Meal For 1* (Rs. 599): 1x Zinger + Fries + Drink\n` +
+                        `• *Burger Meal For 2* (Rs. 999): 2x Zingers + Fries + 2 Drinks\n` +
+                        `• *Deal 5* (Rs. 1,099): 3x Zingers + 1L Drink\n\n` +
+                        `In mein se kaunsi deal add karun aap ke liye? 🍕`;
+                }
 
                 return {
                     handled: true,
@@ -3277,14 +3293,21 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── 4. Live Menu Images (<= 8 words) ──
-    const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal'));
+    // ── 4. Live Menu / Card Images (<= 8 words) ──
+    const isCardInquiry = /\b(?:card|cards|flyer|flyers|pamphlet|brochure)\b/i.test(lower);
+    const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal')) || isCardInquiry;
     if (isMenuKeyword && wordCount <= 8 && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
-            const targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
+            let targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
                 ? cache.menuImageUrls
                 : (cache.menuImageUrl ? [cache.menuImageUrl] : []);
+
+            if (targetMenuImages.length === 0 && isCardInquiry) {
+                targetMenuImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
+                    ? cache.dealsImageUrls
+                    : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
+            }
 
             if (targetMenuImages.length > 0) {
                 return {
@@ -3296,11 +3319,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 };
             }
 
-            // If admin deleted all menu page images, deliver the text menu catalog directly!
+            // If images not uploaded, deliver clean concise highlights rather than 35-line wall of text
+            const conciseMenuText = `🍕 *Cravey Crust Menu & Deals Highlights*\n\n` +
+                `• *Classic Pizzas* (Chicken Tikka, Fajita, Supreme) — Small: Rs. 599 | Medium: Rs. 1,299 | Large: Rs. 1,499\n` +
+                `• *Premium Pizzas* (Chicken Extreme, Behari Kebab) — Small: Rs. 699 | Medium: Rs. 1,399 | Large: Rs. 1,799\n` +
+                `• *Burgers* — Zinger: Rs. 499 | Zegy: Rs. 399\n` +
+                `• *Top Deals* — Pizza Meal for 3 (Rs. 1,599) | Deal 1 (Rs. 1,099)\n\n` +
+                `Bataiye in mein se kya cart mein add karun? 😊`;
+
             return {
                 handled: true,
                 routeName: 'live_menu_text',
-                reply: cache.customerMenuCatalog || 'Main Menu dastiyab hai.',
+                reply: conciseMenuText,
                 imageUrls: [],
                 imageUrl: null,
             };
@@ -3510,8 +3540,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const details = updateSessionOrderDetails(userSessionId, {
                 address: addressStr,
                 location: loc,
-                locationConfirmed: !isPin,
-                locationAwaitingConfirmation: isPin,
+                locationConfirmed: true,
+                locationAwaitingConfirmation: false,
             }, cleanPhone);
 
             // Try to get cart

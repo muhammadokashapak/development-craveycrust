@@ -852,7 +852,7 @@ const BACKEND_ERROR_MESSAGES = {
 
 function verifyOutput(aiText, toolResults) {
     // 1. Detect false order confirmation (claims confirm/place ho gaya without genuine CC-XXXXXX order number)
-    const claimsOrderPlaced = /(kamyabi se confirm|confirm ho gaya|place ho gaya|order book ho gaya|order confirm ho chuka)/i.test(aiText);
+    const claimsOrderPlaced = /\b(?:order\s+(?:kamyabi\s+se\s+)?(?:place|book|confirm)\s+ho\s+gaya|order\s+confirm\s+ho\s+chuka|order\s+has\s+been\s+placed)\b/i.test(aiText);
     const hasOrderNumberInText = /CC-[0-9A-Z]{4,}/i.test(aiText);
     const hasRealOrderInTools = toolResults.some(r => r?.orderNumber && /CC-[0-9A-Z]{4,}/i.test(r.orderNumber));
 
@@ -1200,8 +1200,9 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     }
     // If name is already known and phone is awaiting confirmation, check if affirmative reply
     if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
-        const isAffirmativePhone = /^(?:(?:haan?|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|same\s*number|same\s*whatsapp|haan|han|ji|jee|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|theek\s*(?:hai|hy)?|hai|he|hy)?[\s.!?]*$/i.test(effectiveText.trim()) ||
-            /\b(?:same|yahi|yehi|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho)\b/i.test(effectiveText.trim());
+        const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo)\b/i.test(effectiveText.trim()) ||
+            /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(effectiveText.trim());
         if (isAffirmativePhone) {
             updatePayload.phone = (whatsappPhone || '').replace(/\D/g, '');
             updatePayload.phoneConfirmed = true;
@@ -1448,20 +1449,24 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     return aiImageUrl ? { text: cleanFinalReply, imageUrl: aiImageUrl } : cleanFinalReply;
 }
 
-// ─── Per-Chat Sequential Message Processing Queue (Prevents Race Conditions) ───
+// ─── Per-Chat Debounce Buffer & Sequential Message Processing Queue ───
 const _chatMessageQueues = new Map();
+const _chatDebounceBuffers = new Map();
+const _lastProcessedMessages = new Map(); // jid -> { text, timestamp }
 
-/**
- * Process incoming message with per-chat sequential queuing to guarantee
- * that parallel messages from the same chat are never processed concurrently.
- */
-export async function processMessage(params) {
-    const jid = params?.msg?.key?.remoteJid || params?.identity?.chatId || params?.identity?.phone || 'default';
+async function _enqueueMessage(jid, params) {
     const prevPromise = _chatMessageQueues.get(jid) || Promise.resolve();
 
     const currentPromise = prevPromise
         .catch(() => {})
-        .then(() => _processMessageInternal(params))
+        .then(async () => {
+            const reply = await _processMessageInternal(params);
+            _lastProcessedMessages.set(jid, {
+                text: (params?.text || '').trim(),
+                timestamp: Date.now(),
+            });
+            return reply;
+        })
         .finally(() => {
             if (_chatMessageQueues.get(jid) === currentPromise) {
                 _chatMessageQueues.delete(jid);
@@ -1470,6 +1475,64 @@ export async function processMessage(params) {
 
     _chatMessageQueues.set(jid, currentPromise);
     return currentPromise;
+}
+
+/**
+ * Process incoming message with per-chat sequential queuing and debounce buffering:
+ * - Groups rapid split messages (e.g. "Deal kon c hain tmhary oas" + "Pas") into a single prompt.
+ * - Suppresses isolated single-word typo corrections sent within 4s of an already answered query.
+ */
+export async function processMessage(params) {
+    const jid = params?.msg?.key?.remoteJid || params?.identity?.chatId || params?.identity?.phone || 'default';
+    const text = (params?.text || '').trim();
+
+    // 1. Check if this is an immediate, isolated 1-word typo correction (e.g. "pas", "oas")
+    // sent within 4 seconds of a previous question that was already processed
+    const lastProcessed = _lastProcessedMessages.get(jid);
+    const isSingleWordTypoCorrection = Boolean(text && text.split(/\s+/).length === 1 && text.length <= 5 &&
+        /\b(?:pas|oas|ha|han|hn|ji|g|ho|ka|ki|ke|ko|se)\b/i.test(text));
+    if (lastProcessed && (Date.now() - lastProcessed.timestamp < 5000) && isSingleWordTypoCorrection) {
+        console.log(`[AI] Suppressing isolated rapid typo correction "${text}" from ${jid} (already answered prior message).`);
+        return null;
+    }
+
+    // 2. Debounce buffer: if rapid follow-up text messages arrive within 1000ms, combine them
+    const hasMediaOrLocation = Boolean(params?.locationData || params?.msg?.message?.imageMessage);
+    const isFastAction = /^(?:confirm|haan|han|ji|g|yes|no|nahi|cod|easypaisa)$/i.test(text);
+
+    if (!hasMediaOrLocation && !isFastAction && text) {
+        const pending = _chatDebounceBuffers.get(jid);
+        if (pending) {
+            clearTimeout(pending.timer);
+            pending.params.text = `${pending.params.text} ${text}`.trim();
+            pending.deferredResolve(null); // The secondary fragment yields null
+
+            return new Promise((resolve) => {
+                pending.timer = setTimeout(async () => {
+                    _chatDebounceBuffers.delete(jid);
+                    const res = await _enqueueMessage(jid, pending.params);
+                    pending.mainResolve(res);
+                }, 1000);
+                pending.deferredResolve = resolve;
+            });
+        }
+
+        return new Promise((resolve) => {
+            const bufferEntry = {
+                params: { ...params },
+                mainResolve: resolve,
+                deferredResolve: () => {},
+                timer: setTimeout(async () => {
+                    _chatDebounceBuffers.delete(jid);
+                    const res = await _enqueueMessage(jid, bufferEntry.params);
+                    bufferEntry.mainResolve(res);
+                }, 1000),
+            };
+            _chatDebounceBuffers.set(jid, bufferEntry);
+        });
+    }
+
+    return _enqueueMessage(jid, params);
 }
 
 export default processMessage;
