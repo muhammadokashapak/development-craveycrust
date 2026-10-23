@@ -6832,11 +6832,11 @@ function renderMenuCardsGallery() {
   const tabBtnDeals = document.getElementById('tabBtnDeals');
   if (tabBtnMenu && tabBtnDeals) {
     if (isMenu) {
-      tabBtnMenu.className = 'btn btn-primary';
-      tabBtnDeals.className = 'btn btn-secondary';
+      tabBtnMenu.classList.add('active');
+      tabBtnDeals.classList.remove('active');
     } else {
-      tabBtnMenu.className = 'btn btn-secondary';
-      tabBtnDeals.className = 'btn btn-primary';
+      tabBtnMenu.classList.remove('active');
+      tabBtnDeals.classList.add('active');
     }
   }
 
@@ -6858,12 +6858,12 @@ function renderMenuCardsGallery() {
 
   if (images.length === 0) {
     grid.innerHTML = `
-      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; color: var(--fg-muted); min-height: 200px; width: 100%;">
-        <div style="width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 20px;">
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; text-align: center; min-height: 220px; width: 100%;">
+        <div style="width: 52px; height: 52px; border-radius: 50%; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); display: flex; align-items: center; justify-content: center; margin-bottom: 12px; font-size: 24px;">
           ${isMenu ? '📋' : '🎁'}
         </div>
-        <h5 style="margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--fg-main, #fff);">No ${isMenu ? 'menu pages' : 'deals flyers'} uploaded yet</h5>
-        <p style="margin: 0; font-size: 11px; max-width: 250px; color: var(--fg-muted);">Upload images or PDF via the upload box on the right.</p>
+        <h5 style="margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--fg-main, #0f172a);">No ${isMenu ? 'menu pages' : 'deals flyers'} uploaded yet</h5>
+        <p style="margin: 0; font-size: 12px; max-width: 260px; color: var(--fg-muted, #64748b);">Upload high-resolution images or PDF cards using the upload panel on the right.</p>
       </div>
     `;
     return;
@@ -6880,47 +6880,47 @@ function renderMenuCardsGallery() {
     html += `
       <div class="menu-card-item">
         <!-- Card Top Bar -->
-        <div style="padding: 7px 10px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface, rgba(255,255,255,0.03)); border-bottom: 1px solid var(--border-color);">
-          <div style="display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-            <span style="font-size: 12px;">${isMenu ? '📄' : '🎁'}</span>
-            <strong style="font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${label}</strong>
+        <div class="menu-card-topbar">
+          <div class="menu-card-topbar-title">
+            <span style="font-size: 13px;">${isMenu ? '📄' : '🎁'}</span>
+            <span>${label}</span>
           </div>
-          <span class="badge" style="font-size: 9.5px; padding: 1px 5px; border-radius: 8px; background: rgba(255,255,255,0.08); flex-shrink: 0;">${pageNum}/${images.length}</span>
+          <span class="menu-card-page-badge">${pageNum}/${images.length}</span>
         </div>
 
         <!-- Thumbnail (Image or PDF) -->
         ${cleanUrl.toLowerCase().endsWith('.pdf') ? `
-        <div style="position: relative; width: 100%; height: 150px; background: #1e293b; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;" onclick="window.open('${cleanUrl}', '_blank')" title="Click to open PDF document">
-          <svg viewBox="0 0 24 24" width="38" height="38" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-          <div style="font-size: 12px; font-weight: 600; color: #f8fafc;">PDF Document</div>
-          <span style="font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 3px;">Click to view</span>
+        <div class="menu-card-thumb-wrap" onclick="window.open('${cleanUrl}', '_blank')" title="Click to open PDF document">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          <div style="font-size: 12px; font-weight: 600; color: #f8fafc; margin-top: 4px;">PDF Document</div>
+          <span style="font-size: 10px; color: #94a3b8; background: rgba(0,0,0,0.5); padding: 2px 7px; border-radius: 4px; margin-top: 2px;">Click to view</span>
         </div>
         ` : `
-        <div style="position: relative; width: 100%; height: 150px; background: #000; overflow: hidden; cursor: pointer; display: flex; align-items: center; justify-content: center;" onclick="window.openImageLightbox('${cleanUrl}', '${isMenu ? 'Menu' : 'Deals'} ${label}')" title="Click to view full size">
-          <img src="${cleanUrl}" alt="${label}" style="width: 100%; height: 100%; object-fit: contain; transition: transform 0.3s ease;" onerror="this.src='/assets/menu/cravey_crust_main_menu.png'" />
-          <div style="position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); border-radius: 4px; padding: 2px 6px; font-size: 10px; color: #fff; display: flex; align-items: center; gap: 3px;">
-            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <div class="menu-card-thumb-wrap" onclick="window.openImageLightbox('${cleanUrl}', '${isMenu ? 'Menu' : 'Deals'} ${label}')" title="Click to view full size">
+          <img src="${cleanUrl}" alt="${label}" onerror="this.src='/assets/menu/cravey_crust_main_menu.png'" />
+          <div class="menu-card-zoom-chip">
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <span>Zoom</span>
           </div>
         </div>
         `}
 
-        <!-- Card Footer Actions -->
-        <div style="padding: 6px 8px; display: flex; justify-content: space-between; align-items: center; gap: 4px; border-top: 1px solid var(--border-color); background: var(--bg-surface, rgba(255,255,255,0.02));">
-          <div style="display: flex; gap: 3px;">
-            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 6px;" ${isFirst ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, -1)" title="Move page earlier">
-              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+        <!-- Card Footer Actions (Nav + Replace + Delete) -->
+        <div class="menu-card-actions">
+          <div class="card-action-nav-group">
+            <button type="button" class="card-action-nav-btn" ${isFirst ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, -1)" title="Move page earlier">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
-            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 6px;" ${isLast ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, 1)" title="Move page later">
-              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+            <button type="button" class="card-action-nav-btn" ${isLast ? 'disabled' : ''} onclick="window.reorderCardPage(${idx}, 1)" title="Move page later">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
           </div>
-          <div style="display: flex; gap: 4px; align-items: center;">
-            <button type="button" class="btn btn-secondary btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.triggerReplaceCardPage(${idx})" title="Change photo for this page without deleting others">
+          <div style="display: flex; gap: 5px; align-items: center;">
+            <button type="button" class="card-btn-replace" onclick="window.triggerReplaceCardPage(${idx})" title="Change photo for this page without deleting others">
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               <span>Replace</span>
             </button>
-            <button type="button" class="btn btn-danger-outline btn-xs" style="padding: 3px 7px; font-size: 10.5px; display: inline-flex; align-items: center; gap: 3px;" onclick="window.deleteCardPage(${idx})" title="Remove this page">
+            <button type="button" class="card-btn-delete" onclick="window.deleteCardPage(${idx})" title="Remove this page">
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               <span>Delete</span>
             </button>
@@ -7119,9 +7119,8 @@ function setupMenuCardsStudioHandlers() {
 
   if (dropzone && fileInput) {
     dropzone.addEventListener('click', (e) => {
-      if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'LABEL') {
-        fileInput.click();
-      }
+      if (e.target.closest('.upload-mode-segmented-box')) return;
+      fileInput.click();
     });
 
     fileInput.addEventListener('change', () => {
