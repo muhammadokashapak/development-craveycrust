@@ -7,7 +7,7 @@ import { getDbClient } from '../../src/db/client.js';
 import { createMenuItemSchema, updateMenuItemSchema } from '../../src/validators/menuSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
-import { bumpSyncEpoch } from '../../src/services/catalogCacheService.js';
+import { bumpSyncEpoch, refreshCatalogCache } from '../../src/services/catalogCacheService.js';
 import { calculateDiscount, getGlobalDiscountSettings, bulkApplyDiscountToAllItems } from '../../src/services/discountService.js';
 import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
 
@@ -444,6 +444,7 @@ router.post('/cards/upload', (req, res) => {
             }
 
             bumpSyncEpoch();
+            await refreshCatalogCache().catch(() => {});
 
             return res.json({
                 success: true,
@@ -549,6 +550,7 @@ router.delete('/cards', async (req, res) => {
         }
 
         bumpSyncEpoch();
+        await refreshCatalogCache().catch(() => {});
 
         return res.json({
             success: true,
@@ -561,6 +563,66 @@ router.delete('/cards', async (req, res) => {
         });
     } catch (err) {
         console.error('[ADMIN] Delete card error:', err);
+        return res.status(500).json({ success: false, error: { message: err.message } });
+    }
+});
+
+/**
+ * POST /api/admin/menu/cards/save
+ * Explicitly save and apply the active list of Menu or Deals images, update settings, bump epoch, and refresh live cache.
+ */
+router.post('/cards/save', async (req, res) => {
+    try {
+        const prisma = getDbClient();
+        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database unavailable' } });
+
+        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
+        const defaultRestId = await getDefaultRestaurantId();
+        const type = (req.body?.type || 'menu').toLowerCase() === 'deals' ? 'deals' : 'menu';
+        const arrayKey = type === 'deals' ? 'deals_image_urls' : 'menu_image_urls';
+        const singleKey = type === 'deals' ? 'deals_image_url' : 'menu_image_url';
+
+        const newImages = req.body?.images;
+        if (!Array.isArray(newImages)) {
+            return res.status(400).json({ success: false, error: { message: 'Invalid images array' } });
+        }
+
+        const cleaned = newImages.filter(u => typeof u === 'string' && u.trim().length > 0);
+
+        const targetRestIds = new Set([restaurantId]);
+        if (defaultRestId) targetRestIds.add(defaultRestId);
+        try {
+            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
+            allActiveRests.forEach(r => targetRestIds.add(r.id));
+        } catch (_) {}
+
+        for (const tId of targetRestIds) {
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: arrayKey } },
+                update: { value: JSON.stringify(cleaned) },
+                create: { restaurant_id: tId, key: arrayKey, value: JSON.stringify(cleaned) },
+            });
+            await prisma.restaurantSetting.upsert({
+                where: { restaurant_id_key: { restaurant_id: tId, key: singleKey } },
+                update: { value: cleaned[0] || '' },
+                create: { restaurant_id: tId, key: singleKey, value: cleaned[0] || '' },
+            });
+        }
+
+        bumpSyncEpoch();
+        await refreshCatalogCache().catch(e => console.error('[ADMIN] refreshCatalogCache error on save:', e));
+
+        return res.json({
+            success: true,
+            data: {
+                type,
+                images: cleaned,
+                count: cleaned.length,
+                message: `${type === 'deals' ? 'Deals flyers' : 'Menu pages'} successfully saved and live on WhatsApp!`,
+            },
+        });
+    } catch (err) {
+        console.error('[ADMIN] Save cards error:', err);
         return res.status(500).json({ success: false, error: { message: err.message } });
     }
 });
@@ -608,6 +670,7 @@ router.put('/cards/reorder', async (req, res) => {
         }
 
         bumpSyncEpoch();
+        await refreshCatalogCache().catch(() => {});
 
         return res.json({
             success: true,
@@ -652,6 +715,7 @@ router.post('/cards/reset', async (req, res) => {
         }
 
         bumpSyncEpoch();
+        await refreshCatalogCache().catch(() => {});
 
         const defaultAsset = type === 'deals' ? 'assets/menu/cravey_crust_deals_menu.png' : 'assets/menu/cravey_crust_main_menu.png';
 

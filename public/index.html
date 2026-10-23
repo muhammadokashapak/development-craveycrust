@@ -539,6 +539,14 @@
             </div>
           </div>
           <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button id="saveActiveCardsBtn" class="btn btn-primary btn-xs" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 11.5px; font-weight: 700; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.28);">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                <polyline points="7 3 7 8 15 8"></polyline>
+              </svg>
+              <span id="saveActiveCardsBtnText">Save & Apply Changes</span>
+            </button>
             <button id="refreshMenuCardsBtn" class="btn btn-secondary btn-xs" type="button" style="display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; font-size: 11.5px;">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
               <span>Refresh</span>
@@ -596,8 +604,16 @@
                 <span id="gallerySectionIcon" style="font-size: 16px;">📋</span>
                 <h4 id="gallerySectionTitle">Uploaded Menu Pages</h4>
                 <span id="gallerySectionBadge" class="cards-count-badge">0 Pages</span>
+                <span id="cardsLiveSyncPill" class="cards-sync-pill saved" title="Sync status with WhatsApp Bot">
+                  <span class="sync-dot"></span>
+                  <span id="cardsLiveSyncText">Live & Synced</span>
+                </span>
               </div>
-              <div style="display: flex; align-items: center; gap: 4px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <button id="quickSaveCardsBtn" class="btn btn-primary btn-xs" type="button" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; font-size: 11px; font-weight: 600;">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline></svg>
+                  <span>Save</span>
+                </button>
                 <span style="font-size: 11px; color: var(--fg-muted, #64748b); margin-right: 2px;">Scroll:</span>
                 <button type="button" class="card-action-nav-btn" onclick="window.scrollCardsGallery(-1)" title="Scroll left">
                   <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -651,6 +667,21 @@
                   <span class="upload-mode-subnote danger">(Tamam purane pages hat jayenge)</span>
                 </div>
               </label>
+            </div>
+
+            <!-- Explicit Save & Sync Button for Dropzone Panel -->
+            <div class="dropzone-save-action-wrap" onclick="event.stopPropagation()" style="width: 100%; margin-top: 10px;">
+              <button id="dropzoneSaveBtn" class="btn btn-primary" type="button" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 12px; font-size: 12px; font-weight: 700; border-radius: 8px; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.25);">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span id="dropzoneSaveBtnText">Save & Publish to WhatsApp</span>
+              </button>
+              <div id="dropzoneSaveHint" style="font-size: 10.5px; color: var(--fg-muted, #64748b); margin-top: 5px; text-align: center;">
+                Click to save and instantly update live WhatsApp bot
+              </div>
             </div>
 
             <div id="uploadStatusBadge" class="hidden" style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 10px; border-radius: 16px; background: rgba(59, 130, 246, 0.15); color: #2563eb;">

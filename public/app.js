@@ -6754,8 +6754,54 @@ let menuCardsState = {
     isCustomMenu: false,
     isCustomDeals: false,
   },
+  isSaving: false,
+  hasUnsavedChanges: false,
   initialized: false
 };
+
+function updateCardsSyncStatus(isSaved) {
+  menuCardsState.hasUnsavedChanges = !isSaved;
+  const pill = document.getElementById('cardsLiveSyncPill');
+  const text = document.getElementById('cardsLiveSyncText');
+  const saveBtn = document.getElementById('saveActiveCardsBtn');
+  const dropBtn = document.getElementById('dropzoneSaveBtn');
+  const quickBtn = document.getElementById('quickSaveCardsBtn');
+
+  if (pill) {
+    pill.className = `cards-sync-pill ${isSaved ? 'saved' : 'unsaved'}`;
+    pill.title = isSaved ? 'All pages saved & live on WhatsApp Bot' : 'Pending changes! Click Save to publish to WhatsApp Bot';
+  }
+  if (text) {
+    text.textContent = isSaved ? 'Live & Synced' : 'Unsaved Changes';
+  }
+  if (saveBtn) {
+    if (isSaved) {
+      saveBtn.classList.remove('btn-warning');
+      saveBtn.classList.add('btn-primary');
+    } else {
+      saveBtn.classList.remove('btn-primary');
+      saveBtn.classList.add('btn-warning');
+    }
+  }
+  if (quickBtn) {
+    quickBtn.style.display = isSaved ? 'none' : 'inline-flex';
+  }
+}
+
+function updateMenuCardsCounters() {
+  const statMenuCount = document.getElementById('statMenuCount');
+  const statDealsCount = document.getElementById('statDealsCount');
+  const tabBadgeMenu = document.getElementById('tabBadgeMenu');
+  const tabBadgeDeals = document.getElementById('tabBadgeDeals');
+
+  const menuCount = (menuCardsState.data?.menuImages || []).length;
+  const dealsCount = (menuCardsState.data?.dealsImages || []).length;
+
+  if (statMenuCount) statMenuCount.textContent = menuCount;
+  if (statDealsCount) statDealsCount.textContent = dealsCount;
+  if (tabBadgeMenu) tabBadgeMenu.textContent = menuCount;
+  if (tabBadgeDeals) tabBadgeDeals.textContent = dealsCount;
+}
 
 function resolveCardImgSrc(p) {
   if (!p) return '/assets/menu/cravey_crust_main_menu.png';
@@ -6780,26 +6826,14 @@ window.previewFullImage = window.openImageLightbox;
 async function loadMenuCardsStudio() {
   setupMenuCardsStudioHandlers();
 
-  const statMenuCount = document.getElementById('statMenuCount');
-  const statDealsCount = document.getElementById('statDealsCount');
-  const tabBadgeMenu = document.getElementById('tabBadgeMenu');
-  const tabBadgeDeals = document.getElementById('tabBadgeDeals');
-
   try {
     const res = await fetch('/api/admin/menu/cards');
     const data = await res.json();
     if (data.success && data.data) {
       menuCardsState.data = data.data;
-
-      const menuCount = (data.data.menuImages || []).length;
-      const dealsCount = (data.data.dealsImages || []).length;
-
-      if (statMenuCount) statMenuCount.textContent = menuCount;
-      if (statDealsCount) statDealsCount.textContent = dealsCount;
-      if (tabBadgeMenu) tabBadgeMenu.textContent = menuCount;
-      if (tabBadgeDeals) tabBadgeDeals.textContent = dealsCount;
-
+      updateMenuCardsCounters();
       renderMenuCardsGallery();
+      updateCardsSyncStatus(true);
     }
   } catch (err) {
     console.error('[MENU_CARDS] Error loading cards:', err);
@@ -6972,10 +7006,19 @@ window.deleteCardPage = async function(idx) {
   const currentTab = menuCardsState.activeTab;
   const isMenu = currentTab === 'menu';
   const label = isMenu ? `Page ${idx + 1}` : `Flyer ${idx + 1}`;
-  const list = isMenu ? menuCardsState.data.menuImages : menuCardsState.data.dealsImages;
+  const listKey = isMenu ? 'menuImages' : 'dealsImages';
+  const list = menuCardsState.data[listKey] || [];
   const targetUrl = list && list[idx] ? list[idx] : '';
 
   if (!confirm(`Are you sure you want to delete ${label}?`)) return;
+
+  // Immediate UI update: remove card locally from view so user immediately sees the change!
+  if (list && idx >= 0 && idx < list.length) {
+    list.splice(idx, 1);
+  }
+  updateMenuCardsCounters();
+  renderMenuCardsGallery();
+  updateCardsSyncStatus(false);
 
   try {
     const res = await fetch('/api/admin/menu/cards', {
@@ -6985,13 +7028,62 @@ window.deleteCardPage = async function(idx) {
     });
     const data = await res.json();
     if (data.success) {
-      showToast(`${label} deleted successfully`, 'success');
+      showToast(`${label} deleted and WhatsApp bot updated!`, 'success');
+      updateCardsSyncStatus(true);
       await loadMenuCardsStudio();
     } else {
       showToast(data.error?.message || 'Failed to delete', 'error');
+      await loadMenuCardsStudio();
     }
   } catch (err) {
     showToast('Delete error: ' + err.message, 'error');
+    await loadMenuCardsStudio();
+  }
+};
+
+window.saveCurrentCardsStudio = async function() {
+  if (menuCardsState.isSaving) return;
+  menuCardsState.isSaving = true;
+
+  const currentTab = menuCardsState.activeTab;
+  const isMenu = currentTab === 'menu';
+  const list = isMenu ? (menuCardsState.data.menuImages || []) : (menuCardsState.data.dealsImages || []);
+
+  const saveBtn = document.getElementById('saveActiveCardsBtn');
+  const saveBtnText = document.getElementById('saveActiveCardsBtnText');
+  const dropBtn = document.getElementById('dropzoneSaveBtn');
+  const dropBtnText = document.getElementById('dropzoneSaveBtnText');
+  const quickBtn = document.getElementById('quickSaveCardsBtn');
+
+  if (saveBtnText) saveBtnText.textContent = 'Saving & Syncing...';
+  if (dropBtnText) dropBtnText.textContent = 'Saving to WhatsApp...';
+  if (saveBtn) saveBtn.disabled = true;
+  if (dropBtn) dropBtn.disabled = true;
+  if (quickBtn) quickBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/admin/menu/cards/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: currentTab, images: list })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`✅ ${isMenu ? 'Menu' : 'Deals'} cards saved and live on WhatsApp bot!`, 'success');
+      updateCardsSyncStatus(true);
+      await loadMenuCardsStudio();
+    } else {
+      showToast(data.error?.message || 'Failed to save cards', 'error');
+    }
+  } catch (err) {
+    showToast('Save error: ' + err.message, 'error');
+  } finally {
+    menuCardsState.isSaving = false;
+    if (saveBtnText) saveBtnText.textContent = 'Save & Apply Changes';
+    if (dropBtnText) dropBtnText.textContent = 'Save & Publish to WhatsApp';
+    if (saveBtn) saveBtn.disabled = false;
+    if (dropBtn) dropBtn.disabled = false;
+    if (quickBtn) quickBtn.disabled = false;
   }
 };
 
@@ -7013,12 +7105,28 @@ function setupMenuCardsStudioHandlers() {
   const tabBtnDeals = document.getElementById('tabBtnDeals');
   const refreshBtn = document.getElementById('refreshMenuCardsBtn');
   const resetBtn = document.getElementById('resetActiveCardsBtn');
+  const saveBtn = document.getElementById('saveActiveCardsBtn');
+  const dropzoneSaveBtn = document.getElementById('dropzoneSaveBtn');
+  const quickSaveBtn = document.getElementById('quickSaveCardsBtn');
 
   const dropzone = document.getElementById('cardsUploadDropzone');
   const fileInput = document.getElementById('cardsMultiFileInput');
   const replaceInput = document.getElementById('cardsReplaceFileInput');
   const uploadStatus = document.getElementById('uploadStatusBadge');
   const uploadText = document.getElementById('uploadStatusText');
+
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => window.saveCurrentCardsStudio());
+  }
+  if (dropzoneSaveBtn) {
+    dropzoneSaveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.saveCurrentCardsStudio();
+    });
+  }
+  if (quickSaveBtn) {
+    quickSaveBtn.addEventListener('click', () => window.saveCurrentCardsStudio());
+  }
 
   if (tabBtnMenu) {
     tabBtnMenu.addEventListener('click', () => {

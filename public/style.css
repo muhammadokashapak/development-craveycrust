@@ -9700,6 +9700,64 @@ body.is-superadmin[data-theme="dark"] .chat-export-menu-item:hover svg {
   color: #dc2626 !important;
 }
 
+/* ── Live Sync Status Pill & Save Action Wrap ── */
+.cards-sync-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 2px 8px !important;
+  border-radius: 12px !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  line-height: 1 !important;
+  transition: all 0.25s ease !important;
+}
+
+.cards-sync-pill.saved {
+  background: rgba(34, 197, 94, 0.12) !important;
+  color: #16a34a !important;
+  border: 1px solid rgba(34, 197, 94, 0.25) !important;
+}
+
+[data-theme="dark"] .cards-sync-pill.saved {
+  color: #4ade80 !important;
+  background: rgba(34, 197, 94, 0.18) !important;
+  border-color: rgba(34, 197, 94, 0.35) !important;
+}
+
+.cards-sync-pill.unsaved {
+  background: rgba(234, 179, 8, 0.15) !important;
+  color: #b45309 !important;
+  border: 1px solid rgba(234, 179, 8, 0.35) !important;
+  animation: pulse-sync 1.8s ease-in-out infinite !important;
+}
+
+[data-theme="dark"] .cards-sync-pill.unsaved {
+  color: #facc15 !important;
+  background: rgba(234, 179, 8, 0.22) !important;
+}
+
+.cards-sync-pill .sync-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: currentColor !important;
+}
+
+@keyframes pulse-sync {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(1.05); }
+}
+
+.dropzone-save-action-wrap button {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.dropzone-save-action-wrap button:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.35) !important;
+}
+
 @media (max-width: 900px) {
   #cardsStudioWorkspace {
     flex-direction: column-reverse !important;
@@ -9710,6 +9768,7 @@ body.is-superadmin[data-theme="dark"] .chat-export-menu-item:hover svg {
     min-height: 220px !important;
   }
 }
+
 
 
 
