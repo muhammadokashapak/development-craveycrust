@@ -1239,6 +1239,10 @@ const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam
 const FAST_MENU_REGEX = /^(?:(?:show\s+)?(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?)[\s.!?]*$/i;
 const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo)\b/i;
 
+const FAST_DEALS_REGEX = /^(?:(?:show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
+const FAST_DEALS_CONTAINS = /\b(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|deal\s*list|deals?\s*list|deal\s*card|deals?\s*card|deal\s*flyer|deals?\s*flyer|deals?\s*dikhao|deals?\s*bhejo|deal\s*bhejo|deal\s*chahiye|deals?\s*chahiye)\b/i;
+
+
 // ─── Fast Route Regexes for Store Profile & Settings (Zero AI Tokens) ─────
 const FAST_TIMING_REGEX = /^(timing|timings|time|hours|auqat)[\s!?.]*$/i;
 const FAST_TIMING_CONTAINS = /\b(timing\s*kya\s*hai|timings\s*kya\s*hain?|kab\s*(?:open|close|khulta|band)|kitne\s*baje\s*(?:open|close|khulta|band)|open\s*kab|close\s*kab|open\s*hai|closed?\s*hai|opening\s*time|closing\s*time|shop\s*timings?|restaurant\s*timings?|outlet\s*timings?|store\s*timings?|kya\s*time\s*hai)\b/i;
@@ -3159,13 +3163,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── 3. Live Deals (General Deals List) (<= 7 words, no deal number, no order action) ──
-    const isDealsKeyword = /\b(deals?|burger deals?|pi[z]+a deals?|offers?)\b/i.test(lower);
+    // ── 3. Live Deals (Strict 3-Tier Image & Text Rules) ──
+    const isDealsKeyword = FAST_DEALS_REGEX.test(lower) || FAST_DEALS_CONTAINS.test(lower);
     const hasSpecificDealNumber = /\b(deal\s*#?\d|meal\s*#?\d)\b/i.test(lower);
-    // Also handle "sirf X deals" prefix ("sirf" = only)
-    const isSirfDeals = /\b(sirf|only|just|bas)\b/i.test(lower) && isDealsKeyword;
 
-    if (isDealsKeyword && wordCount <= 8 && !hasSpecificDealNumber && !hasCartOrOrderAction) {
+    if (isDealsKeyword && wordCount <= 15 && !hasSpecificDealNumber && !hasCartOrOrderAction) {
         // Guard: Do not interrupt active checkout if customer has active cart items and is in middle of details/confirmation steps
         let isActivelyCheckingOut = false;
         if (userSessionId) {
@@ -3177,7 +3179,6 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const cache = await getCatalogCache();
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                 if (cart?.items?.length > 0 && (currDetails?.name || currDetails?.address || currDetails?.location || currDetails?.paymentMethod || currDetails?.phone)) {
-                    // Only show deals if the user is explicitly requesting the deals menu
                     const isExplicitDealsRequest = /^(?:show\s+)?(?:deals?|burger deals?|pi[z]+a deals?)[\s.!?]*$/i.test(raw) || /\b(?:dikhao|dekhao|bhejo|list|options)\b/i.test(lower);
                     if (!isExplicitDealsRequest) {
                         isActivelyCheckingOut = true;
@@ -3189,24 +3190,31 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         if (!isActivelyCheckingOut) {
             try {
                 const cache = await getCatalogCache();
-                const { getActiveCategories } = await import('./menuService.js');
-                const { getDefaultRestaurantId } = await import('./restaurantService.js');
-                const restId = await getDefaultRestaurantId().catch(() => null);
-                const allCats = await getActiveCategories(restId).catch(() => []);
 
+                // ── Tier 1: Check Deals Images (All pages must be sent, NO text dump) ──
                 let targetDealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
                     ? cache.dealsImageUrls
                     : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
 
-                const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
-                const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
-
-                if (isBurger && !isPizza) {
-                    const bCat = allCats.find(c => /burger\s*deals?/i.test(c.name));
-                    if (bCat?.image_url) targetDealsImages = [bCat.image_url];
-                } else if (isPizza && !isBurger) {
-                    const pCat = allCats.find(c => /pi[z]+a\s*deals?/i.test(c.name));
-                    if (pCat?.image_url) targetDealsImages = [pCat.image_url];
+                if (targetDealsImages.length === 0) {
+                    try {
+                        const { getDbClient } = await import('../db/client.js');
+                        const prisma = getDbClient();
+                        if (prisma) {
+                            const s = await prisma.restaurantSetting.findFirst({
+                                where: { key: { in: ['deals_image_urls', 'deals_image_url'] } },
+                                orderBy: { updated_at: 'desc' },
+                            });
+                            if (s?.value) {
+                                try {
+                                    const parsed = JSON.parse(s.value);
+                                    if (Array.isArray(parsed) && parsed.length > 0) targetDealsImages = parsed.filter(Boolean);
+                                } catch (_) {
+                                    if (s.value.trim()) targetDealsImages = [s.value.trim()];
+                                }
+                            }
+                        }
+                    } catch (_) {}
                 }
 
                 if (targetDealsImages.length > 0) {
@@ -3219,30 +3227,46 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     };
                 }
 
-                // If NO deals flyers exist (e.g. deleted by admin), deliver concise textual deals highlights directly!
-                let textReply = '';
-                if (isBurger && !isPizza) {
-                    textReply = cache.customerBurgerDeals;
-                } else if (isPizza && !isBurger) {
-                    textReply = cache.customerPizzaDeals;
-                } else {
-                    textReply = `🔥 *Cravey Crust Popular Deals Highlights:*\n\n` +
-                        `🍕 *Pizza Deals:*\n` +
-                        `• *Pizza Meal For 1* (Rs. 599): Small Pizza + Regular Drink\n` +
-                        `• *Pizza Meal For 2* (Rs. 1,299): Medium Pizza + 2 Drinks\n` +
-                        `• *Pizza Meal For 3* (Rs. 1,599): Large Pizza + 1L Drink\n` +
-                        `• *Deal 1* (Rs. 1,099): 2x Small Pizzas + 2 Drinks\n\n` +
-                        `🍔 *Burger Deals:*\n` +
-                        `• *Burger Meal For 1* (Rs. 599): 1x Zinger + Fries + Drink\n` +
-                        `• *Burger Meal For 2* (Rs. 999): 2x Zingers + Fries + 2 Drinks\n` +
-                        `• *Deal 5* (Rs. 1,099): 3x Zingers + 1L Drink\n\n` +
-                        `In mein se kaunsi deal add karun aap ke liye? 🍕`;
+                // ── Tier 2: No images, check if active deals exist in database ──
+                const activeDeals = Array.isArray(cache.rawDeals)
+                    ? cache.rawDeals.filter(d => d.is_active !== false)
+                    : [];
+
+                if (activeDeals.length > 0) {
+                    const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
+                    const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
+                    let textReply = '';
+
+                    if (isBurger && !isPizza && cache.customerBurgerDeals && !cache.customerBurgerDeals.includes('available nahi')) {
+                        textReply = cache.customerBurgerDeals;
+                    } else if (isPizza && !isBurger && cache.customerPizzaDeals && !cache.customerPizzaDeals.includes('available nahi')) {
+                        textReply = cache.customerPizzaDeals;
+                    } else {
+                        const dealLines = activeDeals.slice(0, 8).map(d => {
+                            const items = (d.deal_items || []).map(di => {
+                                const q = di.quantity > 1 ? `${di.quantity}x ` : '';
+                                return `${q}${di.menu_item?.name || 'Item'}`;
+                            }).join(', ');
+                            const desc = items ? `\n   _${items}_` : (d.description ? `\n   _${d.description}_` : '');
+                            return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
+                        });
+                        textReply = `🔥 *Cravey Crust Live Deals:*\n\n${dealLines.join('\n\n')}\n\nIn mein se kaunsi deal add karun aap ke liye? 🍕`;
+                    }
+
+                    return {
+                        handled: true,
+                        routeName: 'live_deals_text',
+                        reply: textReply,
+                        imageUrls: [],
+                        imageUrl: null,
+                    };
                 }
 
+                // ── Tier 3: Both images and deals section are empty ──
                 return {
                     handled: true,
-                    routeName: 'live_deals_text',
-                    reply: textReply,
+                    routeName: 'live_deals_none',
+                    reply: 'Maazrat! Hamare paas currently koi deal nahi hai.',
                     imageUrls: [],
                     imageUrl: null,
                 };
@@ -3293,15 +3317,39 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── 4. Live Menu / Card Images (<= 8 words) ──
+    // ── 4. Live Menu / Card Images (Strict 3-Tier Image & Text Rules) ──
     const isCardInquiry = /\b(?:card|cards|flyer|flyers|pamphlet|brochure)\b/i.test(lower);
     const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal')) || isCardInquiry;
-    if (isMenuKeyword && wordCount <= 8 && !hasCartOrOrderAction) {
+
+    if (isMenuKeyword && wordCount <= 15 && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
+
+            // ── Tier 1: Check Menu Images (All pages must be sent, NO text dump) ──
             let targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
                 ? cache.menuImageUrls
                 : (cache.menuImageUrl ? [cache.menuImageUrl] : []);
+
+            if (targetMenuImages.length === 0) {
+                try {
+                    const { getDbClient } = await import('../db/client.js');
+                    const prisma = getDbClient();
+                    if (prisma) {
+                        const s = await prisma.restaurantSetting.findFirst({
+                            where: { key: { in: ['menu_image_urls', 'menu_image_url'] } },
+                            orderBy: { updated_at: 'desc' },
+                        });
+                        if (s?.value) {
+                            try {
+                                const parsed = JSON.parse(s.value);
+                                if (Array.isArray(parsed) && parsed.length > 0) targetMenuImages = parsed.filter(Boolean);
+                            } catch (_) {
+                                if (s.value.trim()) targetMenuImages = [s.value.trim()];
+                            }
+                        }
+                    }
+                } catch (_) {}
+            }
 
             if (targetMenuImages.length === 0 && isCardInquiry) {
                 targetMenuImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
@@ -3319,18 +3367,29 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 };
             }
 
-            // If images not uploaded, deliver clean concise highlights rather than 35-line wall of text
-            const conciseMenuText = `🍕 *Cravey Crust Menu & Deals Highlights*\n\n` +
-                `• *Classic Pizzas* (Chicken Tikka, Fajita, Supreme) — Small: Rs. 599 | Medium: Rs. 1,299 | Large: Rs. 1,499\n` +
-                `• *Premium Pizzas* (Chicken Extreme, Behari Kebab) — Small: Rs. 699 | Medium: Rs. 1,399 | Large: Rs. 1,799\n` +
-                `• *Burgers* — Zinger: Rs. 499 | Zegy: Rs. 399\n` +
-                `• *Top Deals* — Pizza Meal for 3 (Rs. 1,599) | Deal 1 (Rs. 1,099)\n\n` +
-                `Bataiye in mein se kya cart mein add karun? 😊`;
+            // ── Tier 2: No images, check if active menu categories/items exist in DB ──
+            const activeCategories = (cache.rawCategories || []).filter(c => (c.menu_items || []).length > 0);
+            if (activeCategories.length > 0) {
+                const summaryParts = activeCategories.slice(0, 6).map(c => {
+                    const topItems = (c.menu_items || []).slice(0, 3).map(it => `${it.name} (Rs. ${it.base_price})`).join(', ');
+                    return `• *${c.name}*: ${topItems}`;
+                });
+                const conciseMenuText = `🍕 *Cravey Crust Menu Highlights*\n\n${summaryParts.join('\n')}\n\nBataiye in mein se kya cart mein add karun? 😊`;
 
+                return {
+                    handled: true,
+                    routeName: 'live_menu_text',
+                    reply: conciseMenuText,
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+
+            // ── Tier 3: Both images and menu section are empty ──
             return {
                 handled: true,
-                routeName: 'live_menu_text',
-                reply: conciseMenuText,
+                routeName: 'live_menu_none',
+                reply: 'Maazrat! Hamare paas menu mein abhi ke liye kuch nahi hai.',
                 imageUrls: [],
                 imageUrl: null,
             };

@@ -327,6 +327,23 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
         } else if (menuImgSetting?.value && menuImgSetting.value.trim()) {
             menuImageUrls = [menuImgSetting.value.trim()];
         }
+
+        if (menuImageUrls.length === 0 && prisma) {
+            try {
+                const s = await prisma.restaurantSetting.findFirst({
+                    where: { key: { in: ['menu_image_urls', 'menu_image_url'] } },
+                    orderBy: { updated_at: 'desc' },
+                });
+                if (s?.value) {
+                    try {
+                        const parsed = JSON.parse(s.value);
+                        if (Array.isArray(parsed)) menuImageUrls = parsed.filter(Boolean);
+                    } catch (_) {
+                        if (s.value.trim()) menuImageUrls = [s.value.trim()];
+                    }
+                }
+            } catch (_) {}
+        }
         const menuImageUrl = menuImageUrls[0] || null;
 
         // Parse multi-page deals flyers
@@ -343,6 +360,23 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             }
         } else if (dealsImgSetting?.value && dealsImgSetting.value.trim()) {
             dealsImageUrls = [dealsImgSetting.value.trim()];
+        }
+
+        if (dealsImageUrls.length === 0 && prisma) {
+            try {
+                const s = await prisma.restaurantSetting.findFirst({
+                    where: { key: { in: ['deals_image_urls', 'deals_image_url'] } },
+                    orderBy: { updated_at: 'desc' },
+                });
+                if (s?.value) {
+                    try {
+                        const parsed = JSON.parse(s.value);
+                        if (Array.isArray(parsed)) dealsImageUrls = parsed.filter(Boolean);
+                    } catch (_) {
+                        if (s.value.trim()) dealsImageUrls = [s.value.trim()];
+                    }
+                }
+            } catch (_) {}
         }
         const dealsImageUrl = dealsImageUrls[0] || null;
 

@@ -995,28 +995,37 @@ async function runAgentLoop(messages, context) {
         // No tool call — final answer reached
         let aiImageUrl = null;
         let aiImageUrls = null;
-        if (calledToolNames.includes('get_menu_categories')) {
-            try {
-                const { getCatalogCache } = await import('./catalogCacheService.js');
-                const cache = await getCatalogCache();
-                if (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0) {
-                    aiImageUrls = cache.menuImageUrls;
-                    aiImageUrl = aiImageUrls[0];
-                } else if (cache.menuImageUrl) {
-                    aiImageUrl = cache.menuImageUrl;
-                    aiImageUrls = [aiImageUrl];
-                }
-            } catch (_) {}
-        } else if (calledToolNames.includes('get_current_deals')) {
+        const lowerEff = (context?.effectiveText || '').toLowerCase();
+        const asksDeals = calledToolNames.includes('get_current_deals') || /\b(deals?|deal|offers?)\b/i.test(lowerEff);
+        const asksMenu = calledToolNames.includes('get_menu_categories') || /\b(menu|menue|catalog|card|rate\s*list)\b/i.test(lowerEff);
+
+        if (asksDeals) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();
                 if (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0) {
                     aiImageUrls = cache.dealsImageUrls;
                     aiImageUrl = aiImageUrls[0];
+                    // User strict rule: If deals images exist, send only images without extra text
+                    aiResponse = '';
                 } else if (cache.dealsImageUrl) {
                     aiImageUrl = cache.dealsImageUrl;
                     aiImageUrls = [aiImageUrl];
+                    aiResponse = '';
+                }
+            } catch (_) {}
+        } else if (asksMenu) {
+            try {
+                const { getCatalogCache } = await import('./catalogCacheService.js');
+                const cache = await getCatalogCache();
+                if (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0) {
+                    aiImageUrls = cache.menuImageUrls;
+                    aiImageUrl = aiImageUrls[0];
+                    aiResponse = '';
+                } else if (cache.menuImageUrl) {
+                    aiImageUrl = cache.menuImageUrl;
+                    aiImageUrls = [aiImageUrl];
+                    aiResponse = '';
                 }
             } catch (_) {}
         }
@@ -1422,7 +1431,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     ];
 
     // Run Agent Loop
-    const { text: aiRawText, imageUrl: aiImageUrl, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
+    const { text: aiRawText, imageUrl: aiImageUrl, imageUrls: aiImageUrls, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
 
     // ── 7. Post-Verification & Cleanup (Hissa 7) ──
     const verificationOverride = verifyOutput(aiRawText || '', toolResults);
@@ -1444,9 +1453,18 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 
     // ── 9. Save Turn to Session History ──
     appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
-    appendSessionHistory(sessionKey, 'assistant', cleanFinalReply, syncEpoch);
+    if (cleanFinalReply) {
+        appendSessionHistory(sessionKey, 'assistant', cleanFinalReply, syncEpoch);
+    }
 
-    return aiImageUrl ? { text: cleanFinalReply, imageUrl: aiImageUrl } : cleanFinalReply;
+    const hasReturnedImages = Boolean(aiImageUrl || (Array.isArray(aiImageUrls) && aiImageUrls.length > 0));
+    return hasReturnedImages
+        ? {
+            text: cleanFinalReply,
+            imageUrl: aiImageUrl || (aiImageUrls && aiImageUrls[0]) || null,
+            imageUrls: aiImageUrls || (aiImageUrl ? [aiImageUrl] : []),
+        }
+        : cleanFinalReply;
 }
 
 // ─── Per-Chat Debounce Buffer & Sequential Message Processing Queue ───
