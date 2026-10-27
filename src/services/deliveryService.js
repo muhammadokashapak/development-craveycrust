@@ -312,11 +312,7 @@ function findAreaByText(areas, text) {
  */
 export async function checkDeliveryAvailability(params) {
     const prisma = getDbClient();
-    if (!prisma) {
-        throw new Error('Database client not available');
-    }
-
-    const restaurantId = params.restaurantId || await getDefaultRestaurantId();
+    const restaurantId = params.restaurantId || 'default-restaurant';
     const { areaId, areaName, address, subtotal } = params;
 
     let lat = (params.latitude != null && !isNaN(Number(params.latitude))) ? Number(params.latitude) : null;
@@ -349,59 +345,74 @@ export async function checkDeliveryAvailability(params) {
         }
     } catch (_) {}
 
-    try {
-        const settings = await prisma.restaurantSetting.findMany({
-            where: {
-                restaurant_id: restaurantId,
-                key: { in: ['max_delivery_radius_km', 'restaurant_lat', 'restaurant_lng'] },
-            },
-        });
-        for (const s of settings) {
-            if (s.key === 'max_delivery_radius_km' && !isNaN(parseFloat(s.value))) {
-                maxRadiusKm = parseFloat(s.value);
-            } else if (s.key === 'restaurant_lat' && !isNaN(parseFloat(s.value))) {
-                centerLat = parseFloat(s.value);
-            } else if (s.key === 'restaurant_lng' && !isNaN(parseFloat(s.value))) {
-                centerLng = parseFloat(s.value);
+    if (prisma) {
+        try {
+            const settings = await prisma.restaurantSetting.findMany({
+                where: {
+                    restaurant_id: restaurantId,
+                    key: { in: ['max_delivery_radius_km', 'restaurant_lat', 'restaurant_lng'] },
+                },
+            });
+            for (const s of settings) {
+                if (s.key === 'max_delivery_radius_km' && !isNaN(parseFloat(s.value))) {
+                    maxRadiusKm = parseFloat(s.value);
+                } else if (s.key === 'restaurant_lat' && !isNaN(parseFloat(s.value))) {
+                    centerLat = parseFloat(s.value);
+                } else if (s.key === 'restaurant_lng' && !isNaN(parseFloat(s.value))) {
+                    centerLng = parseFloat(s.value);
+                }
             }
-        }
-    } catch (_) {}
+        } catch (_) {}
+    }
 
     // 1. Direct Area ID
-    if (areaId) {
+    if (areaId && prisma) {
         const area = await prisma.deliveryArea.findFirst({
             where: {
                 id: areaId,
                 restaurant_id: restaurantId,
             },
-        });
-        if (!area) {
-            return { available: false, code: 'DELIVERY_AREA_NOT_FOUND', message: 'Delivery area not found' };
+        }).catch(() => null);
+        if (area) {
+            if (!area.is_active) {
+                return { available: false, code: 'DELIVERY_NOT_AVAILABLE', message: 'Delivery is currently unavailable in this area' };
+            }
+            matchedArea = area;
         }
-        if (!area.is_active) {
-            return { available: false, code: 'DELIVERY_NOT_AVAILABLE', message: 'Delivery is currently unavailable in this area' };
-        }
-        matchedArea = area;
     }
 
-    // 2. Fetch all configured areas for this restaurant
-    let allAreas = await prisma.deliveryArea.findMany({
-        where: { restaurant_id: restaurantId },
-        orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-    });
-
-    if (allAreas.length === 0) {
-        allAreas = await prisma.deliveryArea.findMany({
-            where: {},
-            orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-        });
-        if (allAreas.length === 0) {
-            await ensureDeliveryAreasSeeded(prisma, restaurantId);
+    // 2. Fetch all configured areas for this restaurant (with offline fallback)
+    let allAreas = [];
+    if (prisma) {
+        try {
             allAreas = await prisma.deliveryArea.findMany({
-                where: {},
+                where: { restaurant_id: restaurantId },
                 orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
             });
-        }
+            if (allAreas.length === 0) {
+                allAreas = await prisma.deliveryArea.findMany({
+                    where: {},
+                    orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+                });
+            }
+        } catch (_) {}
+    }
+
+    if (!allAreas || allAreas.length === 0) {
+        allAreas = Object.entries(DELIVERY_AREA_COORDINATES).map(([slug, item], idx) => ({
+            id: `area_${slug}`,
+            restaurant_id: restaurantId || 'default-restaurant',
+            name: item.name,
+            slug,
+            delivery_fee: 0,
+            minimum_order: 0,
+            is_active: true,
+            sort_order: idx + 1,
+            latitude: item.lat,
+            longitude: item.lng,
+            radius_km: item.radiusKm || 2.5,
+            aliases: '',
+        }));
     }
 
     // 3. If GPS coordinates provided, match by circular radius first

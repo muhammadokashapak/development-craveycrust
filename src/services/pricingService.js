@@ -4,6 +4,7 @@ import { getDefaultRestaurantId } from './restaurantService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
 import { matchVariant } from './cartService.js';
 import { getGlobalDiscountSettings, calculateDiscount } from './discountService.js';
+import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 
 const Decimal = Prisma.Decimal;
 
@@ -46,14 +47,105 @@ export function roundMoney(amount) {
  */
 export async function calculatePricing(params) {
     const prisma = getDbClient();
-    if (!prisma) {
-        throw new Error('Database client not available');
-    }
-
-    const restaurantId = params.restaurantId || await getDefaultRestaurantId();
+    const restaurantId = params.restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
     const itemsInput = params.items || [];
     const dealsInput = params.deals || [];
     const promoCode = params.promoCode?.trim();
+
+    if (!prisma) {
+        let subtotal = new Decimal(0);
+        const resolvedItems = [];
+        const resolvedDeals = [];
+
+        for (const itemReq of itemsInput) {
+            const lowerId = String(itemReq.menuItemId || '').toLowerCase();
+            const item = FALLBACK_MENU_ITEMS.find(it => it.id.toLowerCase() === lowerId || it.slug.toLowerCase() === lowerId || it.name.toLowerCase() === lowerId);
+            if (item) {
+                let variant = null;
+                if (itemReq.variantId && item.variants) {
+                    variant = matchVariant(item.variants, itemReq.variantId);
+                } else if (item.variants && item.variants.length === 1) {
+                    variant = item.variants[0];
+                }
+                const unitPrice = new Decimal(variant ? variant.price : item.base_price);
+                const qty = Math.max(1, parseInt(itemReq.quantity, 10) || 1);
+                const lineTotal = unitPrice.times(qty);
+                subtotal = subtotal.plus(lineTotal);
+                resolvedItems.push({
+                    itemId: item.id,
+                    name: item.name,
+                    variantId: variant?.id || null,
+                    variantName: variant?.name || null,
+                    unitPrice: roundMoney(unitPrice),
+                    unitPriceDecimal: unitPrice,
+                    quantity: qty,
+                    lineTotal: roundMoney(lineTotal),
+                    lineTotalDecimal: lineTotal,
+                    originalUnitPrice: roundMoney(unitPrice),
+                    hasDiscount: false,
+                });
+            }
+        }
+
+        for (const dealReq of dealsInput) {
+            const lowerDealId = String(dealReq.dealId || '').toLowerCase();
+            const deal = FALLBACK_DEALS.find(d => d.id.toLowerCase() === lowerDealId || d.slug.toLowerCase() === lowerDealId || d.name.toLowerCase() === lowerDealId);
+            if (deal) {
+                const unitPrice = new Decimal(deal.deal_price);
+                const qty = Math.max(1, parseInt(dealReq.quantity, 10) || 1);
+                const lineTotal = unitPrice.times(qty);
+                subtotal = subtotal.plus(lineTotal);
+                resolvedDeals.push({
+                    dealId: deal.id,
+                    name: deal.name,
+                    unitPrice: roundMoney(unitPrice),
+                    unitPriceDecimal: unitPrice,
+                    quantity: qty,
+                    lineTotal: roundMoney(lineTotal),
+                    lineTotalDecimal: lineTotal,
+                });
+            }
+        }
+
+        let deliveryFee = new Decimal(0);
+        let resolvedDeliveryArea = null;
+        if (params.deliveryFee !== undefined && params.deliveryFee !== null) {
+            deliveryFee = new Decimal(params.deliveryFee);
+        } else if (params.deliveryAreaId || params.deliveryAreaName || params.deliveryAddress || params.address || (params.latitude != null && params.longitude != null)) {
+            const deliveryCheck = await checkDeliveryAvailability({
+                restaurantId,
+                address: params.deliveryAddress || params.address,
+                areaName: params.deliveryAreaName,
+                latitude: params.latitude,
+                longitude: params.longitude,
+                subtotal: roundMoney(subtotal),
+            }).catch(() => ({ available: true, deliveryFee: 0 }));
+            if (deliveryCheck?.deliveryFee != null) {
+                deliveryFee = new Decimal(deliveryCheck.deliveryFee);
+            }
+            resolvedDeliveryArea = deliveryCheck?.area || null;
+        }
+
+        const total = subtotal.plus(deliveryFee);
+        return {
+            subtotal: roundMoney(subtotal),
+            subtotalDecimal: subtotal,
+            discounts: [],
+            discountTotal: 0,
+            discountTotalDecimal: new Decimal(0),
+            discount: 0,
+            deliveryFee: roundMoney(deliveryFee),
+            deliveryFeeDecimal: deliveryFee,
+            total: roundMoney(total),
+            totalDecimal: total,
+            appliedPromotionIds: [],
+            deliveryArea: resolvedDeliveryArea,
+            breakdown: {
+                items: resolvedItems,
+                deals: resolvedDeals,
+            },
+        };
+    }
 
     // Fetch global store discount settings (if any)
     const globalDiscountSettings = await getGlobalDiscountSettings(restaurantId);

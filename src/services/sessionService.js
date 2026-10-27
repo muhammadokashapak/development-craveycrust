@@ -19,6 +19,8 @@ export const SESSION_STAGES = [
     'CANCELLED',
 ];
 
+const _inMemorySessions = new Map();
+
 /**
  * Get or create a conversation session
  * Handles 15-minute inactivity expiration
@@ -33,15 +35,34 @@ export const SESSION_STAGES = [
  */
 export async function getOrCreateSession({ restaurantId, chatId, sessionKey, verifiedPhone, stage }) {
     const prisma = getDbClient();
-    if (!prisma) {
-        throw new Error('Database client not available');
-    }
-
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
     const key = sessionKey || chatId;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SESSION_TIMEOUT_MS);
     const cleanPhone = normalizePhone(verifiedPhone);
+
+    if (!prisma) {
+        let session = _inMemorySessions.get(key);
+        if (!session) {
+            session = {
+                id: `sess_${key}`,
+                restaurant_id: restId,
+                session_key: key,
+                chat_id: chatId || key,
+                verified_phone: cleanPhone || null,
+                stage: stage || 'START',
+                last_activity_at: now,
+                expires_at: expiresAt,
+            };
+            _inMemorySessions.set(key, session);
+        } else {
+            session.last_activity_at = now;
+            session.expires_at = expiresAt;
+            if (cleanPhone) session.verified_phone = cleanPhone;
+            if (stage && SESSION_STAGES.includes(stage)) session.stage = stage;
+        }
+        return session;
+    }
 
     let session = await prisma.conversationSession.findUnique({
         where: { session_key: key },
@@ -115,16 +136,33 @@ export async function getOrCreateSession({ restaurantId, chatId, sessionKey, ver
  */
 export async function updateSessionStage({ sessionKey, stage, pendingOrderId, pendingCancelOrderId }) {
     const prisma = getDbClient();
-    if (!prisma) {
-        throw new Error('Database client not available');
-    }
-
     if (!SESSION_STAGES.includes(stage)) {
         throw new Error(`Invalid session stage: ${stage}`);
     }
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SESSION_TIMEOUT_MS);
+
+    if (!prisma) {
+        let session = _inMemorySessions.get(sessionKey);
+        if (!session) {
+            session = {
+                id: `sess_${sessionKey}`,
+                session_key: sessionKey,
+                stage,
+                last_activity_at: now,
+                expires_at: expiresAt,
+            };
+            _inMemorySessions.set(sessionKey, session);
+        } else {
+            session.stage = stage;
+            session.last_activity_at = now;
+            session.expires_at = expiresAt;
+            if (pendingOrderId !== undefined) session.pending_order_id = pendingOrderId;
+            if (pendingCancelOrderId !== undefined) session.pending_cancel_order_id = pendingCancelOrderId;
+        }
+        return session;
+    }
 
     const updateData = {
         stage,

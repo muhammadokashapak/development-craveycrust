@@ -24,15 +24,13 @@ export const VALID_STATUS_TRANSITIONS = {
 
 export const CANCELLABLE_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING'];
 
+const _inMemoryOrders = new Map();
+
 /**
  * Create a new order with atomic Prisma transaction and idempotency protection
  */
 export async function createOrder(params) {
     const prisma = getDbClient();
-    if (!prisma) {
-        throw new Error('Database client not available');
-    }
-
     const {
         restaurantId,
         sessionKey,
@@ -49,12 +47,133 @@ export async function createOrder(params) {
         sock,
     } = params;
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
 
     if (!sessionKey) {
         const err = new Error('Session key is required to place an order');
         err.code = 'SESSION_KEY_REQUIRED';
         throw err;
+    }
+
+    if (!prisma) {
+        const cart = await getActiveCart({ sessionKey, restaurantId: restId });
+        if (!cart.items || cart.items.length === 0) {
+            const err = new Error('Cannot create order from an empty cart');
+            err.code = 'CART_EMPTY';
+            throw err;
+        }
+
+        const cleanPhone = normalizePhone(phone || confirmationPhone || '03001234567');
+        const cleanName = (customerName || 'Customer').trim();
+
+        const itemsForPricing = [];
+        const dealsForPricing = [];
+        for (const item of cart.items) {
+            if (item.menu_item_id) {
+                itemsForPricing.push({
+                    menuItemId: item.menu_item_id,
+                    variantId: item.menu_variant_id || undefined,
+                    quantity: item.quantity,
+                });
+            } else if (item.deal_id) {
+                dealsForPricing.push({
+                    dealId: item.deal_id,
+                    quantity: item.quantity,
+                });
+            }
+        }
+
+        const hasDeliveryInfo = !!(delivery?.areaId || delivery?.areaName || delivery?.address || (delivery?.latitude != null && delivery?.longitude != null));
+        const pricing = await calculatePricing({
+            restaurantId: restId,
+            items: itemsForPricing,
+            deals: dealsForPricing,
+            promoCode,
+            deliveryAreaId: delivery?.areaId,
+            deliveryAreaName: delivery?.areaName,
+            deliveryAddress: delivery?.address,
+            latitude: delivery?.latitude,
+            longitude: delivery?.longitude,
+            deliveryFee: hasDeliveryInfo ? undefined : 0,
+        });
+
+        const orderNumber = await generateOrderNumber({ prefix: 'CC' });
+        const orderId = `ord_${Date.now()}`;
+
+        const fullOrder = {
+            id: orderId,
+            orderNumber,
+            restaurantId: restId,
+            customerName: cleanName,
+            phone: cleanPhone,
+            whatsappPhone: confirmationPhone || cleanPhone,
+            delivery: {
+                address: delivery?.address || 'Standard Delivery',
+                areaName: pricing.deliveryArea?.name || delivery?.areaName || 'Standard Delivery',
+                latitude: delivery?.latitude || null,
+                longitude: delivery?.longitude || null,
+                googleMapsUrl: delivery?.googleMapsUrl || null,
+            },
+            pricing: {
+                subtotal: pricing.subtotal,
+                discountTotal: pricing.discountTotal,
+                deliveryFee: pricing.deliveryFee,
+                total: pricing.total,
+            },
+            payment: {
+                method: paymentMethod || 'COD',
+                status: 'PENDING',
+            },
+            orderStatus: 'CONFIRMED',
+            notes: notes || null,
+            source: 'WHATSAPP',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            items: [
+                ...(pricing.breakdown.items || []).map(it => ({
+                    id: `oi_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                    menuItemId: it.itemId,
+                    menuVariantId: it.variantId,
+                    itemName: it.name,
+                    variantName: it.variantName,
+                    unitPrice: it.unitPrice,
+                    quantity: it.quantity,
+                    lineTotal: it.lineTotal,
+                    notes: it.notes || null,
+                })),
+                ...(pricing.breakdown.deals || []).map(d => ({
+                    id: `oi_${Date.now()}_${Math.random().toString(36).substring(2, 5)}`,
+                    dealId: d.dealId,
+                    dealName: d.name,
+                    unitPrice: d.unitPrice,
+                    quantity: d.quantity,
+                    lineTotal: d.lineTotal,
+                    notes: d.notes || null,
+                })),
+            ],
+            statusHistory: [{
+                previousStatus: null,
+                newStatus: 'CONFIRMED',
+                changedByType: 'SYSTEM',
+                reason: 'Initial order placement',
+                createdAt: new Date(),
+            }],
+        };
+
+        _inMemoryOrders.set(orderNumber, fullOrder);
+        _inMemoryOrders.set(orderId, fullOrder);
+
+        const { clearCart } = await import('./cartService.js');
+        await clearCart({ sessionKey });
+        await updateSessionStage({ sessionKey, stage: 'ORDER_CONFIRMED', pendingOrderId: orderId }).catch(() => {});
+
+        sendAdminNewOrderNotification({ order: fullOrder, restaurantId: restId, sock }).catch(() => {});
+
+        return {
+            status: 'ORDER_CREATED',
+            isDuplicate: false,
+            order: fullOrder,
+        };
     }
 
     // ─── 0. Idempotency Check ────────────────────────────────────────────────
@@ -926,6 +1045,9 @@ export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, 
  * Get detailed order by orderNumber or ID
  */
 export async function getOrderByNumber({ restaurantId, orderNumber, orderId }) {
+    const inMem = (orderNumber && _inMemoryOrders.get(orderNumber)) || (orderId && _inMemoryOrders.get(orderId));
+    if (inMem) return inMem;
+
     const prisma = getDbClient();
     if (!prisma) return null;
 

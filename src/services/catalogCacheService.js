@@ -349,7 +349,10 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
                 }
             } catch (_) {}
         }
-        const menuImageUrl = menuImageUrls[0] || null;
+        if (menuImageUrls.length === 0) {
+            menuImageUrls = ['assets/menu/cravey_crust_main_menu.png'];
+        }
+        const menuImageUrl = menuImageUrls[0] || 'assets/menu/cravey_crust_main_menu.png';
 
         // Parse multi-page deals flyers
         const dealsImgsSetting = (restaurant?.settings || []).find(s => s.key === 'deals_image_urls');
@@ -383,7 +386,13 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
                 }
             } catch (_) {}
         }
-        const dealsImageUrl = dealsImageUrls[0] || null;
+        if (dealsImageUrls.length === 0) {
+            dealsImageUrls = [
+                'assets/menu/cravey_crust_deals_menu.png',
+                'assets/menu/cravey_crust_cravey20_deals.png'
+            ];
+        }
+        const dealsImageUrl = dealsImageUrls[0] || 'assets/menu/cravey_crust_deals_menu.png';
 
         // ── 5. Compact Knowledge & FAQ Summary for AI Prompt (Saves 4,000+ Tokens) ──
         const cachedFaqs = `• Free Delivery Areas: Ghauri Town (All Phases), Ghauri VIP, Taramari, Tarlai, Burma, Khana Pull, Rehman Enclave, Sanam Chowk, Shakral, Madina Town, Bilal Town, Gulzar-e-Quaid, Gulberg Green. Delivery radius ${maxDeliveryRadiusKm}KM.
@@ -450,6 +459,12 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
         const customerPizzaDeals = '🍕 *PIZZA DEALS*\n━━━━━━━━━━━━━━━━━━━━━\n• *Deal 1* (2 Small Pizzas + 2 Drinks) — Rs. 1099\n• *Deal 2* (2 Medium Pizzas + 1L Drink) — Rs. 2099\n• *Deal 3* (2 Large Pizzas + 1L Drink) — Rs. 2999\n• *Pizza Meal For 1* — Rs. 599\n• *Pizza Meal For 2* — Rs. 1299\n\n💡 _Deals mein apni pasand ka koi bhi pizza flavour chun sakte hain!_';
         const customerAllDeals = `${customerBurgerDeals}\n\n\n${customerPizzaDeals}`;
 
+        const defaultMenuImages = ['assets/menu/cravey_crust_main_menu.png'];
+        const defaultDealsImages = [
+            'assets/menu/cravey_crust_deals_menu.png',
+            'assets/menu/cravey_crust_cravey20_deals.png'
+        ];
+
         return {
             restId: 'default-restaurant',
             syncEpoch: _syncEpoch,
@@ -476,6 +491,13 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             minOrder: 0,
             defaultDeliveryFee: 0,
             outOfDeliveryMessage: 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.',
+            restaurantLat: 33.6180334,
+            restaurantLng: 73.1398525,
+            maxDeliveryRadiusKm: 10,
+            menuImageUrl: defaultMenuImages[0],
+            dealsImageUrl: defaultDealsImages[0],
+            menuImageUrls: defaultMenuImages,
+            dealsImageUrls: defaultDealsImages,
             rawCategories: fallbackCats,
             rawDeals: FALLBACK_DEALS,
         };

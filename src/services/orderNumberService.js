@@ -10,13 +10,16 @@ import { getDbClient } from '../db/client.js';
  * @param {string} [options.prefix='CC']
  * @returns {Promise<string>}
  */
+let _offlineOrderCounter = 1000;
+
 export async function generateOrderNumber(options = {}) {
     const client = options.tx || getDbClient();
-    if (!client) {
-        throw new Error('Database client not available');
-    }
-
     const prefix = options.prefix || 'CC';
+
+    if (!client) {
+        _offlineOrderCounter++;
+        return `${prefix}-${String(_offlineOrderCounter).padStart(6, '0')}`;
+    }
 
     try {
         // Concurrency-safe atomic counter from PostgreSQL SEQUENCE

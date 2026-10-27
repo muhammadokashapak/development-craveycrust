@@ -1330,10 +1330,10 @@ const FAST_CHITCHAT_REGEX = /\b(?:k[ae]se\s*(?:h[oi]|ho|hain|hen|h|hy)|kaise\s*(
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
 
-const FAST_MENU_REGEX = /^(?:(?:show\s+)?(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?)[\s.!?]*$/i;
-const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo)\b/i;
+const FAST_MENU_REGEX = /^(?:(?:mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?[\s.!?]*$/i;
+const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
 
-const FAST_DEALS_REGEX = /^(?:(?:show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
+const FAST_DEALS_REGEX = /^(?:(?:mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
 const FAST_DEALS_CONTAINS = /\b(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|deal\s*list|deals?\s*list|deal\s*card|deals?\s*card|deal\s*flyer|deals?\s*flyer|deals?\s*dikhao|deals?\s*bhejo|deal\s*bhejo|deal\s*chahiye|deals?\s*chahiye)\b/i;
 
 
@@ -3550,12 +3550,20 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     } catch (_) {}
                 }
 
+                if (targetDealsImages.length === 0) {
+                    targetDealsImages = [
+                        'assets/menu/cravey_crust_deals_menu.png',
+                        'assets/menu/cravey_crust_cravey20_deals.png'
+                    ];
+                }
+
                 const { haveDealsBeenSent, markDealsSent, getSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const isExplicitDealsAsk = FAST_DEALS_REGEX.test(lower) || /\b(deals?|offer|packages?|combos?)\b/i.test(lower);
                 const dealsAlreadySent = userSessionId ? haveDealsBeenSent(userSessionId, cleanPhone) : false;
                 const isSpecificRecommendation = /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lower);
 
-                if (targetDealsImages.length > 0 && !dealsAlreadySent && !isSpecificRecommendation) {
+                if (targetDealsImages.length > 0 && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
                     if (userSessionId) markDealsSent(userSessionId, cleanPhone);
                     const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
                     let dealsCaption = '';
@@ -3701,17 +3709,22 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     : (cache.dealsImageUrl ? [cache.dealsImageUrl] : []);
             }
 
+            if (targetMenuImages.length === 0) {
+                targetMenuImages = ['assets/menu/cravey_crust_main_menu.png'];
+            }
+
             const { hasMenuBeenSent, markMenuSent, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const isExplicitMenuAsk = FAST_MENU_REGEX.test(lower) || /\b(menu|menue|meny|mainu|card|flyer|list)\b/i.test(lower);
             const menuAlreadySent = userSessionId ? hasMenuBeenSent(userSessionId, cleanPhone) : false;
             const isSpecificMenuFilter = /\b(koi|konsa|konse|best|acha|achi|ache|recommend|pizza|burger|fries|drink)\b/i.test(lower);
 
-            if (targetMenuImages.length > 0 && !menuAlreadySent && !isSpecificMenuFilter) {
+            if (targetMenuImages.length > 0 && (isExplicitMenuAsk || !menuAlreadySent) && !isSpecificMenuFilter) {
                 if (userSessionId) markMenuSent(userSessionId, cleanPhone);
                 const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
-                let menuCaption = '';
+                let menuCaption = 'Cravey Crust ka menu haazir hai! 🍕🍔';
                 if (!currDetails?.address && !currDetails?.location) {
-                    menuCaption = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                    menuCaption += '\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
                 }
                 return {
                     handled: true,

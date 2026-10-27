@@ -2,17 +2,42 @@ import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { getOrCreateSession, touchSession } from './sessionService.js';
 import { calculatePricing } from './pricingService.js';
+import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
+
+const _inMemoryCarts = new Map();
 
 /**
  * Get or create the active cart for a session
  */
 export async function getActiveCart({ sessionKey, restaurantId, chatId, verifiedPhone }) {
     const prisma = getDbClient();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
+
     if (!prisma) {
-        throw new Error('Database client not available');
+        let cart = _inMemoryCarts.get(sessionKey);
+        if (cart) {
+            const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
+            if (cartAgeMs > 30 * 60 * 1000) {
+                cart.status = 'EXPIRED';
+                cart.items = [];
+                cart = null;
+            }
+        }
+        if (!cart) {
+            cart = {
+                id: `cart_${sessionKey}`,
+                restaurant_id: restId,
+                session_id: `sess_${sessionKey}`,
+                status: 'ACTIVE',
+                items: [],
+                created_at: new Date(),
+                updated_at: new Date(),
+            };
+            _inMemoryCarts.set(sessionKey, cart);
+        }
+        return cart;
     }
 
-    const restId = restaurantId || await getDefaultRestaurantId();
     const session = await getOrCreateSession({
         restaurantId: restId,
         sessionKey,
@@ -147,9 +172,7 @@ export function matchVariant(variants, query) {
  */
 export async function validateCartItemInput({ restaurantId, menuItemId, variantId, dealId, quantity }) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
-
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
     const qty = parseInt(quantity, 10);
     if (isNaN(qty) || qty < 1) {
         const err = new Error('Quantity must be an integer greater than 0');
@@ -167,6 +190,42 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
         const err = new Error('Cannot specify both menuItemId and dealId on a single cart item');
         err.code = 'INVALID_ITEM_INPUT';
         throw err;
+    }
+
+    if (!prisma) {
+        if (menuItemId) {
+            const lowerId = String(menuItemId).toLowerCase();
+            const item = FALLBACK_MENU_ITEMS.find(it => it.id.toLowerCase() === lowerId || it.slug.toLowerCase() === lowerId || it.name.toLowerCase() === lowerId);
+            if (!item) {
+                const err = new Error(`Menu item not found: ${menuItemId}`);
+                err.code = 'MENU_ITEM_NOT_FOUND';
+                throw err;
+            }
+            let matchedVariant = null;
+            if (item.variants && item.variants.length > 0) {
+                if (variantId) {
+                    matchedVariant = matchVariant(item.variants, variantId);
+                    if (!matchedVariant) {
+                        const err = new Error(`Variant '${variantId}' not found for item '${item.name}'`);
+                        err.code = 'VARIANT_NOT_FOUND';
+                        throw err;
+                    }
+                } else if (item.variants.length === 1) {
+                    matchedVariant = item.variants[0];
+                }
+            }
+            return { type: 'item', item, variant: matchedVariant, quantity: qty };
+        }
+        if (dealId) {
+            const lowerDealId = String(dealId).toLowerCase();
+            const deal = FALLBACK_DEALS.find(d => d.id.toLowerCase() === lowerDealId || d.slug.toLowerCase() === lowerDealId || d.name.toLowerCase() === lowerDealId);
+            if (!deal) {
+                const err = new Error(`Deal not found: ${dealId}`);
+                err.code = 'DEAL_NOT_FOUND';
+                throw err;
+            }
+            return { type: 'deal', deal, quantity: qty };
+        }
     }
 
     // Validate Menu Item & Variant
@@ -287,9 +346,7 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
  */
 export async function addItemToCart({ sessionKey, restaurantId, menuItemId, variantId, dealId, quantity = 1, notes, chatId, verifiedPhone }) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
-
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
     const validated = await validateCartItemInput({
         restaurantId: restId,
         menuItemId,
@@ -300,6 +357,41 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
 
     const finalVariantId = validated?.type === 'item' ? (validated.variant?.id || null) : null;
     const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId, verifiedPhone });
+
+    if (!prisma) {
+        let existingItem = null;
+        if (menuItemId) {
+            existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === finalVariantId);
+        } else if (dealId) {
+            existingItem = cart.items.find(i => i.deal_id === dealId && (notes === undefined || i.notes === (notes || null)));
+        }
+
+        if (existingItem) {
+            existingItem.quantity += validated.quantity;
+            if (notes !== undefined) existingItem.notes = notes;
+            cart.updated_at = new Date();
+            await touchSession(sessionKey);
+            return cart;
+        }
+
+        const newItem = {
+            id: `ci_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            cart_id: cart.id,
+            menu_item_id: menuItemId || null,
+            menu_variant_id: finalVariantId,
+            deal_id: dealId || null,
+            quantity: validated.quantity,
+            notes: notes || null,
+            menu_item: validated.type === 'item' ? validated.item : null,
+            menu_variant: validated.type === 'item' ? validated.variant : null,
+            deal: validated.type === 'deal' ? validated.deal : null,
+            created_at: new Date(),
+        };
+        cart.items.push(newItem);
+        cart.updated_at = new Date();
+        await touchSession(sessionKey);
+        return cart;
+    }
 
     // Check if duplicate item already exists in cart -> increment quantity
     let existingItem = null;
@@ -341,7 +433,29 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
  */
 export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) {
+        const cart = await getActiveCart({ sessionKey });
+        const itemIdx = cart.items.findIndex(i => i.id === cartItemId);
+        if (itemIdx === -1) {
+            const err = new Error('Cart item not found');
+            err.code = 'CART_ITEM_NOT_FOUND';
+            throw err;
+        }
+        if (quantity !== undefined) {
+            const qty = parseInt(quantity, 10);
+            if (qty <= 0) {
+                cart.items.splice(itemIdx, 1);
+            } else {
+                cart.items[itemIdx].quantity = qty;
+                if (notes !== undefined) cart.items[itemIdx].notes = notes;
+            }
+        } else if (notes !== undefined) {
+            cart.items[itemIdx].notes = notes;
+        }
+        cart.updated_at = new Date();
+        await touchSession(sessionKey);
+        return cart;
+    }
 
     const item = await prisma.cartItem.findUnique({
         where: { id: cartItemId },
@@ -384,7 +498,13 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
  */
 export async function removeCartItem({ sessionKey, cartItemId }) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) {
+        const cart = await getActiveCart({ sessionKey });
+        cart.items = cart.items.filter(i => i.id !== cartItemId);
+        cart.updated_at = new Date();
+        await touchSession(sessionKey);
+        return cart;
+    }
 
     const item = await prisma.cartItem.findUnique({
         where: { id: cartItemId },
@@ -408,7 +528,12 @@ export async function removeCartItem({ sessionKey, cartItemId }) {
 export async function clearCart({ sessionKey }) {
     const cart = await getActiveCart({ sessionKey });
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) {
+        cart.items = [];
+        cart.updated_at = new Date();
+        await touchSession(sessionKey);
+        return cart;
+    }
 
     await prisma.cartItem.deleteMany({
         where: { cart_id: cart.id },
