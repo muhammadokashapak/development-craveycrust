@@ -3507,10 +3507,26 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
     const choiceItems = [];
     const regularItems = [];
 
+    const categories = getDealCategories();
+    const currentCat = categories.find(c => c.id === catId);
+    const catNameLower = (currentCat ? currentCat.name : '').toLowerCase();
+
     items.forEach(m => {
+      const nameLower = (m.name || '').toLowerCase().trim();
+      const slugLower = (m.slug || '').toLowerCase().trim();
+
       const isChoice = m.id === 'item-33' || m.id === 'item-36' || m.id === 'item-37' ||
-                       (m.name && m.name.toLowerCase().includes('choice')) ||
-                       (m.name && m.name.toLowerCase().includes('user choice'));
+                       nameLower.includes('choice') ||
+                       nameLower.includes('user choice') ||
+                       nameLower === 'classic pizza' ||
+                       nameLower === 'premium pizza' ||
+                       nameLower === 'burger' ||
+                       slugLower === 'classic-pizza' ||
+                       slugLower === 'premium-pizza' ||
+                       slugLower === 'burger-choice' ||
+                       slugLower === 'classic-pizza-choice' ||
+                       slugLower === 'premium-pizza-choice';
+
       if (isChoice) {
         choiceItems.push(m);
       } else {
@@ -3518,13 +3534,38 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
       }
     });
 
+    // If Premium Pizzas category has no explicit choice item in DB yet, synthesize one
+    if (catNameLower.includes('premium') && choiceItems.length === 0 && items.length > 0) {
+      const flagship = items[0] || (cachedMenuItemsForDeals || []).find(m => (m.name || '').toLowerCase().includes('extreme'));
+      choiceItems.push({
+        id: flagship ? flagship.id : 'item-36',
+        name: "Premium Pizza (Customer's Choice)",
+        base_price: flagship ? flagship.base_price : 699,
+        variants: (flagship && flagship.variants && flagship.variants.length > 0) ? flagship.variants : [
+          { id: 'v-36-1', name: 'Small', price: 699 },
+          { id: 'v-36-2', name: 'Medium', price: 1399 },
+          { id: 'v-36-3', name: 'Large', price: 1799 },
+          { id: 'v-36-4', name: 'Party Size', price: 2799 },
+        ]
+      });
+    }
+
     if (choiceItems.length > 0) {
       const choiceGroup = document.createElement('optgroup');
       choiceGroup.label = '✨ Customer Choice (User Pick Flavour)';
       choiceItems.forEach(m => {
         const opt = document.createElement('option');
         opt.value = m.id;
-        opt.textContent = `🌟 ${m.name} (Rs. ${m.base_price})`;
+        let displayName = m.name;
+        const nLower = displayName.toLowerCase().trim();
+        if (nLower === 'classic pizza') {
+          displayName = "Classic Pizza (Customer's Choice)";
+        } else if (nLower === 'premium pizza') {
+          displayName = "Premium Pizza (Customer's Choice)";
+        } else if (nLower === 'burger') {
+          displayName = "Burger (Customer's Choice)";
+        }
+        opt.textContent = `🌟 ${displayName} (Rs. ${m.base_price})`;
         if (m.id === preselectedItemId) opt.selected = true;
         choiceGroup.appendChild(opt);
       });

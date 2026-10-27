@@ -14,6 +14,123 @@ import { getDefaultRestaurantId } from '../../src/services/restaurantService.js'
 
 const router = express.Router();
 
+let _ensuredChoiceItems = false;
+async function ensureChoiceMenuItemsInDb(prisma, restaurantId) {
+    if (_ensuredChoiceItems) return;
+    try {
+        const restId = restaurantId || (await getDefaultRestaurantId());
+        if (!restId) return;
+
+        // 1. Classic Pizza -> ensure name is Classic Pizza (Customer's Choice)
+        const classicCat = await prisma.category.findFirst({
+            where: {
+                restaurant_id: restId,
+                name: { contains: 'Classic', mode: 'insensitive' },
+            },
+        });
+        if (classicCat) {
+            const classicItem = await prisma.menuItem.findFirst({
+                where: {
+                    restaurant_id: restId,
+                    category_id: classicCat.id,
+                    name: 'Classic Pizza',
+                },
+            });
+            if (classicItem) {
+                await prisma.menuItem.update({
+                    where: { id: classicItem.id },
+                    data: { name: "Classic Pizza (Customer's Choice)" },
+                }).catch(() => {});
+            }
+        }
+
+        // 2. Premium Pizza Choice -> ensure exists in DB
+        const premCat = await prisma.category.findFirst({
+            where: {
+                restaurant_id: restId,
+                name: { contains: 'Premium', mode: 'insensitive' },
+            },
+        });
+        if (premCat) {
+            const premChoice = await prisma.menuItem.findFirst({
+                where: {
+                    restaurant_id: restId,
+                    category_id: premCat.id,
+                    OR: [
+                        { name: { contains: 'Premium Pizza', mode: 'insensitive' } },
+                        { slug: 'premium-pizza-choice' },
+                    ],
+                },
+            });
+            if (!premChoice) {
+                await prisma.menuItem.create({
+                    data: {
+                        restaurant_id: restId,
+                        category_id: premCat.id,
+                        name: "Premium Pizza (Customer's Choice)",
+                        slug: 'premium-pizza-choice',
+                        description: 'Customer chooses any premium pizza flavour on WhatsApp (Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust)',
+                        base_price: 699,
+                        is_active: true,
+                        is_available: true,
+                        variants: {
+                            create: [
+                                { name: 'Small', price: 699, sort_order: 1, is_available: true },
+                                { name: 'Medium', price: 1399, sort_order: 2, is_available: true },
+                                { name: 'Large', price: 1799, sort_order: 3, is_available: true },
+                                { name: 'Party Size', price: 2799, sort_order: 4, is_available: true },
+                            ],
+                        },
+                    },
+                }).catch(() => {});
+            }
+        }
+
+        // 3. Burger Choice -> ensure exists in DB
+        const burgerCat = await prisma.category.findFirst({
+            where: {
+                restaurant_id: restId,
+                name: { contains: 'Burger', mode: 'insensitive' },
+            },
+        });
+        if (burgerCat) {
+            const burgerChoice = await prisma.menuItem.findFirst({
+                where: {
+                    restaurant_id: restId,
+                    category_id: burgerCat.id,
+                    OR: [
+                        { name: { contains: 'Burger (Customer', mode: 'insensitive' } },
+                        { slug: 'burger-choice' },
+                    ],
+                },
+            });
+            if (!burgerChoice) {
+                await prisma.menuItem.create({
+                    data: {
+                        restaurant_id: restId,
+                        category_id: burgerCat.id,
+                        name: "Burger (Customer's Choice)",
+                        slug: 'burger-choice',
+                        description: 'Customer chooses any burger from Zegy, Chicken or Zinger',
+                        base_price: 499,
+                        is_active: true,
+                        is_available: true,
+                        variants: {
+                            create: [
+                                { name: 'Standard', price: 499, sort_order: 1, is_available: true },
+                            ],
+                        },
+                    },
+                }).catch(() => {});
+            }
+        }
+
+        _ensuredChoiceItems = true;
+    } catch (e) {
+        // non-blocking
+    }
+}
+
 /**
  * GET /api/admin/menu
  * List menu items with filters (category, available, search)
@@ -29,6 +146,9 @@ router.get('/', async (req, res) => {
         const defaultRestId = await getDefaultRestaurantId();
         const targetRestIds = Array.from(new Set([restaurantId, defaultRestId].filter(Boolean)));
         const { category_id, available, search } = req.query;
+
+        // Auto ensure Choice items exist in the database
+        await ensureChoiceMenuItemsInDb(prisma, targetRestIds[0]);
 
         const where = {
             ...(targetRestIds.length > 0 ? { restaurant_id: { in: targetRestIds } } : {}),
