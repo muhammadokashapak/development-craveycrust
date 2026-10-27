@@ -280,8 +280,8 @@ export async function transcribeVoiceNote(audioBuffer, mimeType) {
         success: false,
         error: noKeys ? 'NO_API_KEYS_CONFIGURED' : 'TRANSCRIPTION_FAILED',
         userFriendlyError: noKeys
-            ? 'Mafi chahta hoon, voice messages abhi active nahi hain. Baraye meharbani text likh kar bhejiye. 🙏'
-            : 'Mafi chahta hoon, voice note process karne mein masla hua. Baraye meharbani dobara bolein ya likh kar bhej dein. 🙏',
+            ? 'Aap ki voice note mili hai! 🎙️ Baraye meharbani voice message ki bajaye text likh kar bhejein taake aap ka order foran process ho sake. 🙏\n(Aap "menu" ya "deals" likh kar dekh sakte hain)'
+            : 'Mafi chahta hoon, voice note process karne mein masla hua. Baraye meharbani dobara bolein ya text likh kar bhej dein. 🙏',
     };
 }
 

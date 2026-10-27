@@ -105,6 +105,56 @@ export function formatAddressTitle(addr) {
     }).join(' ');
 }
 
+/**
+ * Detect customer's cancellation reason and sentiment from their message text
+ * Extracts reasons like delivery delay, changed mind, expensive, wrong order, ate elsewhere, etc.
+ *
+ * @param {string} text - Customer's message text
+ * @returns {string} - Human-readable explanation of why the customer cancelled
+ */
+export function extractCancellationReason(text) {
+    if (!text || typeof text !== 'string') return 'Customer requested cancellation (No reason specified)';
+    const clean = text.trim();
+    const lower = clean.toLowerCase();
+
+    // 1. Delivery delay / Order late / Taking too long
+    if (/\b(?:late|der|bohot\s*der|bht\s*der|itni\s*der|time\s*lag|bohot\s*time|bht\s*time|itna\s*time|kab\s*aayega|kab\s*tk|kitna\s*time|wait\s*nahi|jaldi|ghanta|ghante|takheer|delay|slow)\b/i.test(lower)) {
+        return `Order Late / Delivery Delay (Customer stated: "${clean}")`;
+    }
+
+    // 2. Bought from somewhere else / Already ate
+    if (/\b(?:kahin\s*aur|kisi\s*aur|kahin\s*or|kisi\s*or|doosri\s*jagah|dusri\s*jagah|khana\s*kha\s*lia|kha\s*liya|already\s*ate|bahir\s*se|hotel\s*se|ghar\s*pe\s*bana|kuch\s*aur\s*kha)\b/i.test(lower)) {
+        return `Ordered Elsewhere / Already Ate (Customer stated: "${clean}")`;
+    }
+
+    // 3. Changed mind / No longer hungry / Plan change
+    if (/\b(?:mood|plan|irada|tabiyat|change|nahi\s*khana|nahi\s*chahiye|nahi\s*lena|rehne\s*do|rehn\s*do|chhor\s*do|zarurat\s*nahi|bhook\s*khatam|bhook\s*nahi)\b/i.test(lower)) {
+        return `Changed Mind / Plan Changed (Customer stated: "${clean}")`;
+    }
+
+    // 4. Pricing / Cost / Budget issue
+    if (/\b(?:mehnga|expensive|zyada\s*paise|paison|budget|price\s*zyada|discount\s*nahi|discount\s*kam)\b/i.test(lower)) {
+        return `Pricing / Budget Concern (Customer stated: "${clean}")`;
+    }
+
+    // 5. Ordered by mistake / Wrong order / Accidental
+    if (/\b(?:galti\s*se|by\s*mistake|mistake|galat|wrong\s*item|test\s*kar\s*raha|testing)\b/i.test(lower)) {
+        return `Accidental Order / Ordered by Mistake (Customer stated: "${clean}")`;
+    }
+
+    // 6. Going out / Emergency / Unavailable
+    if (/\b(?:bahir\s*ja\s*raha|nikal\s*gaya|ghar\s*par\s*nahi|emergency|urgent\s*kaam|kaam\s*aa\s*gaya|sone\s*laga|so\s*raha)\b/i.test(lower)) {
+        return `Customer Unavailable / Going Out / Emergency (Customer stated: "${clean}")`;
+    }
+
+    // 7. If the customer wrote a substantial sentence, preserve their exact reason
+    if (clean.length > 5 && !/^(cancel|cancle|order cancel|cancel kr do|cancel kardo|haan|han|yes|ji|theek|ok|okay)$/i.test(clean)) {
+        return `Customer Stated Reason: "${clean}"`;
+    }
+
+    return 'Customer cancelled directly without specifying a detailed reason';
+}
+
 export function cleanExtractedAddress(text) {
     if (!text || typeof text !== 'string') return null;
     let cleaned = text.trim();
@@ -1455,10 +1505,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // Placed Order cancellation
                 const { cancelOrder } = await import('./orderService.js');
                 const cache = await getCatalogCache();
+                let finalReason = pendingCancel.reason || 'Customer confirmed cancellation via WhatsApp';
+                const confirmationReason = extractCancellationReason(cleanText);
+                if (confirmationReason && !confirmationReason.includes('without specifying')) {
+                    finalReason = confirmationReason;
+                }
+
                 const cancelRes = await cancelOrder({
                     restaurantId: cache.restId,
                     orderNumber: pendingCancel.orderNumber,
-                    reason: 'Customer confirmed cancellation via WhatsApp',
+                    reason: finalReason,
+                    notifyCustomer: false, // Ensures customer only receives the single bot message below
+                    sock,
                 });
 
                 if (cancelRes?.success) {
@@ -1591,10 +1649,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
 
                 // Case D: Cancellable (PENDING, CONFIRMED, PREPARING, READY) -> Require Confirmation First!
+                const detectedReason = extractCancellationReason(cleanText);
                 setPendingCancellation(userSessionId, {
                     type: 'ORDER',
                     orderNumber: targetOrder.order_number,
                     customerName: targetOrder.customer_name,
+                    reason: detectedReason,
                     targetOrder: {
                         customer_name: targetOrder.customer_name,
                         phone: targetOrder.phone,

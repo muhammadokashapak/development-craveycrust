@@ -838,10 +838,16 @@ async function executeTool(toolName, args, context) {
                 if (!orderNum) {
                     return { error: 'ORDER_NUMBER_REQUIRED', message: 'Cancel karne ke liye order number zaroori hai.' };
                 }
+                const { extractCancellationReason } = await import('./intentParser.js');
+                const customerMsg = context.effectiveText || '';
+                const inferredReason = args.reason || extractCancellationReason(customerMsg);
+
                 const result = await cancelOrder({
                     restaurantId: restId,
                     orderNumber: orderNum,
-                    reason: 'Customer requested order cancellation',
+                    reason: inferredReason,
+                    notifyCustomer: false,
+                    sock,
                 });
                 if (result?.success) {
                     try {

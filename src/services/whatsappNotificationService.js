@@ -408,7 +408,7 @@ export async function sendAdminOrderCancelledNotification({ order, reason = 'Cus
 `❌ ORDER CANCELLED — CRAVEY CRUST
 Order ID: ${orderId}
 Status: CANCELLED
-Reason: ${reason || 'Customer cancelled'}
+Reason / Wajah: ${reason || 'Customer cancelled'}
 Customer Name: ${customerName}
 Customer Phone: ${customerPhone}
 Items:
@@ -434,14 +434,17 @@ ${locationBlock}
 }
 
 /**
- * Send cancellation notification to customer AND admin/support agent
+ * Send cancellation notification to admin/support agent and optionally customer.
+ * Default notifyCustomer: false ensures customer only receives the single direct bot reply.
  */
-export async function sendCancellationNotification({ order, reason, sock }) {
+export async function sendCancellationNotification({ order, reason, sock, notifyCustomer = false }) {
     const results = { customer: null, admin: null };
-    try {
-        results.customer = await sendCustomerOrderStatusNotification({ order, newStatus: 'CANCELLED', reason, sock });
-    } catch (err) {
-        logger.error({ err: err.message }, '[NOTIFY] Error sending customer cancellation notification');
+    if (notifyCustomer) {
+        try {
+            results.customer = await sendCustomerOrderStatusNotification({ order, newStatus: 'CANCELLED', reason, sock });
+        } catch (err) {
+            logger.error({ err: err.message }, '[NOTIFY] Error sending customer cancellation notification');
+        }
     }
     try {
         results.admin = await sendAdminOrderCancelledNotification({ order, reason, sock });

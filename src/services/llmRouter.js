@@ -248,9 +248,27 @@ let _geminiPool = null;
 let _deepSeekPool = null;
 let _openAiPool  = null;
 
-export function getGeminiPool()   { return (_geminiPool   ||= new KeyPool(env.GEMINI_API_KEYS)); }
-export function getDeepSeekPool() { return (_deepSeekPool ||= new KeyPool(env.DEEPSEEK_API_KEYS)); }
-export function getOpenAiPool()   { return (_openAiPool   ||= new KeyPool(env.OPENAI_API_KEYS)); }
+export function getGeminiPool() {
+    if (!_geminiPool) {
+        const raw = process.env.GEMINI_API_KEYS || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || env.GEMINI_API_KEYS || '';
+        _geminiPool = new KeyPool(raw);
+    }
+    return _geminiPool;
+}
+export function getDeepSeekPool() {
+    if (!_deepSeekPool) {
+        const raw = process.env.DEEPSEEK_API_KEYS || process.env.DEEPSEEK_API_KEY || env.DEEPSEEK_API_KEYS || '';
+        _deepSeekPool = new KeyPool(raw);
+    }
+    return _deepSeekPool;
+}
+export function getOpenAiPool() {
+    if (!_openAiPool) {
+        const raw = process.env.OPENAI_API_KEYS || process.env.OPENAI_API_KEY || env.OPENAI_API_KEYS || '';
+        _openAiPool = new KeyPool(raw);
+    }
+    return _openAiPool;
+}
 
 // ─── Provider caller ─────────────────────────────────────────────────────
 

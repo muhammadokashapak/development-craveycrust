@@ -1383,9 +1383,9 @@ async function handleMessage(sock, msg, session) {
             const audioMsg = extractedAudio.msg;
             console.log(`[VOICE] Received voice/audio message from ${jid} (PTT=${audioMsg.ptt ?? false}, mime=${audioMsg.mimetype || 'unknown'}). Downloading audio stream...`);
 
-            // If incoming from customer, indicate recording/listening state
+            // If incoming from customer, indicate typing/composing state (NEVER voice recording)
             if (!isFromMe) {
-                sock.sendPresenceUpdate('recording', jid).catch(() => {});
+                sock.sendPresenceUpdate('composing', jid).catch(() => {});
             }
 
             const stream = await downloadContentFromMessage(audioMsg, 'audio');
@@ -1409,8 +1409,11 @@ async function handleMessage(sock, msg, session) {
 
                     if (!muteStatus?.isMuted) {
                         const errMsg = transcription?.userFriendlyError || 
-                            'Mafi chahta hoon, aapki voice note wazeh nahi thi. Baraye meharbani dobara bolein ya text likh kar bhej dein. 🙏';
-                        await sock.sendMessage(jid, { text: errMsg }, { quoted: msg }).catch(() => {});
+                            'Aap ki voice note mili hai! 🎙️ Baraye meharbani voice message ki bajaye text likh kar bhejein taake aap ka order foran process ho sake. 🙏\n(Aap "menu" ya "deals" likh kar menu dekh sakte hain)';
+                        // Send text message directly so customer always receives a text reply
+                        await sock.sendMessage(jid, { text: errMsg }).catch((sendErr) => {
+                            console.error(`[VOICE] Failed to send text reply to ${jid}:`, sendErr.message);
+                        });
                     }
 
                     recordChatMessage({

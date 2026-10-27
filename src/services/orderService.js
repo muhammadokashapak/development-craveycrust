@@ -640,7 +640,7 @@ export async function confirmOrderCancellation({ restaurantId, orderNumber, sess
     });
 
     const fullOrder = await getOrderByNumber({ restaurantId: restId, orderNumber: order.order_number });
-    sendCancellationNotification({ order: fullOrder || order, reason: 'Customer cancelled' }).catch(() => {});
+    sendCancellationNotification({ order: fullOrder || order, reason: 'Customer cancelled', sock, notifyCustomer: false }).catch(() => {});
 
     return {
         status: 'ORDER_CANCELLED',
@@ -653,7 +653,7 @@ export async function confirmOrderCancellation({ restaurantId, orderNumber, sess
 /**
  * Direct cancel order helper
  */
-export async function cancelOrder({ restaurantId, orderNumber, reason = 'Customer cancelled', changedByType = 'CUSTOMER' }) {
+export async function cancelOrder({ restaurantId, orderNumber, reason = 'Customer cancelled', changedByType = 'CUSTOMER', notifyCustomer = false, sock }) {
     try {
         const res = await updateOrderStatus({
             restaurantId,
@@ -661,6 +661,8 @@ export async function cancelOrder({ restaurantId, orderNumber, reason = 'Custome
             newStatus: 'CANCELLED',
             changedByType,
             reason,
+            notifyCustomer,
+            sock,
         });
         return {
             success: true,
@@ -844,7 +846,7 @@ export async function updateOrderDetails({
 /**
  * Update order status with state machine enforcement
  */
-export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, changedByType = 'ADMIN', changedById, reason }) {
+export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, changedByType = 'ADMIN', changedById, reason, notifyCustomer, sock }) {
     const prisma = getDbClient();
     if (!prisma) throw new Error('Database client not available');
 
@@ -911,9 +913,10 @@ export async function updateOrderStatus({ restaurantId, orderNumber, newStatus, 
 
     const fullUpdatedOrder = await getOrderByNumber({ restaurantId: restId, orderNumber });
     if (newStatus === 'CANCELLED') {
-        sendCancellationNotification({ order: fullUpdatedOrder || order, reason: reason || 'Cancelled' }).catch(() => {});
+        const shouldNotifyCustomer = notifyCustomer ?? (changedByType !== 'CUSTOMER');
+        sendCancellationNotification({ order: fullUpdatedOrder || order, reason: reason || 'Cancelled', sock, notifyCustomer: shouldNotifyCustomer }).catch(() => {});
     } else {
-        sendCustomerOrderStatusNotification({ order: fullUpdatedOrder || order, newStatus, reason }).catch(() => {});
+        sendCustomerOrderStatusNotification({ order: fullUpdatedOrder || order, newStatus, reason, sock }).catch(() => {});
     }
 
     return fullUpdatedOrder;
