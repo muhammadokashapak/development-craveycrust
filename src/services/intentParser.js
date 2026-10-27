@@ -15,6 +15,19 @@
 import fs from 'fs';
 import path from 'path';
 import { extractGoogleMapsUrl } from '../../utils/location.js';
+import {
+    isPizzaDeal,
+    getDealPizzaInfo,
+    extractFlavoursFromText,
+    formatFlavourNotes,
+    formatDealFlavourPrompt,
+    setPendingDealFlavour,
+    getPendingDealFlavour,
+    clearPendingDealFlavour,
+    isFlavourResponse,
+} from './dealFlavourService.js';
+
+export { setPendingDealFlavour, getPendingDealFlavour, clearPendingDealFlavour };
 
 // Session memory for zero-token deal follow-ups
 const _lastDiscussedDealBySession = new Map();
@@ -22,6 +35,7 @@ const _lastDiscussedDealBySession = new Map();
 export function clearLastDiscussedDeal(sessionKey) {
     if (sessionKey) {
         _lastDiscussedDealBySession.delete(sessionKey);
+        clearPendingDealFlavour(sessionKey);
     }
 }
 
@@ -593,13 +607,17 @@ export async function getNextCheckoutStepResponse({
             }
         }
         for (const d of (pricing.breakdown.deals || [])) {
-            orderLines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
+            const raw = cart?.items?.find(ci => ci.deal_id === d.dealId);
+            const notes = d.notes || raw?.notes;
+            const fText = notes ? ` (${notes})` : '';
+            orderLines.push(`• ${d.quantity}x ${d.name}${fText} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
         }
     } else {
         for (const i of (cart?.items || [])) {
             const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
             const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
-            orderLines.push(`• ${i.quantity}x ${n}${v}`);
+            const fText = i.notes ? ` (${i.notes})` : '';
+            orderLines.push(`• ${i.quantity}x ${n}${v}${fText}`);
         }
     }
     const orderBlock = orderLines.length > 0 ? (orderLines.length === 1 ? `Order: ${orderLines[0]}` : `Order:\n${orderLines.join('\n')}`) : 'Order: 1x Item';
@@ -2407,6 +2425,48 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Follow-up: Flavour specification for pending Pizza Deal (Zero Tokens) ──
+    const pendingFlavour = userSessionId ? getPendingDealFlavour(userSessionId) : null;
+    if (pendingFlavour && (isFlavourResponse(lower) || extractFlavoursFromText(lower).length > 0)) {
+        const d = pendingFlavour.deal;
+        const pizzaInfo = pendingFlavour.pizzaInfo || getDealPizzaInfo(d);
+        const extracted = extractFlavoursFromText(lower, pizzaInfo.pizzaCount);
+        if (extracted.length > 0) {
+            clearPendingDealFlavour(userSessionId);
+            _lastDiscussedDealBySession.delete(userSessionId);
+
+            const flavourNotes = formatFlavourNotes(extracted);
+            const { getActiveCart, addToCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const qty = pendingFlavour.quantity || 1;
+
+            await addToCart({
+                sessionKey: userSessionId,
+                restaurantId: cache.restId,
+                chatId,
+                verifiedPhone: whatsappPhone,
+                dealId: d.id,
+                quantity: qty,
+                notes: flavourNotes,
+            });
+
+            const dealName = d.name;
+            const dealPrice = Number(d.deal_price) * qty;
+            const { getSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart: cartNow,
+                cache,
+                introMessage: `Zabardast! *${dealName}* (*${flavourNotes}*) cart mein add kar di gayi hai! 🎉\n• ${qty}x ${dealName} (${flavourNotes}) — Rs. ${dealPrice}`,
+            });
+        }
+    }
+
     // ── Check Fast Follow-up: Affirmative confirmation to order last discussed deal (Zero Tokens) ──
     const hasOrderConfirmWord = /\b(?:confirm|final|done|book|oder|order\s*final|bana\s*ha|bill|bil)\b/i.test(lower);
     const isAffirmative = !hasOrderConfirmWord && /^(?:haan|han|jee|ji|yes|kar do|kardo|kr do|kr du|order|oder|order kar do|order kr do|order kr du|order kr di|oder kr di|oder kr do|oder kardo|haan kr du|haan kardo|haan kr do bhai|han order kr du|yeh kr du)\b/i.test(lower) && wordCount <= 6;
@@ -2421,6 +2481,23 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const alreadyHasDeal = existingCart?.items?.some(i => i.deal_id === d.id);
 
                 if (!alreadyHasDeal) {
+                    const pizzaInfo = getDealPizzaInfo(d);
+                    const extracted = pizzaInfo.isPizzaDeal ? extractFlavoursFromText(lower, pizzaInfo.pizzaCount) : [];
+
+                    if (pizzaInfo.isPizzaDeal && extracted.length === 0) {
+                        setPendingDealFlavour(userSessionId, {
+                            deal: d,
+                            quantity: 1,
+                            pizzaInfo,
+                        });
+                        return {
+                            handled: true,
+                            routeName: 'deal_flavour_prompt',
+                            reply: formatDealFlavourPrompt(d, pizzaInfo),
+                        };
+                    }
+
+                    const flavourNotes = extracted.length > 0 ? formatFlavourNotes(extracted) : undefined;
                     await addToCart({
                         sessionKey: userSessionId,
                         restaurantId: cache.restId,
@@ -2428,11 +2505,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         verifiedPhone: whatsappPhone,
                         dealId: d.id,
                         quantity: 1,
+                        notes: flavourNotes,
                     });
                     _lastDiscussedDealBySession.delete(userSessionId);
+                    clearPendingDealFlavour(userSessionId);
 
                     const dealName = d.name;
-                    const dealDesc = d.description ? ` (${d.description})` : '';
+                    const dealDesc = flavourNotes ? ` (${flavourNotes})` : (d.description ? ` (${d.description})` : '');
                     const dealPrice = Number(d.deal_price);
 
                     const { getSessionOrderDetails } = await import('./sessionService.js');
@@ -2594,7 +2673,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         }
                     }
                     for (const d of (pricing.breakdown.deals || [])) {
-                        lines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
+                        const raw = cart?.items?.find(ci => ci.deal_id === d.dealId);
+                        const notes = d.notes || raw?.notes;
+                        const fText = notes ? ` (${notes})` : '';
+                        lines.push(`• ${d.quantity}x ${d.name}${fText} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
                     }
                     itemsList = lines.join('\n');
                     if (pricing.discountTotal > 0) {
@@ -2606,8 +2688,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     itemsList = cart.items.map(i => {
                         const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
                         const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
+                        const fText = i.notes ? ` (${i.notes})` : '';
                         const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${v} — Rs. ${p}`;
+                        return `• ${i.quantity}x ${n}${v}${fText} — Rs. ${p}`;
                     }).join('\n');
                     const rawSubtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
                     billText = `Ji, aap ke cart ka subtotal *Rs. ${rawSubtotal.toLocaleString('en-PK')}* bana hai.`;

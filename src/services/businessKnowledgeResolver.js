@@ -622,7 +622,7 @@ export async function resolveBusinessAnswer({
                 }
                 dealsMsg += '\n';
             });
-            dealsMsg = dealsMsg.trimEnd() + `\n\nCart mein deal add karne ke liye likhein: deal 1 ya 2 deal 1.`;
+            dealsMsg = dealsMsg.trimEnd() + `\n\nCart mein deal add karne ke liye likhein: deal 1 ya 2 deal 1. (Pizza deals ke sath apni pasand ka flavour select kar sakte hain!)`;
 
             logger.info(
                 { query: cleanQuery, source: 'DEALS', type: 'ACTIVE_DEALS', count: deals.length },

@@ -35,6 +35,7 @@ import { calculatePricing } from './pricingService.js';
 import { calculateDiscount, getGlobalDiscountSettings } from './discountService.js';
 import { muteChatForHandover, isChatMuted } from './handoverService.js';
 import { getDbClient } from '../db/client.js';
+import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNotes, setPendingDealFlavour, clearPendingDealFlavour } from './dealFlavourService.js';
 
 // ─── Detect Confirm Intent (Hissa 3) ──────────────────────────────────────
 /**
@@ -324,7 +325,39 @@ async function executeTool(toolName, args, context) {
                 let variantId  = args.variantId;
                 let dealId     = args.dealId;
                 const quantity = parseInt(args.quantity || 1, 10);
-                const notes    = args.notes || undefined;
+                let notes      = args.notes || undefined;
+
+                // If dealId directly passed without notes, verify if it's a pizza deal requiring flavour
+                if (dealId && !notes) {
+                    const activeDeals = await getActiveDeals(restId);
+                    const foundDeal = activeDeals.find(d => d.id === dealId);
+                    if (foundDeal) {
+                        const pizzaInfo = getDealPizzaInfo(foundDeal);
+                        if (pizzaInfo.isPizzaDeal) {
+                            setPendingDealFlavour(sessionKey, {
+                                deal: foundDeal,
+                                quantity,
+                                pizzaInfo,
+                            });
+                            return {
+                                requiresFlavour: true,
+                                dealName: foundDeal.name,
+                                pizzaCount: pizzaInfo.pizzaCount,
+                                sizeName: pizzaInfo.sizeName,
+                                availableFlavours: [
+                                    "Chicken Tikka",
+                                    "Chicken Fajita",
+                                    "Chicken Supreme",
+                                    "Cheese Lover",
+                                    "Chicken Tandori",
+                                    "Behari Kebab Pizza",
+                                    "Chicken Extreme"
+                                ],
+                                message: `"${foundDeal.name}" mein ${pizzaInfo.pizzaCount > 1 ? `${pizzaInfo.pizzaCount}x ${pizzaInfo.sizeName} Pizzas` : `1x ${pizzaInfo.sizeName} Pizza`} shamil hai. Pehle customer se unki pasand ka flavour poochein (Available flavours: Chicken Tikka, Chicken Fajita, Chicken Supreme, Cheese Lover, Chicken Tandori, Behari Kebab, Chicken Extreme). Flavour milne ke baad add_to_cart(..., notes: "Flavours: ...") call karein.`
+                            };
+                        }
+                    }
+                }
 
                 // Handle bulk / all deals request
                 if (args.allDeals || args.dealId === 'all' || /^(all\s*deals?|sari\s*deals?|12\s*deals?|saari\s*deals?)$/i.test(args.itemName || '')) {
@@ -388,6 +421,35 @@ async function executeTool(toolName, args, context) {
                         } else if (resolved.status === 'EXACT_MATCH') {
                             if (resolved.type === 'DEAL') {
                                 dealId = resolved.deal.id;
+                                const pizzaInfo = resolved.pizzaInfo || getDealPizzaInfo(resolved.deal);
+                                const dealNotes = notes || resolved.flavourNotes;
+
+                                if (pizzaInfo.isPizzaDeal && !dealNotes) {
+                                    setPendingDealFlavour(sessionKey, {
+                                        deal: resolved.deal,
+                                        quantity,
+                                        pizzaInfo,
+                                    });
+                                    return {
+                                        requiresFlavour: true,
+                                        dealName: resolved.deal.name,
+                                        pizzaCount: pizzaInfo.pizzaCount,
+                                        sizeName: pizzaInfo.sizeName,
+                                        availableFlavours: [
+                                            "Chicken Tikka",
+                                            "Chicken Fajita",
+                                            "Chicken Supreme",
+                                            "Cheese Lover",
+                                            "Chicken Tandori",
+                                            "Behari Kebab Pizza",
+                                            "Chicken Extreme"
+                                        ],
+                                        message: `"${resolved.deal.name}" mein ${pizzaInfo.pizzaCount > 1 ? `${pizzaInfo.pizzaCount}x ${pizzaInfo.sizeName} Pizzas` : `1x ${pizzaInfo.sizeName} Pizza`} shamil hai. Pehle customer se unki pasand ka flavour poochein (Available flavours: Chicken Tikka, Chicken Fajita, Chicken Supreme, Cheese Lover, Chicken Tandori, Behari Kebab, Chicken Extreme). Flavour milne ke baad add_to_cart(..., notes: "Flavours: ...") call karein.`
+                                    };
+                                }
+                                if (dealNotes && !notes) {
+                                    notes = dealNotes;
+                                }
                             } else {
                                 menuItemId = resolved.item.id;
                                 if (resolved.matchedVariant) {
@@ -475,6 +537,7 @@ async function executeTool(toolName, args, context) {
                 try {
                     clearLastDiscussedDeal(sessionKey);
                     clearLastDiscussedItem(sessionKey);
+                    clearPendingDealFlavour(sessionKey);
                     const { updateSessionOrderDetails } = await import('./sessionService.js');
                     updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
                 } catch (_) {}
@@ -1077,8 +1140,9 @@ async function runAgentLoop(messages, context) {
             if (round === MAX_TOOL_ROUNDS - 1) {
                 if (toolCall.tool === 'add_to_cart') {
                     const item = toolCall.args?.itemName || 'Item';
+                    const notesStr = toolCall.args?.notes ? ` (${toolCall.args.notes})` : '';
                     return {
-                        text: `Zabardast! *${item}* cart mein add kar diya gaya hai! 🎉\n\nKya iske sath kuch aur add karna chahenge ya order finalize karein?`,
+                        text: `Zabardast! *${item}*${notesStr} cart mein add kar diya gaya hai! 🎉\n\nKya iske sath kuch aur add karna chahenge ya order finalize karein?`,
                         imageUrl: null,
                         imageUrls: null,
                         toolResults: allToolResults,
@@ -1405,7 +1469,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
                     return `• ${it.quantity}x ${it.name}${varStr} — ${strike} (Line Total: Rs. ${it.lineTotal})`;
                 });
                 (totals.deals || []).forEach(d => {
-                    lines.push(`• ${d.quantity}x ${d.name} — Rs. ${d.lineTotal || d.totalPrice}`);
+                    const fText = d.notes ? ` (${d.notes})` : '';
+                    lines.push(`• ${d.quantity}x ${d.name}${fText} — Rs. ${d.lineTotal || d.totalPrice}`);
                 });
                 let cartText = lines.join('\n');
                 if (totals.discountTotal > 0) {

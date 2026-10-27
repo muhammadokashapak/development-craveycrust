@@ -1,5 +1,6 @@
 import express from 'express';
 import { getDbClient } from '../../src/db/client.js';
+import { FALLBACK_DELIVERY_AREAS } from '../../src/services/fallbackCatalog.js';
 import { createDeliveryAreaSchema, updateDeliveryAreaSchema } from '../../src/validators/deliveryAreaSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
 import { getDefaultRestaurantId } from '../../src/services/restaurantService.js';
@@ -41,10 +42,7 @@ router.get('/', async (req, res) => {
     try {
         const prisma = getDbClient();
         if (!prisma) {
-            return res.status(503).json({
-                success: false,
-                error: { code: 'DB_UNAVAILABLE', message: 'Database not available' },
-            });
+            return res.json({ success: true, data: FALLBACK_DELIVERY_AREAS });
         }
 
         const restaurantId = await resolveRestaurantId(req, prisma);
@@ -83,13 +81,14 @@ router.get('/', async (req, res) => {
             updated_at: a.updated_at,
         }));
 
+        if (formatted.length === 0) {
+            return res.json({ success: true, data: FALLBACK_DELIVERY_AREAS });
+        }
+
         return res.json({ success: true, data: formatted });
     } catch (err) {
-        console.error('[ADMIN] Error listing delivery areas:', err);
-        return res.status(500).json({
-            success: false,
-            error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve delivery areas' },
-        });
+        console.warn('[ADMIN] Error listing delivery areas from DB, returning fallback:', err.message);
+        return res.json({ success: true, data: FALLBACK_DELIVERY_AREAS });
     }
 });
 
@@ -175,44 +174,62 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const prisma = getDbClient();
-        if (!prisma) {
-            return res.status(503).json({
-                success: false,
-                error: { code: 'DB_UNAVAILABLE', message: 'Database not available' },
+        if (prisma) {
+            try {
+                let restaurantId = req.user?.restaurantId;
+                if (restaurantId === 'default-restaurant') restaurantId = null;
+
+                let area = null;
+                if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
+                    area = await prisma.deliveryArea.findFirst({
+                        where: { id: req.params.id, restaurant_id: restaurantId },
+                    });
+                }
+                if (!area) {
+                    area = await prisma.deliveryArea.findUnique({
+                        where: { id: req.params.id },
+                    });
+                }
+
+                if (area) {
+                    return res.json({
+                        success: true,
+                        data: {
+                            ...area,
+                            delivery_fee: Number(area.delivery_fee),
+                            minimum_order: area.minimum_order != null ? Number(area.minimum_order) : null,
+                        },
+                    });
+                }
+            } catch (dbErr) {
+                console.warn('[ADMIN] DB delivery area lookup failed, using fallback:', dbErr.message);
+            }
+        }
+
+        const fallback = FALLBACK_DELIVERY_AREAS.find(a => a.id === req.params.id || a.slug === req.params.id);
+        if (fallback) {
+            return res.json({
+                success: true,
+                data: {
+                    ...fallback,
+                    delivery_fee: Number(fallback.delivery_fee ?? 0),
+                    minimum_order: fallback.minimum_order != null ? Number(fallback.minimum_order) : null,
+                },
             });
         }
 
-        let restaurantId = req.user?.restaurantId;
-        if (restaurantId === 'default-restaurant') restaurantId = null;
-
-        let area = null;
-        if (restaurantId && req.user?.role !== 'SUPER_ADMIN') {
-            area = await prisma.deliveryArea.findFirst({
-                where: { id: req.params.id, restaurant_id: restaurantId },
-            });
-        }
-        if (!area) {
-            area = await prisma.deliveryArea.findUnique({
-                where: { id: req.params.id },
-            });
-        }
-
-        if (!area) {
-            return res.status(404).json({
-                success: false,
-                error: { code: 'DELIVERY_AREA_NOT_FOUND', message: 'Delivery area not found' },
-            });
-        }
-
-        return res.json({
-            success: true,
-            data: {
-                ...area,
-                delivery_fee: Number(area.delivery_fee),
-                minimum_order: area.minimum_order != null ? Number(area.minimum_order) : null,
-            },
+        return res.status(404).json({
+            success: false,
+            error: { code: 'DELIVERY_AREA_NOT_FOUND', message: 'Delivery area not found' },
         });
     } catch (err) {
+        const fallback = FALLBACK_DELIVERY_AREAS.find(a => a.id === req.params.id || a.slug === req.params.id);
+        if (fallback) {
+            return res.json({
+                success: true,
+                data: fallback,
+            });
+        }
         return res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: err.message },

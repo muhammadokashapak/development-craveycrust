@@ -12,9 +12,9 @@ router.get('/', async (req, res) => {
     try {
         const prisma = getDbClient();
         if (!prisma) {
-            return res.status(503).json({
-                success: false,
-                error: { code: 'DB_UNAVAILABLE', message: 'Database not available' },
+            return res.json({
+                success: true,
+                data: [],
             });
         }
 

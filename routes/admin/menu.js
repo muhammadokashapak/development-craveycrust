@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { getDbClient } from '../../src/db/client.js';
+import { getFallbackMenuItems } from '../../src/services/fallbackCatalog.js';
 import { createMenuItemSchema, updateMenuItemSchema } from '../../src/validators/menuSchema.js';
 import { slugify } from '../../src/utils/slugify.js';
 import { notifyN8nSync } from '../../src/services/syncService.js';
@@ -21,10 +22,7 @@ router.get('/', async (req, res) => {
     try {
         const prisma = getDbClient();
         if (!prisma) {
-            return res.status(503).json({
-                success: false,
-                error: { code: 'DB_UNAVAILABLE', message: 'Database not available' },
-            });
+            return res.json({ success: true, data: getFallbackMenuItems(), meta: { global_discount: null } });
         }
 
         const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
@@ -160,6 +158,14 @@ router.get('/', async (req, res) => {
             };
         });
 
+        if (formatted.length === 0) {
+            return res.json({
+                success: true,
+                data: getFallbackMenuItems(),
+                meta: { global_discount: globalDiscount },
+            });
+        }
+
         return res.json({
             success: true,
             data: formatted,
@@ -168,10 +174,11 @@ router.get('/', async (req, res) => {
             },
         });
     } catch (err) {
-        console.error('[ADMIN] Error listing menu items:', err);
-        return res.status(500).json({
-            success: false,
-            error: { code: 'INTERNAL_ERROR', message: err.message || 'Failed to retrieve menu items' },
+        console.warn('[ADMIN] Error listing menu items from DB, returning fallback:', err.message);
+        return res.json({
+            success: true,
+            data: getFallbackMenuItems(),
+            meta: { global_discount: null },
         });
     }
 });
@@ -243,49 +250,71 @@ function parseSettingImages(settingsMap, arrayKey, singleKey, defaultAsset) {
 router.get('/cards', async (req, res) => {
     try {
         const prisma = getDbClient();
-        if (!prisma) {
-            return res.status(503).json({ success: false, error: { message: 'Database not available' } });
+        if (prisma) {
+            try {
+                let restaurantId = req.user?.restaurantId;
+                if (!restaurantId) {
+                    try { restaurantId = await getDefaultRestaurantId(); } catch (_) {}
+                }
+                const targetRestIds = new Set();
+                if (restaurantId) targetRestIds.add(restaurantId);
+
+                const settings = await prisma.restaurantSetting.findMany({
+                    where: {
+                        ...(targetRestIds.size > 0 ? { restaurant_id: { in: Array.from(targetRestIds) } } : {}),
+                        key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
+                    },
+                    orderBy: { updated_at: 'desc' },
+                });
+
+                const settingsMap = {};
+                settings.forEach(s => {
+                    if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
+                });
+
+                const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
+                const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
+
+                return res.json({
+                    success: true,
+                    data: {
+                        menuImages,
+                        dealsImages,
+                        isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
+                        isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+                        defaultMenuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                        defaultDealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+                    },
+                });
+            } catch (dbErr) {
+                console.warn('[ADMIN] Fetch cards DB error, using default cards:', dbErr.message);
+            }
         }
-
-        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
-        const defaultRestId = await getDefaultRestaurantId();
-        const targetRestIds = new Set([restaurantId]);
-        if (defaultRestId) targetRestIds.add(defaultRestId);
-        try {
-            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
-            allActiveRests.forEach(r => targetRestIds.add(r.id));
-        } catch (_) {}
-
-        const settings = await prisma.restaurantSetting.findMany({
-            where: {
-                restaurant_id: { in: Array.from(targetRestIds) },
-                key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
-            },
-            orderBy: { updated_at: 'desc' },
-        });
-
-        const settingsMap = {};
-        settings.forEach(s => {
-            if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
-        });
-
-        const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
-        const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
 
         return res.json({
             success: true,
             data: {
-                menuImages,
-                dealsImages,
-                isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
-                isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+                menuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                dealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+                isCustomMenu: false,
+                isCustomDeals: false,
                 defaultMenuImages: ['assets/menu/cravey_crust_main_menu.png'],
                 defaultDealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
             },
         });
     } catch (err) {
-        console.error('[ADMIN] Fetch cards error:', err);
-        return res.status(500).json({ success: false, error: { message: err.message } });
+        console.warn('[ADMIN] Fetch cards error, using default cards:', err.message);
+        return res.json({
+            success: true,
+            data: {
+                menuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                dealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+                isCustomMenu: false,
+                isCustomDeals: false,
+                defaultMenuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                defaultDealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+            },
+        });
     }
 });
 
@@ -295,46 +324,70 @@ router.get('/cards', async (req, res) => {
 router.get('/bot-images', async (req, res) => {
     try {
         const prisma = getDbClient();
-        if (!prisma) return res.status(503).json({ success: false, error: { message: 'Database not available' } });
+        if (prisma) {
+            try {
+                let restaurantId = req.user?.restaurantId;
+                if (!restaurantId) {
+                    try { restaurantId = await getDefaultRestaurantId(); } catch (_) {}
+                }
+                const targetRestIds = new Set();
+                if (restaurantId) targetRestIds.add(restaurantId);
 
-        const restaurantId = req.user?.restaurantId || (await getDefaultRestaurantId());
-        const defaultRestId = await getDefaultRestaurantId();
-        const targetRestIds = new Set([restaurantId]);
-        if (defaultRestId) targetRestIds.add(defaultRestId);
-        try {
-            const allActiveRests = await prisma.restaurant.findMany({ select: { id: true } });
-            allActiveRests.forEach(r => targetRestIds.add(r.id));
-        } catch (_) {}
+                const settings = await prisma.restaurantSetting.findMany({
+                    where: {
+                        ...(targetRestIds.size > 0 ? { restaurant_id: { in: Array.from(targetRestIds) } } : {}),
+                        key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
+                    },
+                    orderBy: { updated_at: 'desc' },
+                });
 
-        const settings = await prisma.restaurantSetting.findMany({
-            where: {
-                restaurant_id: { in: Array.from(targetRestIds) },
-                key: { in: ['menu_image_urls', 'deals_image_urls', 'menu_image_url', 'deals_image_url'] },
-            },
-            orderBy: { updated_at: 'desc' },
-        });
+                const settingsMap = {};
+                settings.forEach(s => {
+                    if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
+                });
 
-        const settingsMap = {};
-        settings.forEach(s => {
-            if (!settingsMap[s.key] && s.value) settingsMap[s.key] = s.value;
-        });
+                const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
+                const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
 
-        const menuImages = parseSettingImages(settingsMap, 'menu_image_urls', 'menu_image_url', 'assets/menu/cravey_crust_main_menu.png');
-        const dealsImages = parseSettingImages(settingsMap, 'deals_image_urls', 'deals_image_url', 'assets/menu/cravey_crust_deals_menu.png');
+                return res.json({
+                    success: true,
+                    data: {
+                        menuImageUrl: menuImages[0] || 'assets/menu/cravey_crust_main_menu.png',
+                        dealsImageUrl: dealsImages[0] || 'assets/menu/cravey_crust_deals_menu.png',
+                        menuImages,
+                        dealsImages,
+                        isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
+                        isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+                    },
+                });
+            } catch (dbErr) {
+                console.warn('[ADMIN] Bot-images DB error, using default:', dbErr.message);
+            }
+        }
 
         return res.json({
             success: true,
             data: {
-                menuImageUrl: menuImages[0] || 'assets/menu/cravey_crust_main_menu.png',
-                dealsImageUrl: dealsImages[0] || 'assets/menu/cravey_crust_deals_menu.png',
-                menuImages,
-                dealsImages,
-                isCustomMenu: Boolean(settingsMap.menu_image_urls || settingsMap.menu_image_url),
-                isCustomDeals: Boolean(settingsMap.deals_image_urls || settingsMap.deals_image_url),
+                menuImageUrl: 'assets/menu/cravey_crust_main_menu.png',
+                dealsImageUrl: 'assets/menu/cravey_crust_deals_menu.png',
+                menuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                dealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+                isCustomMenu: false,
+                isCustomDeals: false,
             },
         });
     } catch (err) {
-        return res.status(500).json({ success: false, error: { message: err.message } });
+        return res.json({
+            success: true,
+            data: {
+                menuImageUrl: 'assets/menu/cravey_crust_main_menu.png',
+                dealsImageUrl: 'assets/menu/cravey_crust_deals_menu.png',
+                menuImages: ['assets/menu/cravey_crust_main_menu.png'],
+                dealsImages: ['assets/menu/cravey_crust_deals_menu.png'],
+                isCustomMenu: false,
+                isCustomDeals: false,
+            },
+        });
     }
 });
 
@@ -747,59 +800,94 @@ router.post('/cards/reset', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const prisma = getDbClient();
-        const restaurantId = req.user?.restaurantId;
+        if (prisma) {
+            try {
+                const restaurantId = req.user?.restaurantId;
+                const item = await prisma.menuItem.findFirst({
+                    where: {
+                        id: req.params.id,
+                        ...(restaurantId ? { restaurant_id: restaurantId } : {}),
+                    },
+                    include: {
+                        category: { select: { id: true, name: true, slug: true } },
+                        variants: {
+                            orderBy: { sort_order: 'asc' },
+                        },
+                    },
+                });
 
-        const item = await prisma.menuItem.findFirst({
-            where: {
-                id: req.params.id,
-                ...(restaurantId ? { restaurant_id: restaurantId } : {}),
-            },
-            include: {
-                category: { select: { id: true, name: true, slug: true } },
-                variants: {
-                    orderBy: { sort_order: 'asc' },
+                if (item) {
+                    const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+                    const itemDiscount = calculateDiscount(
+                        item.base_price,
+                        item.discount_percent,
+                        item.discount_fixed,
+                        globalDiscount
+                    );
+
+                    return res.json({
+                        success: true,
+                        data: {
+                            ...item,
+                            base_price: Number(item.base_price),
+                            discount_percent: item.discount_percent !== null ? Number(item.discount_percent) : null,
+                            discount_fixed: item.discount_fixed !== null ? Number(item.discount_fixed) : null,
+                            discount_info: itemDiscount,
+                            variants: (item.variants || []).map(v => ({
+                                ...v,
+                                price: Number(v.price),
+                                discount_percent: v.discount_percent !== null ? Number(v.discount_percent) : null,
+                                discount_fixed: v.discount_fixed !== null ? Number(v.discount_fixed) : null,
+                                discount_info: calculateDiscount(
+                                    v.price,
+                                    v.discount_percent || item.discount_percent,
+                                    v.discount_fixed || item.discount_fixed,
+                                    globalDiscount
+                                ),
+                            })),
+                        },
+                    });
+                }
+            } catch (dbErr) {
+                console.warn('[ADMIN] DB menu item lookup failed, using fallback:', dbErr.message);
+            }
+        }
+
+        const fallbackItems = getFallbackMenuItems();
+        const fallback = fallbackItems.find(it => it.id === req.params.id || it.slug === req.params.id);
+        if (fallback) {
+            return res.json({
+                success: true,
+                data: {
+                    ...fallback,
+                    base_price: Number(fallback.base_price),
+                    discount_percent: null,
+                    discount_fixed: null,
+                    discount_info: null,
+                    variants: (fallback.variants || []).map(v => ({
+                        ...v,
+                        price: Number(v.price),
+                        discount_percent: null,
+                        discount_fixed: null,
+                        discount_info: null,
+                    })),
                 },
-            },
-        });
-
-        if (!item) {
-            return res.status(404).json({
-                success: false,
-                error: { code: 'MENU_ITEM_NOT_FOUND', message: 'Menu item not found' },
             });
         }
 
-        const globalDiscount = await getGlobalDiscountSettings(restaurantId);
-        const itemDiscount = calculateDiscount(
-            item.base_price,
-            item.discount_percent,
-            item.discount_fixed,
-            globalDiscount
-        );
-
-        return res.json({
-            success: true,
-            data: {
-                ...item,
-                base_price: Number(item.base_price),
-                discount_percent: item.discount_percent !== null ? Number(item.discount_percent) : null,
-                discount_fixed: item.discount_fixed !== null ? Number(item.discount_fixed) : null,
-                discount_info: itemDiscount,
-                variants: item.variants.map(v => ({
-                    ...v,
-                    price: Number(v.price),
-                    discount_percent: v.discount_percent !== null ? Number(v.discount_percent) : null,
-                    discount_fixed: v.discount_fixed !== null ? Number(v.discount_fixed) : null,
-                    discount_info: calculateDiscount(
-                        v.price,
-                        v.discount_percent || item.discount_percent,
-                        v.discount_fixed || item.discount_fixed,
-                        globalDiscount
-                    ),
-                })),
-            },
+        return res.status(404).json({
+            success: false,
+            error: { code: 'MENU_ITEM_NOT_FOUND', message: 'Menu item not found' },
         });
     } catch (err) {
+        const fallbackItems = getFallbackMenuItems();
+        const fallback = fallbackItems.find(it => it.id === req.params.id || it.slug === req.params.id);
+        if (fallback) {
+            return res.json({
+                success: true,
+                data: fallback,
+            });
+        }
         return res.status(500).json({
             success: false,
             error: { code: 'INTERNAL_ERROR', message: err.message },

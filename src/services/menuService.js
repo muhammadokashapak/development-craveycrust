@@ -14,6 +14,7 @@
 import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { matchVariant } from './cartService.js';
+import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNotes } from './dealFlavourService.js';
 
 /**
  * Get all active categories with their active & available items
@@ -251,6 +252,20 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     // 2. Check if user typed "deal 1", "deal #1", "family feast", etc.
     const activeDeals = await getActiveDeals(restId);
     
+    function buildDealResult(deal) {
+        const pizzaInfo = getDealPizzaInfo(deal);
+        const extractedFlavours = pizzaInfo.isPizzaDeal ? extractFlavoursFromText(cleanQ, pizzaInfo.pizzaCount) : [];
+        const flavourNotes = extractedFlavours.length > 0 ? formatFlavourNotes(extractedFlavours) : null;
+        return {
+            status: 'EXACT_MATCH',
+            type: 'DEAL',
+            deal,
+            pizzaInfo,
+            flavours: extractedFlavours,
+            flavourNotes,
+        };
+    }
+
     // Exact deal name or slug match first (e.g. "Deal 1", "Burger Meal For 1")
     const exactDeal = activeDeals.find(d => 
         d.slug.toLowerCase() === cleanQ || 
@@ -258,11 +273,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         (strippedQ && (d.slug.toLowerCase() === strippedQ || d.name.toLowerCase() === strippedQ))
     );
     if (exactDeal) {
-        return {
-            status: 'EXACT_MATCH',
-            type: 'DEAL',
-            deal: exactDeal,
-        };
+        return buildDealResult(exactDeal);
     }
 
     // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "burger meal 3", "pizza deal 2")
@@ -275,11 +286,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             new RegExp(`\\bburger\\s*deal\\s*#?${bNum}\\b`, 'i').test(d.name)
         );
         if (bDeal) {
-            return {
-                status: 'EXACT_MATCH',
-                type: 'DEAL',
-                deal: bDeal,
-            };
+            return buildDealResult(bDeal);
         }
     }
 
@@ -292,26 +299,18 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             new RegExp(`\\bpi[z]+a\\s*deal\\s*#?${pNum}\\b`, 'i').test(d.name)
         );
         if (pDeal) {
-            return {
-                status: 'EXACT_MATCH',
-                type: 'DEAL',
-                deal: pDeal,
-            };
+            return buildDealResult(pDeal);
         }
     }
 
-    // Check numbered deal (e.g. "deal 5", "deal #1")
-    const dealNumMatch = cleanQ.match(/^(?:deal\s*(?:#|no\.?)?\s*)(\d+)$/i) ||
-        (strippedQ && strippedQ.match(/^(?:deal\s*(?:#|no\.?)?\s*)(\d+)$/i));
+    // Check numbered deal (e.g. "deal 5", "deal #1", or "deal 2 chicken tikka aur fajita")
+    const dealNumMatch = cleanQ.match(/\bdeal\s*(?:#|no\.?)?\s*(\d+)\b/i) ||
+        (strippedQ && strippedQ.match(/\bdeal\s*(?:#|no\.?)?\s*(\d+)\b/i));
     if (dealNumMatch) {
         const dNum = dealNumMatch[1];
         const numMatchedDeal = activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
         if (numMatchedDeal) {
-            return {
-                status: 'EXACT_MATCH',
-                type: 'DEAL',
-                deal: numMatchedDeal,
-            };
+            return buildDealResult(numMatchedDeal);
         }
     }
 

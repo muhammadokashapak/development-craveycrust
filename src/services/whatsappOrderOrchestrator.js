@@ -28,6 +28,16 @@ import { checkDeliveryAvailability, getOutOfDeliveryMessage } from './deliverySe
 import { createOrder, getOrderByNumber, requestOrderCancellation, confirmOrderCancellation } from './orderService.js';
 import { searchKnowledge } from './knowledgeService.js';
 import {
+    isPizzaDeal,
+    getDealPizzaInfo,
+    extractFlavoursFromText,
+    formatFlavourNotes,
+    formatDealFlavourPrompt,
+    setPendingDealFlavour,
+    getPendingDealFlavour,
+    clearPendingDealFlavour,
+} from './dealFlavourService.js';
+import {
     resolveBusinessAnswer,
     formatRestaurantTimings,
     formatRestaurantAddress,
@@ -236,21 +246,45 @@ export async function handleResolvedItemOrDeal({ resolved, quantity, convSession
 
     // Deal match
     if (resolved.type === 'DEAL') {
+        const pizzaInfo = resolved.pizzaInfo || getDealPizzaInfo(resolved.deal);
+        const hasFlavour = resolved.flavourNotes || (resolved.flavours && resolved.flavours.length > 0);
+
+        if (pizzaInfo.isPizzaDeal && !hasFlavour) {
+            draft.pendingDealFlavour = {
+                deal: resolved.deal,
+                quantity,
+                pizzaInfo,
+            };
+            setPendingDealFlavour(convSession.session_key, {
+                deal: resolved.deal,
+                quantity,
+                pizzaInfo,
+            });
+            return {
+                text: formatDealFlavourPrompt(resolved.deal, pizzaInfo),
+                intent: 'PROMPT_DEAL_FLAVOUR',
+                stage: convSession.stage,
+            };
+        }
+
+        const notes = resolved.flavourNotes || null;
         await addItemToCart({
             sessionKey: convSession.session_key,
             restaurantId,
             dealId: resolved.deal.id,
             quantity,
+            notes,
         });
 
         await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
         const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+        const flavourDesc = notes ? ` (${notes})` : '';
 
         return {
             text: 
 `Added to Cart!
 
-${quantity}x ${resolved.deal.name}: Rs.${Number(resolved.deal.deal_price) * quantity}
+${quantity}x ${resolved.deal.name}${flavourDesc}: Rs.${Number(resolved.deal.deal_price) * quantity}
 Subtotal: Rs.${cartTotals.subtotal}
 
 Reply cart to view cart ya checkout to proceed.`,
@@ -523,6 +557,53 @@ Reply cart to view cart ya checkout to continue.`,
         draft.pendingVariantItem = null;
     }
 
+    // 2b. Pending Deal Flavour Selection
+    const pendingFlavourDeal = draft.pendingDealFlavour || getPendingDealFlavour(convSession.session_key);
+    if (pendingFlavourDeal) {
+        const pDeal = pendingFlavourDeal.deal;
+        const pizzaInfo = pendingFlavourDeal.pizzaInfo || getDealPizzaInfo(pDeal);
+        const extracted = extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount);
+
+        if (extracted.length > 0) {
+            draft.pendingDealFlavour = null;
+            clearPendingDealFlavour(convSession.session_key);
+
+            const flavourNotes = formatFlavourNotes(extracted);
+            const qty = pendingFlavourDeal.quantity || 1;
+
+            await addItemToCart({
+                sessionKey: convSession.session_key,
+                restaurantId,
+                dealId: pDeal.id,
+                quantity: qty,
+                notes: flavourNotes,
+            });
+
+            await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
+            const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+
+            return {
+                text: 
+`Added to Cart!
+
+${qty}x ${pDeal.name} (${flavourNotes}): Rs.${Number(pDeal.deal_price) * qty}
+Subtotal: Rs.${cartTotals.subtotal}
+
+Reply cart to view cart ya checkout to continue.`,
+                intent: 'ADD_ITEM',
+                stage: 'BUILDING_CART',
+            };
+        }
+        if (cleanText.toLowerCase() === 'cancel' || cleanText.toLowerCase() === 'no') {
+            draft.pendingDealFlavour = null;
+            clearPendingDealFlavour(convSession.session_key);
+            return {
+                text: 'Deal flavour selection cancel kar di gayi.',
+                intent: 'CANCEL',
+            };
+        }
+    }
+
     // ── 3. Parse Deterministic Intent ─────────────────────────────────────
     let intentResult = parseIntent({
         text,
@@ -648,15 +729,40 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         if (draft.lastInquiredDeal) {
             const dealToAdd = draft.lastInquiredDeal;
             draft.lastInquiredDeal = null;
+
+            const pizzaInfo = getDealPizzaInfo(dealToAdd);
+            const extracted = pizzaInfo.isPizzaDeal ? extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount) : [];
+
+            if (pizzaInfo.isPizzaDeal && extracted.length === 0) {
+                draft.pendingDealFlavour = {
+                    deal: dealToAdd,
+                    quantity: 1,
+                    pizzaInfo,
+                };
+                setPendingDealFlavour(convSession.session_key, {
+                    deal: dealToAdd,
+                    quantity: 1,
+                    pizzaInfo,
+                });
+                return {
+                    text: formatDealFlavourPrompt(dealToAdd, pizzaInfo),
+                    intent: 'PROMPT_DEAL_FLAVOUR',
+                    stage: convSession.stage,
+                };
+            }
+
+            const notes = extracted.length > 0 ? formatFlavourNotes(extracted) : undefined;
             await addItemToCart({
                 sessionKey: convSession.session_key,
                 restaurantId,
                 dealId: dealToAdd.id,
                 quantity: 1,
+                notes,
             });
             await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
             const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
-            let respMsg = `Added to Cart!\n\n1x ${dealToAdd.name}: Rs.${Number(dealToAdd.deal_price)}\nSubtotal: Rs.${cartTotals.subtotal}`;
+            const flavourDesc = notes ? ` (${notes})` : '';
+            let respMsg = `Added to Cart!\n\n1x ${dealToAdd.name}${flavourDesc}: Rs.${Number(dealToAdd.deal_price)}\nSubtotal: Rs.${cartTotals.subtotal}`;
             if (/\b(?:discount|discounts|offer)\b/i.test(cleanText)) {
                 respMsg += `\n\n(Note: Deals mein already maximum discount included hota hai!)`;
             }
@@ -776,7 +882,8 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
             }
         });
         cartTotals.deals.forEach(d => {
-            cartMsg += `${d.quantity}x ${d.name}: Rs.${d.lineTotal || d.totalPrice}\n`;
+            const fText = d.notes ? ` (${d.notes})` : '';
+            cartMsg += `${d.quantity}x ${d.name}${fText}: Rs.${d.lineTotal || d.totalPrice}\n`;
         });
         const discountAmt = Number(cartTotals.discountTotal ?? cartTotals.discount ?? 0);
         if (discountAmt > 0) {
@@ -1199,7 +1306,8 @@ Aap aaj kya order karna chahenge? Hamare paas Mazedar Pizzas, Burgers aur Deals 
             }
         });
         cartTotals.deals.forEach(d => {
-            summaryMsg += `${d.quantity}x ${d.name}: Rs.${d.lineTotal || d.totalPrice}\n`;
+            const fText = d.notes ? ` (${d.notes})` : '';
+            summaryMsg += `${d.quantity}x ${d.name}${fText}: Rs.${d.lineTotal || d.totalPrice}\n`;
         });
         summaryMsg += `\nSubtotal: Rs.${cartTotals.subtotal}\n`;
         const discountAmt = Number(cartTotals.discountTotal ?? cartTotals.discount ?? 0);

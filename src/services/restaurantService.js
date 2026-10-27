@@ -1,4 +1,4 @@
-import { getDbClient } from '../db/client.js';
+import { getDbClient, markDbOffline } from '../db/client.js';
 
 let _cachedRestaurantId = null;
 
@@ -15,51 +15,35 @@ export async function getDefaultRestaurantId() {
 
     const prisma = getDbClient();
     if (!prisma) {
-        throw new Error('Database client not available');
+        _cachedRestaurantId = 'default-restaurant';
+        return _cachedRestaurantId;
     }
 
-    let restaurant = await prisma.restaurant.findFirst({
-        where: { slug: 'cravey-crust', is_active: true },
-        select: { id: true },
-    });
-
-    if (!restaurant) {
-        restaurant = await prisma.restaurant.findFirst({
-            where: { is_active: true },
-            orderBy: { created_at: 'asc' },
+    try {
+        let restaurant = await prisma.restaurant.findFirst({
+            where: { slug: 'cravey-crust', is_active: true },
             select: { id: true },
         });
+
+        if (!restaurant) {
+            restaurant = await prisma.restaurant.findFirst({
+                where: { is_active: true },
+                orderBy: { created_at: 'asc' },
+                select: { id: true },
+            });
+        }
+
+        if (restaurant) {
+            _cachedRestaurantId = restaurant.id;
+            return _cachedRestaurantId;
+        }
+    } catch (err) {
+        markDbOffline();
+        _cachedRestaurantId = 'default-restaurant';
+        return _cachedRestaurantId;
     }
 
-    if (!restaurant) {
-        restaurant = await prisma.restaurant.findFirst({
-            select: { id: true },
-        });
-    }
-
-    if (!restaurant) {
-        restaurant = await prisma.restaurant.create({
-            data: {
-                name: 'Store Admin',
-                slug: 'store-admin',
-                phone: '+92-300-0000000',
-                address: 'Main Boulevard',
-                currency: 'PKR',
-                timezone: 'Asia/Karachi',
-                opening_time: '10:00',
-                closing_time: '23:00',
-                min_order: 0,
-                default_delivery_fee: 0,
-                cod_enabled: true,
-                easypaisa_enabled: false,
-                easypaisa_number: null,
-                account_name: 'Store Admin',
-                is_active: true,
-            },
-        });
-    }
-
-    _cachedRestaurantId = restaurant.id;
+    _cachedRestaurantId = 'default-restaurant';
     return _cachedRestaurantId;
 }
 

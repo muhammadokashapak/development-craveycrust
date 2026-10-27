@@ -306,7 +306,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
     if (menuItemId) {
         existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === finalVariantId);
     } else if (dealId) {
-        existingItem = cart.items.find(i => i.deal_id === dealId);
+        existingItem = cart.items.find(i => i.deal_id === dealId && (notes === undefined || i.notes === (notes || null)));
     }
 
     if (existingItem) {
@@ -473,8 +473,14 @@ export async function calculateCartTotals({ sessionKey, restaurantId, promoCode,
 
     return {
         cartId: cart.id,
-        items: pricing.breakdown.items,
-        deals: pricing.breakdown.deals,
+        items: (pricing.breakdown.items || []).map(it => {
+            const raw = cart.items.find(ci => ci.menu_item_id === it.itemId && ci.menu_variant_id === (it.variantId || null));
+            return { ...it, notes: raw?.notes || null };
+        }),
+        deals: (pricing.breakdown.deals || []).map(d => {
+            const raw = cart.items.find(ci => ci.deal_id === d.dealId);
+            return { ...d, notes: raw?.notes || null };
+        }),
         subtotal: pricing.subtotal,
         discounts: pricing.discounts,
         discountTotal: pricing.discountTotal,

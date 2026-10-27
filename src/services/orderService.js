@@ -1174,7 +1174,10 @@ export async function getAdminOrders({ restaurantId, status, date, search, page 
         paymentStatus: o.payment_status,
         orderStatus: o.order_status,
         itemCount: o.order_items.reduce((sum, i) => sum + i.quantity, 0),
-        itemsSummary: o.order_items.map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot}`).join(', '),
+        itemsSummary: o.order_items.map(i => {
+            const f = i.notes ? ` [${i.notes}]` : '';
+            return `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot}${f}`;
+        }).join(', '),
         createdAt: o.created_at,
     }));
 

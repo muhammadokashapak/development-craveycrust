@@ -16,6 +16,7 @@ import { getActiveMenu, getActiveDeals } from './menuService.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { getDbClient } from '../db/client.js';
 import { getGlobalDiscountSettings, calculateDiscount } from './discountService.js';
+import { FALLBACK_CATEGORIES, FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 
 // ─── Sync Epoch (bumped by admin sync + catalog updates) ──────────────────
 let _syncEpoch = 1;
@@ -241,7 +242,11 @@ async function fetchAllCatalog() {
                 const desc = itemsText ? `\n   _${itemsText}_` : '';
                 return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
             });
-            return `${emoji} *${title}*\n━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n\n')}`;
+            let block = `${emoji} *${title}*\n━━━━━━━━━━━━━━━━━━━━━\n${lines.join('\n\n')}`;
+            if (title === 'PIZZA DEALS') {
+                block += `\n\n💡 _Deals mein apni pasand ka koi bhi pizza flavour (Chicken Tikka, Fajita, Supreme, Cheese Lover, Behari, Extreme) chun sakte hain!_`;
+            }
+            return block;
         };
 
         const burgerDealsList = [...dealBuckets.BURGER_MEALS, ...dealBuckets.BURGER_VALUE_DEALS];
@@ -425,46 +430,56 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             globalDiscount,
         };
     } catch (err) {
-        console.error('[CATALOG] Cache fetch error:', err.message);
-        const fallbackDeals = [
-            '=== BURGER MEALS ===\n(Deals abhi available nahi hain)',
-            '=== BURGER VALUE DEALS ===\n(Deals abhi available nahi hain)',
-            '=== PIZZA MEALS (1 Pizza + Drinks) ===\n(Deals abhi available nahi hain)',
-            '=== PIZZA VALUE DEALS (Multiple Pizzas + Drink) ===\n(Deals abhi available nahi hain)',
-            '=== SPECIAL / COMBO DEALS ===\n(Deals abhi available nahi hain)',
-        ].join('\n\n');
+        console.warn('[CATALOG] DB offline, serving complete Cravey Crust in-memory fallback:', err.message);
+        
+        const fallbackCats = FALLBACK_CATEGORIES.map(c => ({
+            ...c,
+            menu_items: FALLBACK_MENU_ITEMS.filter(it => it.category_id === c.id),
+        }));
+
+        const cachedCategoriesSummary = fallbackCats.map((c, idx) =>
+            `${idx + 1}. ${c.name} (${c.menu_items?.length || 0} items)`
+        ).join('\n');
+
+        const cachedDealsSummary = FALLBACK_DEALS.map(d => {
+            const itemsText = (d.deal_items || []).map(di => `${di.quantity}x ${di.menu_item?.name || 'Item'}`).join(', ');
+            return `• ${d.name} (Rs. ${d.deal_price}) (${itemsText}) [dealId:${d.id}]`;
+        }).join('\n');
+
+        const customerBurgerDeals = '🍔 *BURGER DEALS*\n━━━━━━━━━━━━━━━━━━━━━\n• *Burger Meal For 1* — Rs. 599\n• *Burger Meal For 2* — Rs. 999\n• *Deal 4* (4x Zegy Burgers) — Rs. 999\n• *Deal 5* (3x Zinger Burgers + 1L Drink) — Rs. 1099';
+        const customerPizzaDeals = '🍕 *PIZZA DEALS*\n━━━━━━━━━━━━━━━━━━━━━\n• *Deal 1* (2 Small Pizzas + 2 Drinks) — Rs. 1099\n• *Deal 2* (2 Medium Pizzas + 1L Drink) — Rs. 2099\n• *Deal 3* (2 Large Pizzas + 1L Drink) — Rs. 2999\n• *Pizza Meal For 1* — Rs. 599\n• *Pizza Meal For 2* — Rs. 1299\n\n💡 _Deals mein apni pasand ka koi bhi pizza flavour chun sakte hain!_';
+        const customerAllDeals = `${customerBurgerDeals}\n\n\n${customerPizzaDeals}`;
 
         return {
-            restId: null,
+            restId: 'default-restaurant',
             syncEpoch: _syncEpoch,
-            dealsCount: 0,
-            cachedCategoriesSummary: 'Main Menu Dastiyab Hai',
-            cachedMenuCatalog: '',
-            customerMenuCatalog: 'Main Menu Dastiyab Hai',
-            cachedDealsSummary: fallbackDeals,
-            cachedStoreInfo: '\nName: Burger Mehfil\nOutlet Address: Main Boulevard\nTimings: 04:00 PM - 02:00 AM\n',
-            cachedFaqs: '',
-            customerBurgerDeals: 'Burger deals load nahi ho saki.',
-            customerPizzaDeals: 'Pizza deals load nahi ho saki.',
-            customerAllDeals: 'Deals load nahi ho saki.',
-            storeName: 'Burger Mehfil',
-            storeAddress: 'Main Boulevard',
-            storePhone: '',
+            dealsCount: FALLBACK_DEALS.length,
+            cachedCategoriesSummary,
+            cachedMenuCatalog: cachedCategoriesSummary,
+            customerMenuCatalog: cachedCategoriesSummary,
+            cachedDealsSummary,
+            cachedStoreInfo: 'Name: Cravey Crust\nOutlet Address: Nearby AQ Khan School, Ghauri Town, Islamabad\nTimings: 04:00 PM - 02:00 AM\nPhone: 03301233927\n',
+            cachedFaqs: '• Free Delivery Areas: Ghauri Town (All Phases), Ghauri VIP, Taramari, Tarlai, Burma, Khana Pull, Rehman Enclave, Sanam Chowk, Shakral, Madina Town, Bilal Town, Gulzar-e-Quaid, Gulberg Green.\n• Payment: Cash on Delivery (COD) & EasyPaisa.',
+            customerBurgerDeals,
+            customerPizzaDeals,
+            customerAllDeals,
+            storeName: 'Cravey Crust',
+            storeAddress: 'Nearby AQ Khan School, Ghauri Town, Islamabad',
+            storePhone: '03301233927',
             openingTime: '04:00 PM',
             closingTime: '02:00 AM',
             storeTimings: '04:00 PM - 02:00 AM',
             codEnabled: true,
             easypaisaEnabled: true,
             easypaisaNumber: '03434919319',
-            accountName: 'Store Admin',
+            accountName: 'Cravey Crust',
             minOrder: 0,
             defaultDeliveryFee: 0,
-            outOfDeliveryMessage: 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.\n\nBarah-e-karam kisi approved delivery area ka address ya WhatsApp location pin share karein, taake hum aapki delivery confirm kar sakein. Shukriya!',
-            rawCategories: [],
-            rawDeals: [],
+            outOfDeliveryMessage: 'Maazrat! Aapki share ki hui location hamari delivery range se bahar hai. Hum sirf apne approved delivery areas mein delivery provide karte hain.',
+            rawCategories: fallbackCats,
+            rawDeals: FALLBACK_DEALS,
         };
     }
-
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
