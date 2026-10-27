@@ -985,13 +985,12 @@ const autoReplies = {
     'thank you': "You're welcome! 😊",
 };
 
-// ─── Per-JID Sequential Message Pacing Queue ───────────────
-// Enforces a natural ~3.5s reading gap between consecutive messages
-// sent to the same user/chat (e.g., order confirmation, status notifications,
-// and cancellation confirmation flows), while activating WhatsApp typing presence.
+// ─── Per-JID Sequential Message Pacing & Typing Indicator ───
+// Enforces a natural 1-2 seconds typing presence gap on all outgoing responses
+// and sequential ordering for consecutive messages to the same user.
 const _jidSendQueues = new Map();
 const _jidLastSentTime = new Map();
-const MIN_MESSAGE_GAP_MS = 3500; // 3.5 seconds natural reading delay
+const TYPING_DELAY_MS = 1500; // 1.5 seconds natural human typing delay
 
 function getPacingKey(jid) {
     if (!jid || typeof jid !== 'string') return null;
@@ -1075,15 +1074,51 @@ async function startSession(session, options = {}) {
     });
 
     // Intercept sent messages to store in cache for retry decryption requests
-    // and pace consecutive messages to the same user with typing presence
+    // and show live typing indicator with a 1-2 seconds natural human response delay
     const origSendMessage = sock.sendMessage.bind(sock);
     sock.sendMessage = async (...args) => {
-        const [targetJid, content, options] = args;
+        let [targetJid, content, options] = args;
+        // Clean multi-device colon suffix (e.g. 923001234567:12@s.whatsapp.net -> 923001234567@s.whatsapp.net)
+        if (typeof targetJid === 'string' && targetJid.includes(':')) {
+            targetJid = targetJid.replace(/:[0-9]+@/, '@');
+            args[0] = targetJid;
+        }
+
         const pacingKey = getPacingKey(targetJid);
         const shouldSkipPacing = !pacingKey || options?.skipPacing === true || Boolean(content?.react);
 
         const executeSend = async () => {
-            const result = await origSendMessage(...args);
+            let result;
+            try {
+                result = await origSendMessage(...args);
+            } catch (err) {
+                // If send failed due to quoted stanza incompatibility (common with @lid or voice notes), retry cleanly without quoted
+                if (options && options.quoted) {
+                    console.warn(`[SEND] Quoted send failed to ${targetJid} (${err.message}), retrying direct plain send...`);
+                    const safeOptions = { ...options };
+                    delete safeOptions.quoted;
+                    try {
+                        result = await origSendMessage(targetJid, content, safeOptions);
+                    } catch (retryErr) {
+                        const fallbackText = content?.caption || content?.text;
+                        if (fallbackText) {
+                            console.warn(`[SEND] Secondary send failed, retrying plain text to ${targetJid}...`);
+                            result = await origSendMessage(targetJid, { text: fallbackText }, safeOptions);
+                        } else {
+                            throw retryErr;
+                        }
+                    }
+                } else {
+                    const fallbackText = content?.caption || content?.text;
+                    if (fallbackText && (content.image || content.video || content.audio || content.document)) {
+                        console.warn(`[SEND] Media send failed (${err.message}), falling back to text message to ${targetJid}...`);
+                        result = await origSendMessage(targetJid, { text: fallbackText }, options || {});
+                    } else {
+                        console.error(`[SEND] Failed to send message to ${targetJid}:`, err.message);
+                        throw err;
+                    }
+                }
+            }
             if (result && result.key && result.message) {
                 const storeKey = `${result.key.remoteJid}_${result.key.id}`;
                 global.messageCache.set(storeKey, result);
@@ -1103,28 +1138,33 @@ async function startSession(session, options = {}) {
                 await currentQueue;
             } catch (_) {}
 
-            const lastSent = _jidLastSentTime.get(pacingKey) || 0;
-            const now = Date.now();
-            const elapsed = now - lastSent;
-            const remainingDelay = MIN_MESSAGE_GAP_MS - elapsed;
+            // Activate typing indicator on customer chat
+            try {
+                if (typeof sock?.sendPresenceUpdate === 'function') {
+                    await sock.sendPresenceUpdate('composing', targetJid);
+                }
+            } catch (_) {}
 
-            if (remainingDelay > 100) {
-                // Show typing presence during the gap so the customer knows the next message is arriving
-                try {
-                    if (typeof sock?.sendPresenceUpdate === 'function') {
-                        sock.sendPresenceUpdate('composing', targetJid).catch(() => {});
-                    }
-                } catch (_) {}
-
-                await new Promise(resolve => setTimeout(resolve, remainingDelay));
-            }
+            // Enforce natural 1-2 seconds human typing delay (1500ms) requested by user
+            await new Promise(resolve => setTimeout(resolve, TYPING_DELAY_MS));
 
             try {
                 const res = await executeSend();
                 _jidLastSentTime.set(pacingKey, Date.now());
+                try {
+                    if (typeof sock?.sendPresenceUpdate === 'function') {
+                        sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
+                    }
+                } catch (_) {}
                 return res;
-            } finally {
+            } catch (sendErr) {
                 _jidLastSentTime.set(pacingKey, Date.now());
+                try {
+                    if (typeof sock?.sendPresenceUpdate === 'function') {
+                        sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
+                    }
+                } catch (_) {}
+                throw sendErr;
             }
         })();
 
@@ -1209,13 +1249,14 @@ async function startSession(session, options = {}) {
             console.log(`⚠️ [${session.id}] Connection closed. Status code: ${statusCode}`);
 
             if (statusCode === reason.loggedOut) {
-                console.log(`❌ [${session.id}] Session logged out. Clearing auth...`);
+                console.log(`❌ [${session.id}] Session logged out. Clearing auth and generating fresh QR...`);
                 session.clearAuth();
                 await session.cleanup();
                 session.state = 'idle';
                 session.user = null;
                 session.qrDataUrl = null;
                 session.pairingCode = null;
+                setTimeout(() => startSession(session, { mode: 'qr' }), 2000);
                 return;
             } else if (statusCode === 440) {
                 if (session.state === 'connected') {
@@ -1379,14 +1420,10 @@ async function handleMessage(sock, msg, session) {
     const hasAudio = extractedAudio && extractedAudio.type === 'audio' && extractedAudio.msg;
 
     if (hasAudio) {
+        let voiceHandled = false;
         try {
             const audioMsg = extractedAudio.msg;
             console.log(`[VOICE] Received voice/audio message from ${jid} (PTT=${audioMsg.ptt ?? false}, mime=${audioMsg.mimetype || 'unknown'}). Downloading audio stream...`);
-
-            // If incoming from customer, indicate typing/composing state (NEVER voice recording)
-            if (!isFromMe) {
-                sock.sendPresenceUpdate('composing', jid).catch(() => {});
-            }
 
             const stream = await downloadContentFromMessage(audioMsg, 'audio');
             let audioBuffer = Buffer.from([]);
@@ -1401,8 +1438,10 @@ async function handleMessage(sock, msg, session) {
                 if (transcription?.success && transcription.text) {
                     text = transcription.text;
                     isVoiceNote = true;
+                    voiceHandled = true;
                     console.log(`[VOICE] Transcribed voice note from ${jid}: "${text}"`);
                 } else if (!isFromMe && !isGroup) {
+                    voiceHandled = true;
                     // Check if chat is muted for human handover
                     const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '');
                     const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
@@ -1428,6 +1467,19 @@ async function handleMessage(sock, msg, session) {
             }
         } catch (voiceErr) {
             console.error(`[VOICE] Error processing audio message from ${jid}:`, voiceErr.message);
+        }
+
+        // Guaranteed fallback if voice note was not handled above (e.g. empty buffer, download error)
+        if (!voiceHandled && !isFromMe && !isGroup) {
+            const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '');
+            const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
+            if (!muteStatus?.isMuted) {
+                const errMsg = 'Aap ki voice note mili hai! 🎙️ Baraye meharbani voice message ki bajaye text likh kar bhejein taake aap ka order foran process ho sake. 🙏\n(Aap "menu" ya "deals" likh kar menu dekh sakte hain)';
+                await sock.sendMessage(jid, { text: errMsg }).catch((sendErr) => {
+                    console.error(`[VOICE] Fallback text send error to ${jid}:`, sendErr.message);
+                });
+            }
+            return;
         }
     }
 
@@ -1647,11 +1699,12 @@ async function handleMessage(sock, msg, session) {
                     const hasImages = Boolean(imgToSend || (Array.isArray(imgsToSend) && imgsToSend.length > 0));
 
                     if ((textToSend && textToSend.trim()) || hasImages) {
+                        const sendOpts = (isVoiceNote || msg.message?.audioMessage) ? {} : { quoted: msg };
                         await sendWhatsAppMediaOrText(sock, jid, {
                             text: textToSend || '',
                             imageUrl: imgToSend,
                             imageUrls: imgsToSend,
-                        }, { quoted: msg }).catch(err => {
+                        }, sendOpts).catch(err => {
                             console.error(`[AI] Failed to send reply to ${jid}:`, err.message);
                         });
 
@@ -1756,7 +1809,8 @@ async function handleMessage(sock, msg, session) {
             });
 
             if (orderResponse && orderResponse.text) {
-                await sendWhatsAppMediaOrText(sock, jid, { text: orderResponse.text, imageUrl: orderResponse.imageUrl }, { quoted: msg });
+                const sendOpts = (isVoiceNote || msg.message?.audioMessage) ? {} : { quoted: msg };
+                await sendWhatsAppMediaOrText(sock, jid, { text: orderResponse.text, imageUrl: orderResponse.imageUrl }, sendOpts);
                 // Record outgoing bot order reply
                 recordChatMessage({
                     chatId: jid,
@@ -2124,11 +2178,13 @@ async function initAllSessions() {
         startSession(primary, { mode: 'restore' }).catch(err => {
             console.error(`Failed to restore session 'primary':`, err.message);
             primary.state = 'idle';
+            startSession(primary, { mode: 'qr' }).catch(() => {});
         });
     } else {
-        primary.clearAuth();
-        primary.state = 'idle';
-        console.log(`📱 Ready to link single WhatsApp account ('primary') in idle state.`);
+        console.log(`📱 No existing auth found. Starting QR code scan mode for 'primary'...`);
+        startSession(primary, { mode: 'qr' }).catch(err => {
+            console.error(`Failed to start QR mode:`, err.message);
+        });
     }
 }
 
