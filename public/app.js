@@ -6506,13 +6506,19 @@ async function fetchAndRenderChatMessages(chatId) {
             ? m.customerName.trim()
             : (threadName || 'Customer'));
 
+      let renderedBody = escapeHtml(m.message || '');
+      if (typeof m.message === 'string' && m.message.startsWith('🎙️')) {
+        const cleanContent = m.message.replace(/^🎙️\s*(\[Voice(\s*Note)?\]:?)?\s*/i, '');
+        renderedBody = `<span class="chat-voice-pill">🎙️ Voice Note</span> ${escapeHtml(cleanContent)}`;
+      }
+
       bubbleRow.innerHTML = `
         <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-bot'}">
           <div class="chat-meta">
             <span class="chat-name">${isUser ? `👤 ${escapeHtml(bubbleCustomerName)}` : '🍔 Burger Raja'}</span>
             <span class="chat-time" title="${escapeHtml(tooltipText)}">${escapeHtml(timeDisplay)}${!isUser ? ' <span class="chat-checkmarks">✔✔</span>' : ''}</span>
           </div>
-          <div class="chat-body">${escapeHtml(m.message)}</div>
+          <div class="chat-body">${renderedBody}</div>
         </div>
       `;
       thread.appendChild(bubbleRow);

@@ -39,6 +39,7 @@ import n8nRouter, { injectSessions } from './routes/n8n.js';
 
 // ─── Standalone AI Agent (n8n-free) ──────────────────────────────────────
 import { processMessage as aiProcessMessage } from './src/services/aiAgentService.js';
+import { transcribeVoiceNote } from './src/services/voiceTranscriptionService.js';
 
 // ─── Phase 1: Feature Flags + Health Route ────────────────
 import { logFlags } from './src/config/flags.js';
@@ -1299,10 +1300,65 @@ async function handleMessage(sock, msg, session) {
     global.messageCache.set(storeKey, msg);
 
     // Extract text from various message types
-    const text = extractMessageText(msg);
+    let text = extractMessageText(msg);
     const isFromMe = msg.key.fromMe;
     const sender = msg.key.participant || msg.key.remoteJid;
     const isGroup = jid.endsWith('@g.us');
+    let isVoiceNote = false;
+
+    // ─── Voice Note (Audio / PTT) Decoding via Gemini ─────────
+    const extractedAudio = extractMediaMessage(msg.message);
+    const hasAudio = extractedAudio && extractedAudio.type === 'audio' && extractedAudio.msg;
+
+    if (hasAudio) {
+        try {
+            const audioMsg = extractedAudio.msg;
+            console.log(`[VOICE] Received voice/audio message from ${jid} (PTT=${audioMsg.ptt ?? false}, mime=${audioMsg.mimetype || 'unknown'}). Downloading audio stream...`);
+
+            // If incoming from customer, indicate recording/listening state
+            if (!isFromMe) {
+                sock.sendPresenceUpdate('recording', jid).catch(() => {});
+            }
+
+            const stream = await downloadContentFromMessage(audioMsg, 'audio');
+            let audioBuffer = Buffer.from([]);
+            for await (const chunk of stream) {
+                audioBuffer = Buffer.concat([audioBuffer, chunk]);
+            }
+
+            if (audioBuffer && audioBuffer.length > 0) {
+                console.log(`[VOICE] Downloaded ${audioBuffer.length} bytes of audio. Transcribing with Gemini...`);
+                const transcription = await transcribeVoiceNote(audioBuffer, audioMsg.mimetype);
+
+                if (transcription?.success && transcription.text) {
+                    text = transcription.text;
+                    isVoiceNote = true;
+                    console.log(`[VOICE] Transcribed voice note from ${jid}: "${text}"`);
+                } else if (!isFromMe && !isGroup) {
+                    // Check if chat is muted for human handover
+                    const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '');
+                    const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
+
+                    if (!muteStatus?.isMuted) {
+                        const errMsg = transcription?.userFriendlyError || 
+                            'Mafi chahta hoon, aapki voice note wazeh nahi thi. Baraye meharbani dobara bolein ya text likh kar bhej dein. 🙏';
+                        await sock.sendMessage(jid, { text: errMsg }, { quoted: msg }).catch(() => {});
+                    }
+
+                    recordChatMessage({
+                        chatId: jid,
+                        phone: senderNum,
+                        customerName: msg.pushName || null,
+                        sender: 'user',
+                        message: '🎙️ [Voice Note: Inaudible / Unclear]',
+                    }).catch(() => {});
+                    return; // Early return since voice note could not be transcribed
+                }
+            }
+        } catch (voiceErr) {
+            console.error(`[VOICE] Error processing audio message from ${jid}:`, voiceErr.message);
+        }
+    }
 
     // ── Record messages sent directly by human staff from the WhatsApp device ──
     if (isFromMe && !isGroup && text && text.trim()) {
@@ -1311,7 +1367,7 @@ async function handleMessage(sock, msg, session) {
             chatId: jid,
             phone: targetPhone,
             sender: 'bot',
-            message: text.trim(),
+            message: isVoiceNote ? `🎙️ ${text.trim()}` : text.trim(),
         }).catch(() => {});
     }
 
@@ -1488,7 +1544,9 @@ async function handleMessage(sock, msg, session) {
             }
             console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
 
-            const incomingUserMsg = text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null)));
+            const incomingUserMsg = isVoiceNote
+                ? `🎙️ ${text}`
+                : (text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null))));
             if (!incomingUserMsg) {
                 return; // Ignore empty protocol or cipher stubs
             }
@@ -1590,7 +1648,9 @@ async function handleMessage(sock, msg, session) {
                 customerName = liveDetailsOrder.name;
             }
 
-            const incomingOrderMsg = text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null)));
+            const incomingOrderMsg = isVoiceNote
+                ? `🎙️ ${text}`
+                : (text || (loc ? `📍 Location: ${loc.address || 'GPS Coordinates'}` : (msg.message?.imageMessage ? '📷 Image' : (msg.message?.videoMessage ? '📹 Video' : null))));
             if (!incomingOrderMsg) {
                 return;
             }
@@ -1609,7 +1669,7 @@ async function handleMessage(sock, msg, session) {
                 chatId: jid,
                 messageId: msg.key.id,
                 text: text || '',
-                messageType: loc ? loc.type : (msg.message?.imageMessage ? 'image' : 'text'),
+                messageType: isVoiceNote ? 'voice' : (loc ? loc.type : (msg.message?.imageMessage ? 'image' : 'text')),
                 verifiedPhone: identity.phone || '',
                 phoneVerified: identity.phoneVerified === true,
                 phoneSource: identity.phoneSource || 'unknown',
