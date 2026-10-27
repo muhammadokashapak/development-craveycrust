@@ -1,6 +1,6 @@
 // ─── Automatic Client Cache Invalidation (v9.0.0) ───────────
 (function() {
-  const currentVer = '9.0.0';
+  const currentVer = '9.2.0';
   if (localStorage.getItem('cc_cache_ver') !== currentVer) {
     localStorage.setItem('cc_cache_ver', currentVer);
     // Wipe all entity cache keys and stale brand names
@@ -3537,7 +3537,7 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
     // If Premium Pizzas category has no explicit choice item in DB yet, synthesize one
     if (catNameLower.includes('premium') && choiceItems.length === 0 && items.length > 0) {
       const flagship = items[0] || (cachedMenuItemsForDeals || []).find(m => (m.name || '').toLowerCase().includes('extreme'));
-      choiceItems.push({
+      const synthItem = {
         id: flagship ? flagship.id : 'item-36',
         name: "Premium Pizza (Customer's Choice)",
         base_price: flagship ? flagship.base_price : 699,
@@ -3547,7 +3547,31 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
           { id: 'v-36-3', name: 'Large', price: 1799 },
           { id: 'v-36-4', name: 'Party Size', price: 2799 },
         ]
-      });
+      };
+      choiceItems.push(synthItem);
+      if (!cachedMenuItemsForDeals.some(m => m.id === synthItem.id)) {
+        cachedMenuItemsForDeals.push(synthItem);
+      }
+    }
+
+    // If Classic Pizzas category has no explicit choice item in DB yet, synthesize one
+    if (catNameLower.includes('classic') && choiceItems.length === 0 && items.length > 0) {
+      const flagship = items.find(m => (m.name || '').toLowerCase().includes('classic')) || items[0];
+      const synthItem = {
+        id: flagship ? flagship.id : 'item-33',
+        name: "Classic Pizza (Customer's Choice)",
+        base_price: flagship ? flagship.base_price : 599,
+        variants: (flagship && flagship.variants && flagship.variants.length > 0) ? flagship.variants : [
+          { id: 'v-33-1', name: 'Small', price: 599 },
+          { id: 'v-33-2', name: 'Medium', price: 1299 },
+          { id: 'v-33-3', name: 'Large', price: 1499 },
+          { id: 'v-33-4', name: 'Party Size', price: 2599 },
+        ]
+      };
+      choiceItems.push(synthItem);
+      if (!cachedMenuItemsForDeals.some(m => m.id === synthItem.id)) {
+        cachedMenuItemsForDeals.push(synthItem);
+      }
     }
 
     if (choiceItems.length > 0) {
