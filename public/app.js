@@ -1,6 +1,6 @@
-// ─── Automatic Client Cache Invalidation (v9.3.0) ───────────
+// ─── Automatic Client Cache Invalidation (v9.4.0) ───────────
 (function() {
-  const currentVer = '9.3.0';
+  const currentVer = '9.4.0';
   if (localStorage.getItem('cc_cache_ver') !== currentVer) {
     localStorage.setItem('cc_cache_ver', currentVer);
     // Wipe all entity cache keys and stale brand names
@@ -6223,6 +6223,132 @@ if (faqStatusFilter) faqStatusFilter.addEventListener('change', () => loadFaqs(t
 let activeChatCustomer = null;
 let chatPollTimer = null;
 
+/**
+ * Calculates day difference from today at local midnight:
+ * 0 = Today
+ * 1 = Yesterday
+ * >1 = Older (2+ days ago)
+ */
+function getChatDayDifference(dateInput) {
+  if (!dateInput) return null;
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return null;
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+  return Math.round((todayMidnight - targetMidnight) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * WhatsApp Chat List (Left Column) Timestamp:
+ * - Today: "Today, 11:45 PM"
+ * - Yesterday: "Yesterday, 10:30 AM"
+ * - Older (>1 day): "25 Oct 2026, 04:15 PM" (or "25 Oct, 04:15 PM" if same year)
+ */
+function formatWhatsAppConvTime(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+
+  const diff = getChatDayDifference(d);
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (diff === 0) {
+    return `Today, ${timeStr}`;
+  } else if (diff === 1) {
+    return `Yesterday, ${timeStr}`;
+  } else {
+    const now = new Date();
+    const day = d.getDate();
+    const month = d.toLocaleString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    const dateFormatted = (year === now.getFullYear()) ? `${day} ${month}` : `${day} ${month} ${year}`;
+    return `${dateFormatted}, ${timeStr}`;
+  }
+}
+
+/**
+ * WhatsApp Date Divider Chip (between message days in thread):
+ * - Today: "TODAY"
+ * - Yesterday: "YESTERDAY"
+ * - Older (>1 day): "SUNDAY, 25 OCTOBER 2026"
+ */
+function formatWhatsAppDateDivider(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+
+  const diff = getChatDayDifference(d);
+  if (diff === 0) {
+    return 'TODAY';
+  } else if (diff === 1) {
+    return 'YESTERDAY';
+  } else {
+    return d.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    }).toUpperCase();
+  }
+}
+
+/**
+ * WhatsApp Message Bubble Timestamp (.chat-time):
+ * - Today: "11:45 PM"
+ * - Yesterday: "Yesterday, 11:45 PM"
+ * - Older (>1 day): "25 Oct, 11:45 PM"
+ */
+function formatWhatsAppBubbleTimestamp(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+
+  const diff = getChatDayDifference(d);
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  if (diff === 0) {
+    return timeStr;
+  } else if (diff === 1) {
+    return `Yesterday, ${timeStr}`;
+  } else {
+    const now = new Date();
+    const day = d.getDate();
+    const month = d.toLocaleString('en-US', { month: 'short' });
+    const year = d.getFullYear();
+    const dateFormatted = (year === now.getFullYear()) ? `${day} ${month}` : `${day} ${month} ${year}`;
+    return `${dateFormatted}, ${timeStr}`;
+  }
+}
+
+/**
+ * Full descriptive string for tooltips (e.g., "Sent on Sunday, 25 October 2026 at 11:45 PM")
+ */
+function formatChatFullTooltip(dateInput) {
+  if (!dateInput) return '';
+  const d = new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+
+  const diff = getChatDayDifference(d);
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateStr = d.toLocaleDateString('en-US', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  if (diff === 0) {
+    return `Sent Today at ${timeStr}`;
+  } else if (diff === 1) {
+    return `Sent Yesterday at ${timeStr}`;
+  } else {
+    return `Sent on ${dateStr} at ${timeStr}`;
+  }
+}
+
 async function loadConversations(searchQuery = '') {
   if (currentUserRole !== 'SUPER_ADMIN') return;
   const container = document.getElementById('chatsConversationsList');
@@ -6254,7 +6380,8 @@ async function loadConversations(searchQuery = '') {
       const displayName = c.customerName && c.customerName !== 'Customer' ? c.customerName : (c.phone ? `Customer (+${c.phone})` : 'Customer');
       const displayPhone = c.phone || c.chatId.split('@')[0];
       const initial = (c.customerName && c.customerName !== 'Customer' ? c.customerName : displayPhone).replace(/[^A-Za-z0-9]/g, '').charAt(0).toUpperCase() || 'C';
-      const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const timeStr = formatWhatsAppConvTime(c.lastMessageAt);
+      const tooltipStr = formatChatFullTooltip(c.lastMessageAt);
 
       item.innerHTML = `
         <div class="conv-avatar">
@@ -6262,8 +6389,8 @@ async function loadConversations(searchQuery = '') {
         </div>
         <div class="conv-content">
           <div class="conv-top-row">
-            <strong class="conv-name">${escapeHtml(displayName)}</strong>
-            <span class="conv-time">${escapeHtml(timeStr)}</span>
+            <strong class="conv-name" title="${escapeHtml(displayName)}">${escapeHtml(displayName)}</strong>
+            <span class="conv-time" title="${escapeHtml(tooltipStr)}">${escapeHtml(timeStr)}</span>
           </div>
           <div class="conv-phone">
             +${escapeHtml(displayPhone)}
@@ -6305,9 +6432,11 @@ async function openCustomerChatThread(customer) {
 
   const resolvedName = customer.customerName && customer.customerName !== 'Customer' ? customer.customerName : (customer.phone ? `Customer (${customer.phone})` : 'Customer');
   const resolvedPhone = customer.phone || customer.chatId.split('@')[0];
+  const lastActiveText = customer.lastMessageAt ? ` • Last active: ${formatWhatsAppConvTime(customer.lastMessageAt)}` : '';
+  const lastActiveTooltip = customer.lastMessageAt ? formatChatFullTooltip(customer.lastMessageAt) : '';
 
   if (headerName) headerName.textContent = resolvedName;
-  if (headerPhone) headerPhone.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>+${resolvedPhone}`;
+  if (headerPhone) headerPhone.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block; vertical-align:middle; margin-right:4px;"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>+${escapeHtml(resolvedPhone)}${lastActiveText ? `<span class="chat-header-last-active" title="${escapeHtml(lastActiveTooltip)}">${escapeHtml(lastActiveText)}</span>` : ''}`;
   if (headerAvatar) headerAvatar.textContent = resolvedName.replace(/[^A-Za-z0-9]/g, '').charAt(0).toUpperCase() || 'C';
   if (badge) {
     badge.style.display = 'inline-flex';
@@ -6341,12 +6470,30 @@ async function fetchAndRenderChatMessages(chatId) {
       return;
     }
 
+    let lastDateKey = null;
+
     messages.forEach(m => {
+      const msgDate = m.createdAt ? new Date(m.createdAt) : null;
+      const dateKey = (msgDate && !isNaN(msgDate.getTime()))
+        ? `${msgDate.getFullYear()}-${msgDate.getMonth()}-${msgDate.getDate()}`
+        : null;
+
+      // WhatsApp Date Divider between days
+      if (dateKey && dateKey !== lastDateKey) {
+        lastDateKey = dateKey;
+        const dividerLabel = formatWhatsAppDateDivider(m.createdAt);
+        const dividerEl = document.createElement('div');
+        dividerEl.className = 'chat-date-divider';
+        dividerEl.innerHTML = `<span class="chat-date-chip">📅 ${escapeHtml(dividerLabel)}</span>`;
+        thread.appendChild(dividerEl);
+      }
+
       const isUser = m.sender === 'user';
       const bubbleRow = document.createElement('div');
       bubbleRow.className = `chat-bubble-row ${isUser ? 'chat-row-user' : 'chat-row-bot'}`;
 
-      const timeStr = m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+      const timeDisplay = formatWhatsAppBubbleTimestamp(m.createdAt);
+      const tooltipText = formatChatFullTooltip(m.createdAt);
 
       // Authoritative customer name: The conversation/thread's confirmed customer name takes full precedence
       const threadName = (activeChatCustomer?.customerName && activeChatCustomer.customerName !== 'Customer' && !activeChatCustomer.customerName.startsWith('Customer ('))
@@ -6363,7 +6510,7 @@ async function fetchAndRenderChatMessages(chatId) {
         <div class="chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-bot'}">
           <div class="chat-meta">
             <span class="chat-name">${isUser ? `👤 ${escapeHtml(bubbleCustomerName)}` : '🍔 Burger Raja'}</span>
-            <span class="chat-time">${escapeHtml(timeStr)}${!isUser ? ' <span class="chat-checkmarks">✔✔</span>' : ''}</span>
+            <span class="chat-time" title="${escapeHtml(tooltipText)}">${escapeHtml(timeDisplay)}${!isUser ? ' <span class="chat-checkmarks">✔✔</span>' : ''}</span>
           </div>
           <div class="chat-body">${escapeHtml(m.message)}</div>
         </div>
