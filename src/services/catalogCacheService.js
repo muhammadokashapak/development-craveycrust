@@ -68,36 +68,33 @@ function formatDealItemsText(deal) {
 function classifyDeal(deal) {
     const name = (deal.name || '').toLowerCase();
     const itemsText = (deal.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+    const desc = (deal.description || '').toLowerCase();
+    const combined = `${name} ${itemsText} ${desc}`;
 
-    // 1. === BURGER MEALS ===
-    if (name.includes('burger meal') || (name.includes('burger') && name.includes('meal'))) {
-        return 'BURGER_MEALS';
-    }
+    const hasBurger = /\b(?:burger|zinger|zegy|bun\s*kabab)\b/i.test(combined);
+    const hasPizza = /\b(?:pizza|piza|crust|slice|dual\s*zone)\b/i.test(combined);
 
-    // 2. === BURGER VALUE DEALS ===
-    if (name.includes('deal 4') || name.includes('deal 5') || (name.includes('burger') && (name.includes('deal') || name.includes('value')))) {
+    // 1. Pure Burger Deals (contains burger and no pizza)
+    if (hasBurger && !hasPizza) {
+        if (name.includes('meal')) return 'BURGER_MEALS';
         return 'BURGER_VALUE_DEALS';
     }
 
-    // 3. === PIZZA MEALS (1 Pizza + Drinks) ===
-    if (name.includes('pizza meal') || (name.includes('pizza') && name.includes('meal'))) {
-        return 'PIZZA_MEALS';
-    }
-
-    // 4. === PIZZA VALUE DEALS (Multiple Pizzas + Drink) ===
-    if (name.includes('deal 1') || name.includes('deal 2') || name.includes('deal 3') || (name.includes('pizza') && (name.includes('deal') || name.includes('value')))) {
+    // 2. Pure Pizza Deals (contains pizza and no burger)
+    if (hasPizza && !hasBurger) {
+        if (name.includes('meal')) return 'PIZZA_MEALS';
         return 'PIZZA_VALUE_DEALS';
     }
 
-    // Fallback: Check items included
-    if (itemsText.includes('burger') && !itemsText.includes('pizza')) {
-        return 'BURGER_VALUE_DEALS';
-    }
-    if (itemsText.includes('pizza') && !itemsText.includes('burger')) {
-        return 'PIZZA_VALUE_DEALS';
+    // 3. Combos containing BOTH burger and pizza
+    if (hasBurger && hasPizza) {
+        return 'SPECIAL_COMBO_DEALS';
     }
 
-    // 5. === SPECIAL / COMBO DEALS ===
+    // 4. Fallback by name conventions only if itemsText was empty
+    if (/^(?:deal\s*4|deal\s*5)\b/i.test(name)) return 'BURGER_VALUE_DEALS';
+    if (/^(?:deal\s*1|deal\s*2|deal\s*3)\b/i.test(name)) return 'PIZZA_VALUE_DEALS';
+
     return 'SPECIAL_COMBO_DEALS';
 }
 

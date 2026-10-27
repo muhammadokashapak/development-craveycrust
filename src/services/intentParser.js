@@ -3363,8 +3363,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     if (detectedHeadcount >= 1 && !hasCartOrOrderAction) {
-        const isPizza = /\b(pi[z]+a|piza)\b/i.test(lower);
-        const isBurger = /\b(burger|zinger)\b/i.test(lower);
+        const isPizza = /\b(?:pi[z]+as?|pizas?|crusts?)\b/i.test(lower);
+        const isBurger = /\b(?:burgers?|zingers?|zegy|bun\s*kabab)\b/i.test(lower);
 
         let recReply = '';
         if (detectedHeadcount === 3) {
@@ -3674,7 +3674,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const dealsAlreadySent = userSessionId ? haveDealsBeenSent(userSessionId, cleanPhone) : false;
                 const isSpecificRecommendation = /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lower);
 
-                if (targetDealsImages.length > 0 && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
+                const isBurger = /\b(?:burgers?|zingers?|zegy|bun\s*kabab)\b/i.test(lower);
+                const isPizza = /\b(?:pi[z]+as?|pizas?|crusts?)\b/i.test(lower);
+                const isSpecificCategoryAsk = (isBurger && !isPizza) || (isPizza && !isBurger);
+
+                // Tier 1: General deals ask without specific category filter -> send deal images
+                if (targetDealsImages.length > 0 && !isSpecificCategoryAsk && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
                     if (userSessionId) markDealsSent(userSessionId, cleanPhone);
                     const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
                     let dealsCaption = '';
@@ -3690,20 +3695,80 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     };
                 }
 
-                // ── Tier 2: No images, check if active deals exist in database ──
+                // Tier 2: Specific category deals (Burger Deals or Pizza Deals) or text fallback
                 const activeDeals = Array.isArray(cache.rawDeals)
                     ? cache.rawDeals.filter(d => d.is_active !== false)
                     : [];
 
-                if (activeDeals.length > 0) {
-                    const isBurger = /\b(burger|zinger|bun\s*kabab)\b/i.test(lower);
-                    const isPizza = /\b(pi[z]+a|piza|pizza)\b/i.test(lower);
+                if (activeDeals.length > 0 || isSpecificCategoryAsk) {
                     let textReply = '';
 
-                    if (isBurger && !isPizza && cache.customerBurgerDeals && !cache.customerBurgerDeals.includes('available nahi')) {
-                        textReply = cache.customerBurgerDeals;
-                    } else if (isPizza && !isBurger && cache.customerPizzaDeals && !cache.customerPizzaDeals.includes('available nahi')) {
-                        textReply = cache.customerPizzaDeals;
+                    if (isBurger && !isPizza) {
+                        // Strictly filter active deals containing burgers (and exclude pure pizza deals)
+                        const burgerDeals = activeDeals.filter(d => {
+                            const dName = (d.name || '').toLowerCase();
+                            const dItems = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                            const dDesc = (d.description || '').toLowerCase();
+                            const combined = `${dName} ${dItems} ${dDesc}`;
+                            return /\b(?:burger|zinger|zegy)\b/i.test(combined);
+                        });
+
+                        if (burgerDeals.length > 0) {
+                            const dealLines = burgerDeals.map(d => {
+                                const items = (d.deal_items || []).map(di => {
+                                    const q = di.quantity > 1 ? `${di.quantity}x ` : '';
+                                    return `${q}${di.menu_item?.name || 'Item'}`;
+                                }).join(', ');
+                                const desc = items ? `\n   _${items}_` : (d.description ? `\n   _${d.description}_` : '');
+                                return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
+                            });
+                            textReply = `🍔 *Cravey Crust Burger Deals:*\n━━━━━━━━━━━━━━━━━━━━━\n${dealLines.join('\n\n')}\n\nIn mein se kaunsi burger deal add karun aap ke liye? 😊`;
+                        } else if (cache.customerBurgerDeals && !cache.customerBurgerDeals.includes('available nahi')) {
+                            textReply = cache.customerBurgerDeals;
+                        } else {
+                            // Standard Cravey Crust Burger Deals
+                            textReply = `🍔 *Cravey Crust Burger Deals:*\n━━━━━━━━━━━━━━━━━━━━━\n` +
+                                `• *Burger Meal For 1* — Rs. 599\n   _1x Zinger Burger + Regular Fries + Regular Soft Drink_\n\n` +
+                                `• *Burger Meal For 2* — Rs. 999\n   _2x Zinger Burgers + Regular Fries + 2x Regular Soft Drinks_\n\n` +
+                                `• *Deal 4* — Rs. 999\n   _4x Juicy Zegy Burgers_\n\n` +
+                                `• *Deal 5* — Rs. 1,099\n   _3x Crispy Zinger Burgers + 1 Liter Soft Drink_\n\n` +
+                                `• *Burger Meal For 3* — Rs. 1,599\n   _3x Zinger Burgers + 3x Chicken Pieces + 1 Liter Soft Drink_\n\n` +
+                                `In mein se kaunsi burger deal add karun aap ke liye? 😊`;
+                        }
+                    } else if (isPizza && !isBurger) {
+                        // Strictly filter active deals containing pizzas (and exclude pure burger deals)
+                        const pizzaDeals = activeDeals.filter(d => {
+                            const dName = (d.name || '').toLowerCase();
+                            const dItems = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                            const dDesc = (d.description || '').toLowerCase();
+                            const combined = `${dName} ${dItems} ${dDesc}`;
+                            return /\b(?:pizza|piza|crust|dual\s*zone)\b/i.test(combined);
+                        });
+
+                        if (pizzaDeals.length > 0) {
+                            const dealLines = pizzaDeals.map(d => {
+                                const items = (d.deal_items || []).map(di => {
+                                    const q = di.quantity > 1 ? `${di.quantity}x ` : '';
+                                    return `${q}${di.menu_item?.name || 'Item'}`;
+                                }).join(', ');
+                                const desc = items ? `\n   _${items}_` : (d.description ? `\n   _${d.description}_` : '');
+                                return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
+                            });
+                            textReply = `🍕 *Cravey Crust Pizza Deals:*\n━━━━━━━━━━━━━━━━━━━━━\n${dealLines.join('\n\n')}\n\n💡 _Deals mein apni pasand ka koi bhi pizza flavour chun sakte hain!_\n\nIn mein se kaunsi pizza deal add karun aap ke liye? 😊`;
+                        } else if (cache.customerPizzaDeals && !cache.customerPizzaDeals.includes('available nahi')) {
+                            textReply = cache.customerPizzaDeals;
+                        } else {
+                            // Standard Cravey Crust Pizza Deals
+                            textReply = `🍕 *Cravey Crust Pizza Deals:*\n━━━━━━━━━━━━━━━━━━━━━\n` +
+                                `• *Pizza Meal For 1* — Rs. 599\n   _1x Small Pizza + Regular Soft Drink_\n\n` +
+                                `• *Deal 1* — Rs. 1,099\n   _2x Small Pizzas + 2x Regular Soft Drinks_\n\n` +
+                                `• *Pizza Meal For 2* — Rs. 1,299\n   _1x Medium Pizza + 2x Regular Soft Drinks_\n\n` +
+                                `• *Pizza Meal For 3* — Rs. 1,599\n   _1x Large Pizza + 1 Liter Soft Drink_\n\n` +
+                                `• *Deal 2* — Rs. 2,099\n   _2x Medium Pizzas + 1 Liter Soft Drink_\n\n` +
+                                `• *Pizza Meal For 4* — Rs. 2,499\n   _1x Giant Party Size (16") Pizza + 1.5L Soft Drink_\n\n` +
+                                `• *Deal 3* — Rs. 2,999\n   _2x Large Pizzas + 1 Liter Soft Drink_\n\n` +
+                                `💡 _Deals mein apni pasand ka koi bhi pizza flavour chun sakte hain!_\n\nIn mein se kaunsi pizza deal add karun aap ke liye? 😊`;
+                        }
                     } else {
                         const dealLines = activeDeals.slice(0, 8).map(d => {
                             const items = (d.deal_items || []).map(di => {
@@ -3718,10 +3783,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                     return {
                         handled: true,
-                        routeName: 'live_deals_text',
+                        routeName: isBurger ? 'live_deals_burger_filtered' : (isPizza ? 'live_deals_pizza_filtered' : 'live_deals_text'),
                         reply: textReply,
-                        imageUrls: [],
-                        imageUrl: null,
+                        imageUrls: targetDealsImages,
+                        imageUrl: targetDealsImages[0] || null,
                     };
                 }
 
