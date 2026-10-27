@@ -5,7 +5,7 @@
  * ╚══════════════════════════════════════════════════════════════╝
  */
 
-export const AVAILABLE_PIZZA_FLAVOURS = [
+export const CLASSIC_PIZZA_FLAVOURS = [
     {
         name: 'Chicken Tikka',
         slug: 'chicken-tikka',
@@ -31,20 +31,13 @@ export const AVAILABLE_PIZZA_FLAVOURS = [
         slug: 'chicken-tandori',
         regex: /\b(?:chicken\s*)?tando?ori\b/i,
     },
-    {
-        name: 'Behari Kebab Pizza',
-        slug: 'behari-kebab',
-        regex: /\b(?:behari|bihari)(?:\s*kebab)?(?:\s*pizza)?\b/i,
-    },
+];
+
+export const PREMIUM_PIZZA_FLAVOURS = [
     {
         name: 'Chicken Extreme',
         slug: 'chicken-extreme',
         regex: /\b(?:chicken\s*)?extr[e|m]me\b/i,
-    },
-    {
-        name: 'Crown Crust',
-        slug: 'crown-crust',
-        regex: /\bcrown(?:\s*crust)?\b/i,
     },
     {
         name: 'Peri Peri Pizza',
@@ -52,10 +45,25 @@ export const AVAILABLE_PIZZA_FLAVOURS = [
         regex: /\bperi(?:\s*[-]?\s*peri)?(?:\s*pizza)?\b/i,
     },
     {
+        name: 'Behari Kebab Pizza',
+        slug: 'behari-kebab',
+        regex: /\b(?:behari|bihari)(?:\s*kebab)?(?:\s*pizza)?\b/i,
+    },
+    {
+        name: 'Crown Crust',
+        slug: 'crown-crust',
+        regex: /\bcrown(?:\s*crust)?\b/i,
+    },
+    {
         name: 'Stuffed Crust',
         slug: 'stuffed-crust',
         regex: /\bstuff(?:ed)?(?:\s*crust)?\b/i,
     },
+];
+
+export const AVAILABLE_PIZZA_FLAVOURS = [
+    ...CLASSIC_PIZZA_FLAVOURS,
+    ...PREMIUM_PIZZA_FLAVOURS,
 ];
 
 /**
@@ -77,27 +85,32 @@ export function isPizzaDeal(dealOrName) {
         return true;
     }
 
-    // Check deal items if provided
-    if (typeof dealOrName === 'object' && Array.isArray(dealOrName.deal_items)) {
-        return dealOrName.deal_items.some(di => {
-            const itemName = (di.menu_item?.name || di.custom_name || '').toLowerCase();
-            const catName = (di.menu_item?.category?.name || '').toLowerCase();
-            return itemName.includes('pizza') || catName.includes('pizza');
-        });
+    // Check deal items if provided (inspect both deal_items and items)
+    if (typeof dealOrName === 'object') {
+        const itemsList = dealOrName.deal_items || dealOrName.items || [];
+        if (Array.isArray(itemsList)) {
+            return itemsList.some(di => {
+                const itemName = (di.menu_item?.name || di.item_name || di.custom_name || di.name || '').toLowerCase();
+                const catName = (di.menu_item?.category?.name || di.category_name || '').toLowerCase();
+                const catId = di.menu_item?.category_id || di.category_id || '';
+                const itemId = di.menu_item_id || di.itemId || di.menu_item?.id || '';
+                return itemName.includes('pizza') || catName.includes('pizza') || catId === 'cat-9' || catId === 'cat-10' || itemId === 'item-33' || itemId === 'item-36';
+            });
+        }
     }
 
     return false;
 }
 
 /**
- * Extracts pizza details from a deal (count of pizzas and size).
+ * Extracts pizza details from a deal (count of pizzas, size, and category type: CLASSIC, PREMIUM, or ALL).
  *
  * @param {Object|string} dealOrName
- * @returns {{ isPizzaDeal: boolean, pizzaCount: number, sizeName: string, dealName: string }}
+ * @returns {{ isPizzaDeal: boolean, pizzaCount: number, sizeName: string, dealName: string, pizzaType: 'CLASSIC'|'PREMIUM'|'ALL' }}
  */
 export function getDealPizzaInfo(dealOrName) {
     if (!isPizzaDeal(dealOrName)) {
-        return { isPizzaDeal: false, pizzaCount: 0, sizeName: '', dealName: '' };
+        return { isPizzaDeal: false, pizzaCount: 0, sizeName: '', dealName: '', pizzaType: 'ALL' };
     }
 
     const name = typeof dealOrName === 'string' ? dealOrName : (dealOrName.name || '');
@@ -105,48 +118,86 @@ export function getDealPizzaInfo(dealOrName) {
 
     let pizzaCount = 1;
     let sizeName = 'Pizza';
+    let hasClassic = false;
+    let hasPremium = false;
+
+    if (lower.includes('premium')) hasPremium = true;
+    if (lower.includes('classic')) hasClassic = true;
 
     // 1. Check known Cravey Crust catalog specs
     if (/\bdeal\s*#?1\b/i.test(lower)) {
         pizzaCount = 2;
         sizeName = 'Small';
+        hasClassic = true;
     } else if (/\bdeal\s*#?2\b/i.test(lower)) {
         pizzaCount = 2;
         sizeName = 'Medium';
+        hasClassic = true;
     } else if (/\bdeal\s*#?3\b/i.test(lower)) {
         pizzaCount = 2;
         sizeName = 'Large';
+        hasClassic = true;
     } else if (/\bpi[z]+a\s*(?:meal|deal)\s*(?:for\s*)?1\b/i.test(lower)) {
         pizzaCount = 1;
         sizeName = 'Small';
+        hasClassic = true;
     } else if (/\bpi[z]+a\s*(?:meal|deal)\s*(?:for\s*)?2\b/i.test(lower)) {
         pizzaCount = 1;
         sizeName = 'Medium';
+        hasClassic = true;
     } else if (/\bpi[z]+a\s*(?:meal|deal)\s*(?:for\s*)?3\b/i.test(lower)) {
         pizzaCount = 1;
         sizeName = 'Large';
+        hasClassic = true;
     } else if (/\bpi[z]+a\s*(?:meal|deal)\s*(?:for\s*)?4\b/i.test(lower)) {
         pizzaCount = 1;
         sizeName = 'Party Size';
-    } else if (typeof dealOrName === 'object' && Array.isArray(dealOrName.deal_items)) {
-        // Dynamic inspection of deal_items
-        let count = 0;
-        let detectedSize = '';
-        for (const di of dealOrName.deal_items) {
-            const iName = (di.menu_item?.name || '').toLowerCase();
-            const catName = (di.menu_item?.category?.name || '').toLowerCase();
-            if (iName.includes('pizza') || catName.includes('pizza')) {
-                const qty = di.quantity || 1;
-                count += qty;
-                if (!detectedSize && di.menu_variant?.name) {
-                    detectedSize = di.menu_variant.name;
+        hasClassic = true;
+    }
+
+    // Dynamic inspection of deal_items or items
+    if (typeof dealOrName === 'object') {
+        const itemsList = dealOrName.deal_items || dealOrName.items || [];
+        if (Array.isArray(itemsList) && itemsList.length > 0) {
+            let count = 0;
+            let detectedSize = '';
+            for (const di of itemsList) {
+                const iName = (di.menu_item?.name || di.item_name || di.custom_name || di.name || '').toLowerCase();
+                const catName = (di.menu_item?.category?.name || di.category_name || '').toLowerCase();
+                const catId = di.menu_item?.category_id || di.category_id || '';
+                const itemId = di.menu_item_id || di.itemId || di.menu_item?.id || '';
+
+                const isPizza = iName.includes('pizza') || catName.includes('pizza') || catId === 'cat-9' || catId === 'cat-10' || itemId === 'item-33' || itemId === 'item-36';
+                if (isPizza) {
+                    const qty = di.quantity || di.qty || 1;
+                    count += qty;
+                    if (!detectedSize && (di.menu_variant?.name || di.variant_name)) {
+                        detectedSize = di.menu_variant?.name || di.variant_name;
+                    }
+                    if (iName.includes('premium') || catName.includes('premium') || catId === 'cat-9' || itemId === 'item-36') {
+                        hasPremium = true;
+                    }
+                    if (iName.includes('classic') || catName.includes('classic') || catId === 'cat-10' || itemId === 'item-33') {
+                        hasClassic = true;
+                    }
                 }
             }
+            if (count > 0) {
+                pizzaCount = count;
+                if (detectedSize) sizeName = detectedSize;
+            }
         }
-        if (count > 0) {
-            pizzaCount = count;
-            if (detectedSize) sizeName = detectedSize;
-        }
+    }
+
+    let pizzaType = 'ALL';
+    if (hasPremium && !hasClassic) {
+        pizzaType = 'PREMIUM';
+    } else if (hasClassic && !hasPremium) {
+        pizzaType = 'CLASSIC';
+    } else if (hasPremium && hasClassic) {
+        pizzaType = 'ALL';
+    } else {
+        pizzaType = 'CLASSIC';
     }
 
     return {
@@ -154,6 +205,7 @@ export function getDealPizzaInfo(dealOrName) {
         pizzaCount,
         sizeName,
         dealName: name,
+        pizzaType,
     };
 }
 
@@ -256,28 +308,58 @@ export function formatDealFlavourPrompt(deal, pizzaInfo) {
     const dealName = deal.name || 'Deal';
     const sizeStr = pizzaInfo.sizeName ? ` ${pizzaInfo.sizeName}` : '';
     const pizzaCount = pizzaInfo.pizzaCount || 1;
+    const pizzaType = pizzaInfo.pizzaType || 'CLASSIC';
 
     let header = '';
-    if (pizzaCount === 1) {
-        header = `Zabardast choice! *${dealName}* mein 1x${sizeStr} Pizza shamil hai. 🍕\n\n*Aap pizza ka kaunsa flavour lena chahenge?*`;
-    } else {
-        header = `Zabardast choice! *${dealName}* mein ${pizzaCount}x${sizeStr} Pizzas shamil hain. 🍕\n\n*Aap in ${pizzaCount} pizzas ke liye kaunse flavours lena chahenge?*`;
-    }
-
-    const flvList =
-`• Chicken Tikka
-• Chicken Fajita
-• Chicken Supreme
-• Cheese Lover
-• Chicken Tandori
-• Behari Kebab Pizza
-• Chicken Extreme`;
-
+    let flvList = '';
     let footer = '';
-    if (pizzaCount > 1) {
-        footer = `_(Aap ${pizzaCount} alag alag flavours bhi chun sakte hain jaise *'Tikka aur Fajita'* ya dono ek hi flavour jaise *'Dono Tikka'*!)_ 😊`;
+
+    if (pizzaType === 'PREMIUM') {
+        if (pizzaCount === 1) {
+            header = `Zabardast choice! *${dealName}* mein 1x${sizeStr} *Premium Pizza* shamil hai. 🍕\n\n*Aap Premium Pizza ka kaunsa flavour lena chahenge?*`;
+        } else {
+            header = `Zabardast choice! *${dealName}* mein ${pizzaCount}x${sizeStr} *Premium Pizzas* shamil hain. 🍕\n\n*Aap in ${pizzaCount} Premium Pizzas ke liye kaunse flavours lena chahenge?*`;
+        }
+
+        flvList = PREMIUM_PIZZA_FLAVOURS.map(f => `• ${f.name}`).join('\n');
+
+        if (pizzaCount > 1) {
+            footer = `_(Aap ${pizzaCount} alag alag flavours bhi chun sakte hain jaise *'Chicken Extreme aur Peri Peri'* ya dono ek jaise jaise *'Dono Extreme'*!)_ 😊`;
+        } else {
+            footer = `_(Apna pasandeeda Premium flavour reply karein, jaise *'Chicken Extreme'* ya *'Behari Kebab'*)_ 😊`;
+        }
+    } else if (pizzaType === 'CLASSIC') {
+        if (pizzaCount === 1) {
+            header = `Zabardast choice! *${dealName}* mein 1x${sizeStr} *Classic Pizza* shamil hai. 🍕\n\n*Aap Classic Pizza ka kaunsa flavour lena chahenge?*`;
+        } else {
+            header = `Zabardast choice! *${dealName}* mein ${pizzaCount}x${sizeStr} *Classic Pizzas* shamil hain. 🍕\n\n*Aap in ${pizzaCount} Classic Pizzas ke liye kaunse flavours lena chahenge?*`;
+        }
+
+        flvList = CLASSIC_PIZZA_FLAVOURS.map(f => `• ${f.name}`).join('\n');
+
+        if (pizzaCount > 1) {
+            footer = `_(Aap ${pizzaCount} alag alag flavours bhi chun sakte hain jaise *'Tikka aur Fajita'* ya dono ek jaise jaise *'Dono Tikka'*!)_ 😊`;
+        } else {
+            footer = `_(Apna pasandeeda Classic flavour reply karein, jaise *'Chicken Tikka'* ya *'Chicken Supreme'*)_ 😊`;
+        }
     } else {
-        footer = `_(Bas apna pasandeeda flavour reply karein, jaise *'Chicken Tikka'* ya *'Fajita'*)_ 😊`;
+        // Mixed or unspecified
+        if (pizzaCount === 1) {
+            header = `Zabardast choice! *${dealName}* mein 1x${sizeStr} Pizza shamil hai. 🍕\n\n*Aap pizza ka kaunsa flavour lena chahenge?*`;
+        } else {
+            header = `Zabardast choice! *${dealName}* mein ${pizzaCount}x${sizeStr} Pizzas shamil hain. 🍕\n\n*Aap in ${pizzaCount} pizzas ke liye kaunse flavours lena chahenge?*`;
+        }
+
+        flvList = `*Classic Flavours:*\n` +
+            CLASSIC_PIZZA_FLAVOURS.map(f => `• ${f.name}`).join('\n') +
+            `\n\n*Premium Flavours:*\n` +
+            PREMIUM_PIZZA_FLAVOURS.map(f => `• ${f.name}`).join('\n');
+
+        if (pizzaCount > 1) {
+            footer = `_(Aap ${pizzaCount} alag alag flavours chun sakte hain jaise *'Tikka aur Extreme'*)_ 😊`;
+        } else {
+            footer = `_(Apna pasandeeda flavour reply karein, jaise *'Chicken Tikka'* ya *'Chicken Extreme'*)_ 😊`;
+        }
     }
 
     return `${header}\n\n${flvList}\n\n${footer}`;

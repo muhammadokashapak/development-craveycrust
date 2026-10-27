@@ -254,13 +254,30 @@ export const FALLBACK_MENU_ITEMS = [
         ],
     },
     {
-        id: 'item-33', category_id: 'cat-10', name: 'Classic Pizza', slug: 'classic-pizza',
-        description: 'Traditional fresh baked pizza in your choice of classic flavours', base_price: 599, spicy_level: 'MILD', is_available: true, is_active: true,
+        id: 'item-33', category_id: 'cat-10', name: 'Classic Pizza (Customer\'s Choice)', slug: 'classic-pizza-choice',
+        description: 'Customer chooses any classic pizza flavour (Cheese Lover, Chicken Tikka, Supreme, Fajita, Tandori)', base_price: 599, spicy_level: 'MILD', is_available: true, is_active: true,
         variants: [
             { id: 'v-33-1', name: 'Small', price: 599 },
             { id: 'v-33-2', name: 'Medium', price: 1299 },
             { id: 'v-33-3', name: 'Large', price: 1499 },
             { id: 'v-33-4', name: 'Party Size', price: 2599 },
+        ],
+    },
+    {
+        id: 'item-36', category_id: 'cat-9', name: 'Premium Pizza (Customer\'s Choice)', slug: 'premium-pizza-choice',
+        description: 'Customer chooses any premium pizza flavour (Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust)', base_price: 699, spicy_level: 'HOT', is_available: true, is_active: true,
+        variants: [
+            { id: 'v-36-1', name: 'Small', price: 699 },
+            { id: 'v-36-2', name: 'Medium', price: 1399 },
+            { id: 'v-36-3', name: 'Large', price: 1799 },
+            { id: 'v-36-4', name: 'Party Size', price: 2799 },
+        ],
+    },
+    {
+        id: 'item-37', category_id: 'cat-8', name: 'Burger (Customer\'s Choice)', slug: 'burger-choice',
+        description: 'Customer chooses any burger flavour (Zegy Burger, Chicken Burger, Zinger Burger)', base_price: 499, spicy_level: 'MEDIUM', is_available: true, is_active: true,
+        variants: [
+            { id: 'v-37-1', name: 'Standard', price: 499 },
         ],
     },
 

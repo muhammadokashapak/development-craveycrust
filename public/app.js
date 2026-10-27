@@ -3454,10 +3454,10 @@ function addDealItemRow(selectedItemId = '', selectedVariantId = '', quantity = 
       ${categoryOptions}
     </select>
     <select class="deal-item-select" title="2. Select Item / Flavour" onchange="window.updateDealItemVariants('${rowId}')">
-      <option value="">Select Item / Flavour...</option>
+      <option value="" disabled selected>-- Choose Item / Flavour --</option>
     </select>
     <select class="deal-variant-select" title="3. Select Size / Variant">
-      <option value="">Standard / Base</option>
+      <option value="">Standard / Base Size</option>
     </select>
     <input type="number" class="deal-qty-input" min="1" value="${quantity || 1}" title="Quantity" placeholder="Qty" />
     <button type="button" class="deal-item-del-btn" onclick="document.getElementById('${rowId}').remove()" title="Remove item">✕</button>
@@ -3486,21 +3486,63 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
     items = items.filter(m => m.category_id === catId || (m.category && m.category.id === catId));
   }
 
-  itemSelect.innerHTML = '<option value="">Select Item / Flavour...</option>';
+  itemSelect.innerHTML = '';
+
   if (items.length === 0) {
     if (catId) {
-      itemSelect.innerHTML = '<option value="">No items in this category</option>';
+      itemSelect.innerHTML = '<option value="" disabled selected>No items in this category</option>';
     } else {
-      itemSelect.innerHTML = '<option value="">Choose category first...</option>';
+      itemSelect.innerHTML = '<option value="" disabled selected>Choose category first...</option>';
     }
   } else {
+    // Disabled placeholder prevents accidental wiping of selected items
+    const placeholderOpt = document.createElement('option');
+    placeholderOpt.value = '';
+    placeholderOpt.disabled = true;
+    placeholderOpt.textContent = '-- Choose Item / Flavour --';
+    if (!preselectedItemId) placeholderOpt.selected = true;
+    itemSelect.appendChild(placeholderOpt);
+
+    // Group items into Customer Choice vs Specific Flavours
+    const choiceItems = [];
+    const regularItems = [];
+
     items.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = `${m.name} (Rs. ${m.base_price})`;
-      if (m.id === preselectedItemId) opt.selected = true;
-      itemSelect.appendChild(opt);
+      const isChoice = m.id === 'item-33' || m.id === 'item-36' || m.id === 'item-37' ||
+                       (m.name && m.name.toLowerCase().includes('choice')) ||
+                       (m.name && m.name.toLowerCase().includes('user choice'));
+      if (isChoice) {
+        choiceItems.push(m);
+      } else {
+        regularItems.push(m);
+      }
     });
+
+    if (choiceItems.length > 0) {
+      const choiceGroup = document.createElement('optgroup');
+      choiceGroup.label = '✨ Customer Choice (User Pick Flavour)';
+      choiceItems.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `🌟 ${m.name} (Rs. ${m.base_price})`;
+        if (m.id === preselectedItemId) opt.selected = true;
+        choiceGroup.appendChild(opt);
+      });
+      itemSelect.appendChild(choiceGroup);
+    }
+
+    if (regularItems.length > 0) {
+      const regularGroup = document.createElement('optgroup');
+      regularGroup.label = choiceItems.length > 0 ? 'Specific Flavours / Items' : 'Items';
+      regularItems.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = `${m.name} (Rs. ${m.base_price})`;
+        if (m.id === preselectedItemId) opt.selected = true;
+        regularGroup.appendChild(opt);
+      });
+      itemSelect.appendChild(regularGroup);
+    }
   }
 
   updateDealItemVariants(rowId, preselectedVariantId);
@@ -3511,6 +3553,9 @@ function updateDealItemVariants(rowId, preselectedVariantId = '') {
   const row = document.getElementById(rowId);
   if (!row) return;
 
+  // Clear any validation warning highlight once user interacts
+  row.style.boxShadow = 'none';
+
   const itemSelect = row.querySelector('.deal-item-select');
   const varSelect = row.querySelector('.deal-variant-select');
   if (!itemSelect || !varSelect) return;
@@ -3520,11 +3565,14 @@ function updateDealItemVariants(rowId, preselectedVariantId = '') {
 
   varSelect.innerHTML = '<option value="">Standard / Base Size</option>';
   if (item && item.variants && item.variants.length > 0) {
-    item.variants.forEach(v => {
+    varSelect.innerHTML = '';
+    item.variants.forEach((v, idx) => {
       const opt = document.createElement('option');
       opt.value = v.id;
       opt.textContent = `${v.name} (Rs. ${v.price})`;
-      if (v.id === preselectedVariantId) opt.selected = true;
+      if (v.id === preselectedVariantId || (!preselectedVariantId && idx === 0)) {
+        opt.selected = true;
+      }
       varSelect.appendChild(opt);
     });
   }
@@ -3602,11 +3650,18 @@ if (dealForm) {
     // Collect items
     const rows = document.querySelectorAll('#dealItemsContainer .deal-item-row');
     const items = [];
+    let hasInvalidRow = false;
+
     rows.forEach(r => {
       const itId = r.querySelector('.deal-item-select')?.value;
       const vId = r.querySelector('.deal-variant-select')?.value || null;
       const qty = parseInt(r.querySelector('.deal-qty-input')?.value, 10) || 1;
-      if (itId) {
+      if (!itId) {
+        hasInvalidRow = true;
+        r.style.boxShadow = '0 0 0 2px #ef4444';
+        r.style.borderRadius = '8px';
+      } else {
+        r.style.boxShadow = 'none';
         items.push({
           menu_item_id: itId,
           menu_variant_id: vId,
@@ -3614,6 +3669,11 @@ if (dealForm) {
         });
       }
     });
+
+    if (hasInvalidRow) {
+      showToast('Har row ke liye Item / Flavour select karein, ya extra row ko ✕ daba kar remove karein.', 'warning');
+      return;
+    }
 
     const payload = {
       name,
