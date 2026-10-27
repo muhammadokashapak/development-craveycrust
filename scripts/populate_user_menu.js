@@ -465,6 +465,19 @@ async function populateFullMenu(options = {}) {
                 { name: 'Party Size', price: 2999 },
             ],
         },
+        {
+            name: "Premium Pizza (Customer's Choice)",
+            slug: 'premium-pizza-choice',
+            description: 'Customer chooses any premium pizza flavour on WhatsApp (Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust)',
+            basePrice: 699,
+            spicyLevel: 'MEDIUM',
+            variants: [
+                { name: 'Small', price: 699 },
+                { name: 'Medium', price: 1399 },
+                { name: 'Large', price: 1799 },
+                { name: 'Party Size', price: 2799 },
+            ],
+        },
     ];
 
     for (const p of premiumPizzas) {
@@ -548,9 +561,9 @@ async function populateFullMenu(options = {}) {
             ],
         },
         {
-            name: 'Classic Pizza',
-            slug: 'classic-pizza',
-            description: 'Traditional fresh baked pizza in your choice of classic flavours',
+            name: "Classic Pizza (Customer's Choice)",
+            slug: 'classic-pizza-choice',
+            description: 'Traditional fresh baked pizza in customer choice of classic flavours (Cheese Lover, Chicken Tikka, Supreme, Fajita, Tandori)',
             basePrice: 599,
             spicyLevel: 'MILD',
             variants: [
@@ -603,7 +616,7 @@ async function populateFullMenu(options = {}) {
     // ── 4. Populate Deals Table (`Deal` and `DealItem`) ────────────────────────
     console.log('\n🎁 Populating Deals Table with Linked Menu Items (description: null as requested)...');
 
-    const pizzaItem = itemCache['Classic Pizza'];
+    const pizzaItem = itemCache["Classic Pizza (Customer's Choice)"] || itemCache['Classic Pizza'];
     const softDrinkItem = itemCache['Soft Drink'];
     const zingerItem = itemCache['Zinger Burger'];
     const zeggyItem = itemCache['Zegy Burger'];

@@ -21,7 +21,7 @@ async function ensureChoiceMenuItemsInDb(prisma, restaurantId) {
         const restId = restaurantId || (await getDefaultRestaurantId());
         if (!restId) return;
 
-        // 1. Classic Pizza -> ensure name is Classic Pizza (Customer's Choice)
+        // 1. Classic Pizza -> ensure name is Classic Pizza (Customer's Choice) with 4 sizes
         const classicCat = await prisma.category.findFirst({
             where: {
                 restaurant_id: restId,
@@ -33,18 +33,57 @@ async function ensureChoiceMenuItemsInDb(prisma, restaurantId) {
                 where: {
                     restaurant_id: restId,
                     category_id: classicCat.id,
-                    name: 'Classic Pizza',
+                    OR: [
+                        { name: { contains: 'Classic Pizza', mode: 'insensitive' } },
+                        { slug: 'classic-pizza' },
+                        { slug: 'classic-pizza-choice' },
+                    ],
                 },
+                include: { variants: true },
             });
             if (classicItem) {
-                await prisma.menuItem.update({
-                    where: { id: classicItem.id },
-                    data: { name: "Classic Pizza (Customer's Choice)" },
+                if (classicItem.name === 'Classic Pizza') {
+                    await prisma.menuItem.update({
+                        where: { id: classicItem.id },
+                        data: { name: "Classic Pizza (Customer's Choice)", slug: 'classic-pizza-choice' },
+                    }).catch(() => {});
+                }
+                // Ensure 4 sizes exist
+                if (!classicItem.variants || classicItem.variants.length === 0) {
+                    await prisma.menuVariant.createMany({
+                        data: [
+                            { menu_item_id: classicItem.id, name: 'Small', price: 599, sort_order: 1, is_available: true },
+                            { menu_item_id: classicItem.id, name: 'Medium', price: 1299, sort_order: 2, is_available: true },
+                            { menu_item_id: classicItem.id, name: 'Large', price: 1499, sort_order: 3, is_available: true },
+                            { menu_item_id: classicItem.id, name: 'Party Size', price: 2599, sort_order: 4, is_available: true },
+                        ],
+                    }).catch(() => {});
+                }
+            } else {
+                await prisma.menuItem.create({
+                    data: {
+                        restaurant_id: restId,
+                        category_id: classicCat.id,
+                        name: "Classic Pizza (Customer's Choice)",
+                        slug: 'classic-pizza-choice',
+                        description: 'Customer chooses any classic pizza flavour on WhatsApp (Cheese Lover, Chicken Tikka, Supreme, Fajita, Tandori)',
+                        base_price: 599,
+                        is_active: true,
+                        is_available: true,
+                        variants: {
+                            create: [
+                                { name: 'Small', price: 599, sort_order: 1, is_available: true },
+                                { name: 'Medium', price: 1299, sort_order: 2, is_available: true },
+                                { name: 'Large', price: 1499, sort_order: 3, is_available: true },
+                                { name: 'Party Size', price: 2599, sort_order: 4, is_available: true },
+                            ],
+                        },
+                    },
                 }).catch(() => {});
             }
         }
 
-        // 2. Premium Pizza Choice -> ensure exists in DB
+        // 2. Premium Pizza Choice -> ensure exists in DB with 4 sizes
         const premCat = await prisma.category.findFirst({
             where: {
                 restaurant_id: restId,
@@ -61,8 +100,26 @@ async function ensureChoiceMenuItemsInDb(prisma, restaurantId) {
                         { slug: 'premium-pizza-choice' },
                     ],
                 },
+                include: { variants: true },
             });
-            if (!premChoice) {
+            if (premChoice) {
+                if (premChoice.name === 'Premium Pizza') {
+                    await prisma.menuItem.update({
+                        where: { id: premChoice.id },
+                        data: { name: "Premium Pizza (Customer's Choice)", slug: 'premium-pizza-choice' },
+                    }).catch(() => {});
+                }
+                if (!premChoice.variants || premChoice.variants.length === 0) {
+                    await prisma.menuVariant.createMany({
+                        data: [
+                            { menu_item_id: premChoice.id, name: 'Small', price: 699, sort_order: 1, is_available: true },
+                            { menu_item_id: premChoice.id, name: 'Medium', price: 1399, sort_order: 2, is_available: true },
+                            { menu_item_id: premChoice.id, name: 'Large', price: 1799, sort_order: 3, is_available: true },
+                            { menu_item_id: premChoice.id, name: 'Party Size', price: 2799, sort_order: 4, is_available: true },
+                        ],
+                    }).catch(() => {});
+                }
+            } else {
                 await prisma.menuItem.create({
                     data: {
                         restaurant_id: restId,

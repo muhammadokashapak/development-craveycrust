@@ -1,6 +1,6 @@
-// ─── Automatic Client Cache Invalidation (v9.0.0) ───────────
+// ─── Automatic Client Cache Invalidation (v9.3.0) ───────────
 (function() {
-  const currentVer = '9.2.0';
+  const currentVer = '9.3.0';
   if (localStorage.getItem('cc_cache_ver') !== currentVer) {
     localStorage.setItem('cc_cache_ver', currentVer);
     // Wipe all entity cache keys and stale brand names
@@ -3435,14 +3435,22 @@ function addDealItemRow(selectedItemId = '', selectedVariantId = '', quantity = 
 
   // If item is already selected, detect its category
   let initialCategoryId = '';
+  const categories = getDealCategories();
   if (selectedItemId) {
-    const foundItem = (cachedMenuItemsForDeals || []).find(m => m.id === selectedItemId);
-    if (foundItem) {
+    let foundItem = (cachedMenuItemsForDeals || []).find(m => m.id === selectedItemId);
+    if (!foundItem && (selectedItemId === 'item-33' || selectedItemId.includes('classic'))) {
+      const c = categories.find(c => c.name.toLowerCase().includes('classic'));
+      if (c) initialCategoryId = c.id;
+    } else if (!foundItem && (selectedItemId === 'item-36' || selectedItemId.includes('premium'))) {
+      const c = categories.find(c => c.name.toLowerCase().includes('premium'));
+      if (c) initialCategoryId = c.id;
+    } else if (!foundItem && (selectedItemId === 'item-37' || selectedItemId.includes('burger'))) {
+      const c = categories.find(c => c.name.toLowerCase().includes('burger'));
+      if (c) initialCategoryId = c.id;
+    } else if (foundItem) {
       initialCategoryId = foundItem.category_id || (foundItem.category && foundItem.category.id) || '';
     }
   }
-
-  const categories = getDealCategories();
   const categoryOptions = categories.map(c => 
     `<option value="${c.id}" ${c.id === initialCategoryId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`
   ).join('');
@@ -3518,9 +3526,10 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
       const isChoice = m.id === 'item-33' || m.id === 'item-36' || m.id === 'item-37' ||
                        nameLower.includes('choice') ||
                        nameLower.includes('user choice') ||
-                       nameLower === 'classic pizza' ||
-                       nameLower === 'premium pizza' ||
-                       nameLower === 'burger' ||
+                       nameLower.startsWith('classic pizza') ||
+                       nameLower.startsWith('premium pizza') ||
+                       nameLower.startsWith('burger') ||
+                       slugLower.includes('choice') ||
                        slugLower === 'classic-pizza' ||
                        slugLower === 'premium-pizza' ||
                        slugLower === 'burger-choice' ||
@@ -3535,13 +3544,16 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
     });
 
     // If Premium Pizzas category has no explicit choice item in DB yet, synthesize one
-    if (catNameLower.includes('premium') && choiceItems.length === 0 && items.length > 0) {
-      const flagship = items[0] || (cachedMenuItemsForDeals || []).find(m => (m.name || '').toLowerCase().includes('extreme'));
+    if (catNameLower.includes('premium') && choiceItems.length === 0) {
+      const existingPremChoice = (cachedMenuItemsForDeals || []).find(m => {
+        const nl = (m.name || '').toLowerCase();
+        return nl.includes('premium') && (nl.includes('choice') || nl === 'premium pizza');
+      });
       const synthItem = {
-        id: flagship ? flagship.id : 'item-36',
+        id: existingPremChoice ? existingPremChoice.id : 'item-36',
         name: "Premium Pizza (Customer's Choice)",
-        base_price: flagship ? flagship.base_price : 699,
-        variants: (flagship && flagship.variants && flagship.variants.length > 0) ? flagship.variants : [
+        base_price: 699,
+        variants: [
           { id: 'v-36-1', name: 'Small', price: 699 },
           { id: 'v-36-2', name: 'Medium', price: 1399 },
           { id: 'v-36-3', name: 'Large', price: 1799 },
@@ -3555,13 +3567,16 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
     }
 
     // If Classic Pizzas category has no explicit choice item in DB yet, synthesize one
-    if (catNameLower.includes('classic') && choiceItems.length === 0 && items.length > 0) {
-      const flagship = items.find(m => (m.name || '').toLowerCase().includes('classic')) || items[0];
+    if (catNameLower.includes('classic') && choiceItems.length === 0) {
+      const existingClassicChoice = (cachedMenuItemsForDeals || []).find(m => {
+        const nl = (m.name || '').toLowerCase();
+        return nl.includes('classic') && (nl.includes('choice') || nl === 'classic pizza');
+      });
       const synthItem = {
-        id: flagship ? flagship.id : 'item-33',
+        id: existingClassicChoice ? existingClassicChoice.id : 'item-33',
         name: "Classic Pizza (Customer's Choice)",
-        base_price: flagship ? flagship.base_price : 599,
-        variants: (flagship && flagship.variants && flagship.variants.length > 0) ? flagship.variants : [
+        base_price: 599,
+        variants: [
           { id: 'v-33-1', name: 'Small', price: 599 },
           { id: 'v-33-2', name: 'Medium', price: 1299 },
           { id: 'v-33-3', name: 'Large', price: 1499 },
@@ -3582,9 +3597,9 @@ function updateDealItemCategory(rowId, preselectedItemId = '', preselectedVarian
         opt.value = m.id;
         let displayName = m.name;
         const nLower = displayName.toLowerCase().trim();
-        if (nLower === 'classic pizza') {
+        if (nLower === 'classic pizza' || nLower === 'classic pizzas') {
           displayName = "Classic Pizza (Customer's Choice)";
-        } else if (nLower === 'premium pizza') {
+        } else if (nLower === 'premium pizza' || nLower === 'premium pizzas') {
           displayName = "Premium Pizza (Customer's Choice)";
         } else if (nLower === 'burger') {
           displayName = "Burger (Customer's Choice)";
@@ -3629,9 +3644,28 @@ function updateDealItemVariants(rowId, preselectedVariantId = '') {
   const item = (cachedMenuItemsForDeals || []).find(m => m.id === selectedItemId);
 
   varSelect.innerHTML = '<option value="">Standard / Base Size</option>';
-  if (item && item.variants && item.variants.length > 0) {
+  let variants = (item && item.variants && item.variants.length > 0) ? item.variants : [];
+  if (variants.length === 0) {
+    if (selectedItemId === 'item-33' || selectedItemId.includes('classic')) {
+      variants = [
+        { id: 'v-33-1', name: 'Small', price: 599 },
+        { id: 'v-33-2', name: 'Medium', price: 1299 },
+        { id: 'v-33-3', name: 'Large', price: 1499 },
+        { id: 'v-33-4', name: 'Party Size', price: 2599 },
+      ];
+    } else if (selectedItemId === 'item-36' || selectedItemId.includes('premium')) {
+      variants = [
+        { id: 'v-36-1', name: 'Small', price: 699 },
+        { id: 'v-36-2', name: 'Medium', price: 1399 },
+        { id: 'v-36-3', name: 'Large', price: 1799 },
+        { id: 'v-36-4', name: 'Party Size', price: 2799 },
+      ];
+    }
+  }
+
+  if (variants.length > 0) {
     varSelect.innerHTML = '';
-    item.variants.forEach((v, idx) => {
+    variants.forEach((v, idx) => {
       const opt = document.createElement('option');
       opt.value = v.id;
       opt.textContent = `${v.name} (Rs. ${v.price})`;

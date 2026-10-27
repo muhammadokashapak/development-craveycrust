@@ -25,15 +25,47 @@ async function resolveMenuItemForDeal(prisma, restaurantId, it) {
     });
 
     if (!menuItem) {
-        if (it.menu_item_id === 'item-33' || it.menu_item_id.includes('classic')) {
+        const isClassic = it.menu_item_id === 'item-33' || it.menu_item_id.includes('classic');
+        const isPrem = it.menu_item_id === 'item-36' || it.menu_item_id.includes('premium');
+        const isBurger = it.menu_item_id === 'item-37' || it.menu_item_id.includes('burger');
+
+        if (isClassic) {
             menuItem = await prisma.menuItem.findFirst({
                 where: {
                     ...(restaurantId ? { restaurant_id: restaurantId } : {}),
-                    OR: [{ name: { contains: 'Classic Pizza', mode: 'insensitive' } }, { slug: 'classic-pizza' }],
+                    OR: [{ name: { contains: 'Classic Pizza', mode: 'insensitive' } }, { slug: 'classic-pizza' }, { slug: 'classic-pizza-choice' }],
                 },
                 include: { variants: true },
             });
-        } else if (it.menu_item_id === 'item-36' || it.menu_item_id.includes('premium')) {
+            if (!menuItem) {
+                const cat = await prisma.category.findFirst({
+                    where: { ...(restaurantId ? { restaurant_id: restaurantId } : {}), name: { contains: 'Classic', mode: 'insensitive' } },
+                });
+                if (cat) {
+                    menuItem = await prisma.menuItem.create({
+                        data: {
+                            restaurant_id: cat.restaurant_id,
+                            category_id: cat.id,
+                            name: "Classic Pizza (Customer's Choice)",
+                            slug: 'classic-pizza-choice',
+                            description: 'Customer chooses any classic pizza flavour on WhatsApp (Cheese Lover, Chicken Tikka, Supreme, Fajita, Tandori)',
+                            base_price: 599,
+                            is_active: true,
+                            is_available: true,
+                            variants: {
+                                create: [
+                                    { name: 'Small', price: 599, sort_order: 1, is_available: true },
+                                    { name: 'Medium', price: 1299, sort_order: 2, is_available: true },
+                                    { name: 'Large', price: 1499, sort_order: 3, is_available: true },
+                                    { name: 'Party Size', price: 2599, sort_order: 4, is_available: true },
+                                ],
+                            },
+                        },
+                        include: { variants: true },
+                    }).catch(() => null);
+                }
+            }
+        } else if (isPrem) {
             menuItem = await prisma.menuItem.findFirst({
                 where: {
                     ...(restaurantId ? { restaurant_id: restaurantId } : {}),
@@ -41,7 +73,35 @@ async function resolveMenuItemForDeal(prisma, restaurantId, it) {
                 },
                 include: { variants: true },
             });
-        } else if (it.menu_item_id === 'item-37' || it.menu_item_id.includes('burger')) {
+            if (!menuItem) {
+                const cat = await prisma.category.findFirst({
+                    where: { ...(restaurantId ? { restaurant_id: restaurantId } : {}), name: { contains: 'Premium', mode: 'insensitive' } },
+                });
+                if (cat) {
+                    menuItem = await prisma.menuItem.create({
+                        data: {
+                            restaurant_id: cat.restaurant_id,
+                            category_id: cat.id,
+                            name: "Premium Pizza (Customer's Choice)",
+                            slug: 'premium-pizza-choice',
+                            description: 'Customer chooses any premium pizza flavour on WhatsApp (Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust)',
+                            base_price: 699,
+                            is_active: true,
+                            is_available: true,
+                            variants: {
+                                create: [
+                                    { name: 'Small', price: 699, sort_order: 1, is_available: true },
+                                    { name: 'Medium', price: 1399, sort_order: 2, is_available: true },
+                                    { name: 'Large', price: 1799, sort_order: 3, is_available: true },
+                                    { name: 'Party Size', price: 2799, sort_order: 4, is_available: true },
+                                ],
+                            },
+                        },
+                        include: { variants: true },
+                    }).catch(() => null);
+                }
+            }
+        } else if (isBurger) {
             menuItem = await prisma.menuItem.findFirst({
                 where: {
                     ...(restaurantId ? { restaurant_id: restaurantId } : {}),
@@ -50,6 +110,7 @@ async function resolveMenuItemForDeal(prisma, restaurantId, it) {
                 include: { variants: true },
             });
         }
+
         if (menuItem) {
             it.menu_item_id = menuItem.id;
         }
