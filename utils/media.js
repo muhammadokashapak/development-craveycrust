@@ -152,7 +152,11 @@ export async function sendWhatsAppMediaOrText(sock, jid, { text, imageUrl, image
                     if (pageCaption && pageCaption.length <= 1000) {
                         sendPayload.caption = pageCaption;
                     }
-                    lastResult = await sock.sendMessage(jid, sendPayload, options);
+                    const sendOptions = { ...options };
+                    if (i > 0) {
+                        sendOptions.skipPacing = true;
+                    }
+                    lastResult = await sock.sendMessage(jid, sendPayload, sendOptions);
 
                     // Micro-pause between multiple pages so delivery arrives in strict chronological order
                     if (i < total - 1) {

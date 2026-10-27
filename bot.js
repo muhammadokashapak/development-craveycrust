@@ -983,8 +983,22 @@ const autoReplies = {
     'good morning': 'Good morning! ☀️ Have a great day!',
     'good night': 'Good night! 🌙 Sweet dreams!',
     'thank you': "You're welcome! 😊",
-    'thanks': "You're welcome! 😊",
 };
+
+// ─── Per-JID Sequential Message Pacing Queue ───────────────
+// Enforces a natural ~3.5s reading gap between consecutive messages
+// sent to the same user/chat (e.g., order confirmation, status notifications,
+// and cancellation confirmation flows), while activating WhatsApp typing presence.
+const _jidSendQueues = new Map();
+const _jidLastSentTime = new Map();
+const MIN_MESSAGE_GAP_MS = 3500; // 3.5 seconds natural reading delay
+
+function getPacingKey(jid) {
+    if (!jid || typeof jid !== 'string') return null;
+    if (jid === 'status@broadcast') return null;
+    if (jid.endsWith('@g.us')) return jid;
+    return jid.split(':')[0].replace(/@(s\.whatsapp\.net|lid)$/, '');
+}
 
 // ─── Start Specific Session ──────────────────────────────
 async function startSession(session, options = {}) {
@@ -1061,14 +1075,68 @@ async function startSession(session, options = {}) {
     });
 
     // Intercept sent messages to store in cache for retry decryption requests
+    // and pace consecutive messages to the same user with typing presence
     const origSendMessage = sock.sendMessage.bind(sock);
     sock.sendMessage = async (...args) => {
-        const result = await origSendMessage(...args);
-        if (result && result.key && result.message) {
-            const storeKey = `${result.key.remoteJid}_${result.key.id}`;
-            global.messageCache.set(storeKey, result);
+        const [targetJid, content, options] = args;
+        const pacingKey = getPacingKey(targetJid);
+        const shouldSkipPacing = !pacingKey || options?.skipPacing === true || Boolean(content?.react);
+
+        const executeSend = async () => {
+            const result = await origSendMessage(...args);
+            if (result && result.key && result.message) {
+                const storeKey = `${result.key.remoteJid}_${result.key.id}`;
+                global.messageCache.set(storeKey, result);
+            }
+            return result;
+        };
+
+        if (shouldSkipPacing) {
+            return await executeSend();
         }
-        return result;
+
+        const currentQueue = _jidSendQueues.get(pacingKey) || Promise.resolve();
+
+        const taskPromise = (async () => {
+            // Await previous queued message to complete (success or error)
+            try {
+                await currentQueue;
+            } catch (_) {}
+
+            const lastSent = _jidLastSentTime.get(pacingKey) || 0;
+            const now = Date.now();
+            const elapsed = now - lastSent;
+            const remainingDelay = MIN_MESSAGE_GAP_MS - elapsed;
+
+            if (remainingDelay > 100) {
+                // Show typing presence during the gap so the customer knows the next message is arriving
+                try {
+                    if (typeof sock?.sendPresenceUpdate === 'function') {
+                        sock.sendPresenceUpdate('composing', targetJid).catch(() => {});
+                    }
+                } catch (_) {}
+
+                await new Promise(resolve => setTimeout(resolve, remainingDelay));
+            }
+
+            try {
+                const res = await executeSend();
+                _jidLastSentTime.set(pacingKey, Date.now());
+                return res;
+            } finally {
+                _jidLastSentTime.set(pacingKey, Date.now());
+            }
+        })();
+
+        _jidSendQueues.set(pacingKey, taskPromise);
+
+        taskPromise.finally(() => {
+            if (_jidSendQueues.get(pacingKey) === taskPromise) {
+                _jidSendQueues.delete(pacingKey);
+            }
+        });
+
+        return await taskPromise;
     };
 
     session.sock = sock;
