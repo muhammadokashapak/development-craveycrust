@@ -81,8 +81,8 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 12. clear_cart() — Clear all items from cart.
 13. calculate_cart_totals() — Calculate subtotal, delivery fee, and grand total bill.
 14. create_confirmed_order(customerName: string, deliveryAddress: string, phone: string, paymentMethod: string, notes?: string) — Book final order.
-15. request_order_cancellation(orderNumber: string) — Request order cancellation check.
-16. confirm_order_cancellation(orderNumber: string) — Finalize order cancellation.
+15. request_order_cancellation(orderNumber?: string) — Check cancellation for order (Returns Store Admin contact to process cancellation).
+16. confirm_order_cancellation(orderNumber?: string) — Returns Store Admin contact to process cancellation (Direct bot cancellation disabled).
 17. send_alternate_confirmation(phone: string) — Send notification to alternate phone.
 18. request_human_handover(reason?: string) — Mute bot for 120 minutes and notify manager.
 19. update_order_details(orderNumber?: string, customerName?: string, deliveryAddress?: string, phone?: string, paymentMethod?: string) — Update details (customer name, delivery address, phone, payment method) for an active placed order (PENDING/CONFIRMED/PREPARING).
@@ -772,107 +772,92 @@ async function executeTool(toolName, args, context) {
             case 'request_order_cancellation':
             case 'cancel_order': {
                 let orderNum = (args.orderNumber || '').toUpperCase().trim();
-                if (!orderNum) {
-                    const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
-                    if (cart?.items && cart.items.length > 0) {
-                        await clearCartService({ sessionKey });
-                        try {
-                            const { clearSessionOrderDetails } = await import('./sessionService.js');
-                            clearSessionOrderDetails(sessionKey, whatsappPhone);
-                        } catch (_) {}
-                        return { success: true, cartCleared: true, message: 'Cart khali aur pending order cancel kar diya gaya hai.' };
-                    }
-                    const prisma = getDbClient();
-                    if (prisma) {
-                        const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
-                        const recent = orConditions.length > 0 ? await prisma.order.findFirst({
-                            where: {
-                                restaurant_id: restId,
-                                OR: orConditions,
-                            },
-                            orderBy: { created_at: 'desc' },
-                            select: { id: true, order_number: true, order_status: true },
-                        }) : null;
-                        if (recent) {
-                            orderNum = recent.order_number;
-                        }
-                    }
-                    if (!orderNum) {
-                        return { error: 'ORDER_NUMBER_REQUIRED', message: 'Order cancel karne ke liye CC-XXXXXX order number dein.' };
-                    }
+                const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                if (!orderNum && cart?.items && cart.items.length > 0) {
+                    await clearCartService({ sessionKey });
+                    try {
+                        const { clearSessionOrderDetails } = await import('./sessionService.js');
+                        clearSessionOrderDetails(sessionKey, whatsappPhone);
+                    } catch (_) {}
+                    return { success: true, cartCleared: true, message: 'Aap ka draft cart khali kar diya gaya hai. Agar dobara kuch order karna ho to batayein! 😊' };
                 }
+
                 const prisma = getDbClient();
-                if (!prisma) return { error: 'Database unavailable' };
-                const order = await prisma.order.findFirst({
-                    where: { restaurant_id: restId, order_number: orderNum },
-                    select: { id: true, order_number: true, order_status: true },
-                });
-                if (!order) return { error: 'ORDER_NOT_FOUND', message: 'Order nahi mila.' };
-                if (!['PENDING', 'CONFIRMED', 'PREPARING'].includes(order.order_status)) {
-                    return { error: 'ORDER_NOT_CANCELLABLE', status: order.order_status, message: 'Is waqt yeh order cancel nahi ho sakta.' };
+                if (!orderNum && prisma) {
+                    const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
+                    const recent = orConditions.length > 0 ? await prisma.order.findFirst({
+                        where: {
+                            restaurant_id: restId,
+                            OR: orConditions,
+                        },
+                        orderBy: { created_at: 'desc' },
+                        select: { id: true, order_number: true, order_status: true },
+                    }) : null;
+                    if (recent) {
+                        orderNum = recent.order_number;
+                    }
                 }
-                return { canCancel: true, orderNumber: order.order_number, status: order.order_status };
+
+                if (!orderNum) {
+                    return { error: 'NO_ACTIVE_ORDER', message: 'Aap ka koi active order nahi mila jise cancel kiya ja sake.' };
+                }
+
+                let order = null;
+                if (prisma) {
+                    order = await prisma.order.findFirst({
+                        where: { restaurant_id: restId, order_number: orderNum },
+                        select: { id: true, order_number: true, order_status: true },
+                    });
+                }
+
+                const { getAdminContact } = await import('./restaurantService.js');
+                const adminContact = await getAdminContact(restId);
+                const displayNum = order?.order_number || orderNum;
+                const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent(`Assalam-o-Alaikum Admin, mujhe apna order #${displayNum} cancel karwana hai.`)}`;
+
+                return {
+                    canCancel: false,
+                    directCancelAllowed: false,
+                    orderNumber: displayNum,
+                    orderStatus: order?.order_status || 'CONFIRMED',
+                    adminPhone: adminContact.displayPhone,
+                    adminWhatsappLink: waLink,
+                    message: `Bot direct order cancel nahi kar sakta. Customer ko batayein ke kitchen preparation ki wajah se direct cancel nahi ho sakta, aur hamare Store Admin / Manager ka number (${adminContact.displayPhone}) aur WhatsApp link (${waLink}) share karein taake woh cancellation process kar sakein.`,
+                };
             }
 
             // 16. confirm_order_cancellation
             case 'confirm_order_cancellation': {
-                const { cancelOrder } = await import('./orderService.js');
                 let orderNum = (args.orderNumber || '').toUpperCase().trim();
-                if (!orderNum) {
-                    const prisma = getDbClient();
-                    if (prisma) {
-                        const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
-                        const recent = orConditions.length > 0 ? await prisma.order.findFirst({
-                            where: {
-                                restaurant_id: restId,
-                                OR: orConditions,
-                            },
-                            orderBy: { created_at: 'desc' },
-                            select: { id: true, order_number: true, order_status: true },
-                        }) : null;
-                        if (recent) {
-                            orderNum = recent.order_number;
-                        }
+                const prisma = getDbClient();
+                if (!orderNum && prisma) {
+                    const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
+                    const recent = orConditions.length > 0 ? await prisma.order.findFirst({
+                        where: {
+                            restaurant_id: restId,
+                            OR: orConditions,
+                        },
+                        orderBy: { created_at: 'desc' },
+                        select: { id: true, order_number: true, order_status: true },
+                    }) : null;
+                    if (recent) {
+                        orderNum = recent.order_number;
                     }
                 }
-                if (!orderNum) {
-                    return { error: 'ORDER_NUMBER_REQUIRED', message: 'Cancel karne ke liye order number zaroori hai.' };
-                }
-                const { extractCancellationReason } = await import('./intentParser.js');
-                const customerMsg = context.effectiveText || '';
-                const inferredReason = args.reason || extractCancellationReason(customerMsg);
 
-                const result = await cancelOrder({
-                    restaurantId: restId,
-                    orderNumber: orderNum,
-                    reason: inferredReason,
-                    notifyCustomer: false,
-                    sock,
-                });
-                if (result?.success) {
-                    try {
-                        const { rememberCustomerDetails, clearSessionOrderDetails } = await import('./sessionService.js');
-                        const prisma = getDbClient();
-                        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                        if (prisma) {
-                            const ord = await prisma.order.findFirst({
-                                where: { restaurant_id: restId, order_number: orderNum },
-                            });
-                            if (ord) {
-                                rememberCustomerDetails(sessionKey, {
-                                    name: ord.customer_name,
-                                    phone: ord.phone,
-                                    address: ord.delivery_address,
-                                    areaName: ord.delivery_area_name,
-                                    googleMapsUrl: ord.google_maps_url,
-                                    paymentMethod: ord.payment_method,
-                                }, cleanPhone);
-                            }
-                        }
-                        clearSessionOrderDetails(sessionKey, cleanPhone);
-                    } catch (_) {}
-                }
-                return result;
+                const { getAdminContact } = await import('./restaurantService.js');
+                const adminContact = await getAdminContact(restId);
+                const displayNum = orderNum || 'CC-XXXXXX';
+                const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent(`Assalam-o-Alaikum Admin, mujhe apna order #${displayNum} cancel karwana hai.`)}`;
+
+                return {
+                    success: false,
+                    directCancelAllowed: false,
+                    orderNumber: displayNum,
+                    adminPhone: adminContact.displayPhone,
+                    adminWhatsappLink: waLink,
+                    message: `Bot direct order cancel nahi kar sakta. Customer ko Store Admin / Manager ka contact (${adminContact.displayPhone}) aur WhatsApp link (${waLink}) dein jo cancellation process karenge.`,
+                };
             }
 
             // 17. send_alternate_confirmation
@@ -1616,6 +1601,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         customerDetailsSummary,
         confirmIntent,
         maxDeliveryRadiusKm: cache.maxDeliveryRadiusKm || 10,
+        adminPhone: cache.adminDisplayPhone || cache.adminPhone || '0343-4919319',
+        adminWhatsappLink: cache.adminWhatsappLink || 'https://wa.me/923434919319',
     });
 
     const fullSystemPrompt = systemPromptText

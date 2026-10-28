@@ -1458,106 +1458,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         };
     }
 
-    // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
-    const hasCartOrOrderAction = /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
-        /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
-        /^(?:add|order)\s+\d+/i.test(lower) ||
-        /^\d+\s*(?:x\s+)?(?:pizza|burger|deal|zinger|roll)/i.test(lower);
-
-    // ── Check Fast Follow-up: Affirmative confirmation of pending Order Summary ──
-    const userSessionId = sessionKey || chatId || whatsappPhone;
+    // ── Check Fast Route: Order Cancellation Request (Direct Bot Cancellation Disabled — Refer to Admin) ──
+    const userSessionId = sessionKey || chatId;
     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
 
-    // ── Check Fast Route: Pending Cancellation Confirmation (Zero Tokens) ──
-    try {
-        const { getPendingCancellation, clearPendingCancellation, rememberCustomerDetails } = await import('./sessionService.js');
-        const pendingCancel = getPendingCancellation(userSessionId, cleanPhone);
-
-        if (pendingCancel) {
-            const isAffirmativeCancel =
-                /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm)[\s!.?]*$/i.test(lower.trim()) ||
-                /\b(?:cancel\s*(?:kr|kar)?\s*d[ou]|cancel\s*karo|cancel\s*kar\s*dein|kardo|kr\s*do|order\s*cancel|haan\s*cancel|cancel\s*karna\s*hai)\b/i.test(lower);
-
-            const isNegativeCancel =
-                /^(?:nahi|na|no|nah|rehne\s*do|rehn\s*do|rehney\s*do|chhor\s*do|mat\s*karo|mat\s*krna|nhi)[\s!.?]*$/i.test(lower.trim()) ||
-                /\b(?:nahi\s*karna|rehne\s*do|rehn\s*do|rehney\s*do|mat\s*karo|cancel\s*mat\s*karo|chhor\s*do)\b/i.test(lower);
-
-            if (isNegativeCancel) {
-                clearPendingCancellation(userSessionId, cleanPhone);
-                const ordText = pendingCancel.orderNumber ? ` *#${pendingCancel.orderNumber}*` : '';
-                return {
-                    handled: true,
-                    routeName: 'fast_cancel_aborted',
-                    reply: `Theek hai Ji! Aap ka order${ordText} cancel nahi kiya gaya aur bilkul active hai. Khana jald aap tak pohnch jayega! 😊`,
-                };
-            }
-
-            if (isAffirmativeCancel) {
-                if (pendingCancel.type === 'CART') {
-                    const { clearCart } = await import('./cartService.js');
-                    const { clearSessionOrderDetails } = await import('./sessionService.js');
-                    await clearCart({ sessionKey: userSessionId });
-                    clearSessionOrderDetails(userSessionId, cleanPhone);
-                    clearPendingCancellation(userSessionId, cleanPhone);
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_cart_confirmed',
-                        reply: `Theek hai Ji! Aap ka cart khali kar diya gaya hai aur order cancel ho gaya hai. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
-                    };
-                }
-
-                // Placed Order cancellation
-                const { cancelOrder } = await import('./orderService.js');
-                const cache = await getCatalogCache();
-                let finalReason = pendingCancel.reason || 'Customer confirmed cancellation via WhatsApp';
-                const confirmationReason = extractCancellationReason(cleanText);
-                if (confirmationReason && !confirmationReason.includes('without specifying')) {
-                    finalReason = confirmationReason;
-                }
-
-                const cancelRes = await cancelOrder({
-                    restaurantId: cache.restId,
-                    orderNumber: pendingCancel.orderNumber,
-                    reason: finalReason,
-                    notifyCustomer: false, // Ensures customer only receives the single bot message below
-                    sock,
-                });
-
-                if (cancelRes?.success) {
-                    const { clearSessionOrderDetails } = await import('./sessionService.js');
-                    if (pendingCancel.targetOrder) {
-                        rememberCustomerDetails(userSessionId, {
-                            name: pendingCancel.targetOrder.customer_name,
-                            phone: pendingCancel.targetOrder.phone,
-                            address: pendingCancel.targetOrder.delivery_address,
-                            areaName: pendingCancel.targetOrder.delivery_area_name,
-                            googleMapsUrl: pendingCancel.targetOrder.google_maps_url,
-                            paymentMethod: pendingCancel.targetOrder.payment_method,
-                        }, cleanPhone);
-                    }
-                    clearSessionOrderDetails(userSessionId, cleanPhone);
-                    clearPendingCancellation(userSessionId, cleanPhone);
-                    const custName = pendingCancel.customerName ? `Ji ${pendingCancel.customerName}!` : 'Ji!';
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_placed_order_confirmed',
-                        reply: `${custName} Aap ka order *#${pendingCancel.orderNumber}* kamiyabi ke sath cancel kar diya gaya hai! ❌\n\nAap ki pichli delivery details hamare pas mehfooz hain. Jab bhi aap dobara order karna chahein, bas menu mein se apna pasandeeda item choose karein, hum aap ke usi address par foran order confirm kar dein ge! 😊`,
-                    };
-                } else {
-                    clearPendingCancellation(userSessionId, cleanPhone);
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_placed_order_failed',
-                        reply: `Order *#${pendingCancel.orderNumber}* cancel nahi ho saka: ${cancelRes?.message || 'Kitchen mein packing complete ho chuki hai.'} Baraye meherbani support agent se rabta karein.`,
-                    };
-                }
-            }
-        }
-    } catch (err) {
-        console.error('[FAST_ROUTE] Error checking pending cancellation:', err.message);
-    }
-
-    // ── Check Fast Route: Order Cancellation Request (Always Take Confirmation First) ──
     const isCancellationIntent =
         /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
         /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
@@ -1568,9 +1472,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     if (isCancellationIntent && !isPolicyQuestion && userSessionId) {
         try {
-            const { getActiveCart } = await import('./cartService.js');
-            const { setPendingCancellation } = await import('./sessionService.js');
+            const { getActiveCart, clearCart } = await import('./cartService.js');
+            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            const { getAdminContact } = await import('./restaurantService.js');
             const cache = await getCatalogCache();
+            const adminContact = await getAdminContact(cache.restId);
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
 
@@ -1629,72 +1535,38 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'fast_cancel_already_delivered',
-                        reply: `Aap ka order *#${targetOrder.order_number}* pehle hi deliver ho chuka hai, is liye ab cancel nahi kiya ja sakta. Agar koi masla ya shikayat ho to baraye meherbani hamare support agent se rabta karein.`,
+                        reply: `Aap ka order *#${targetOrder.order_number}* pehle hi deliver ho chuka hai, is liye ab cancel nahi kiya ja sakta. 😊\n\nAgar koi masla ya shikayat ho to baraye meherbani hamare Admin se rabta karein:\n📞 Phone: ${adminContact.displayPhone}`,
                     };
                 }
 
-                // Case C: Out for Delivery (Rider has departed)
-                if (targetOrder.order_status === 'OUT_FOR_DELIVERY') {
-                    try {
-                        await muteChatForHandover({
-                            chatId,
-                            sessionKey: userSessionId,
-                            reason: `Customer requested cancellation for Order #${targetOrder.order_number} which is already Out for Delivery`,
-                            customerPhone: cleanPhone,
-                            customerName: targetOrder.customer_name,
-                            sock,
-                        });
-                    } catch (_) {}
-                    return {
-                        handled: true,
-                        routeName: 'fast_cancel_out_for_delivery',
-                        reply: `Aap ka order *#${targetOrder.order_number}* rider ke sath deliver karne ke liye nikal chuka hai (Out for Delivery), is liye direct cancel nahi kiya ja sakta. Hum ne aap ki request foran support team ko bhej di hai, woh jald aapse rabta karenge.`,
-                    };
-                }
-
-                // Case D: Cancellable (PENDING, CONFIRMED, PREPARING, READY) -> Require Confirmation First!
-                const detectedReason = extractCancellationReason(cleanText);
-                setPendingCancellation(userSessionId, {
-                    type: 'ORDER',
-                    orderNumber: targetOrder.order_number,
-                    customerName: targetOrder.customer_name,
-                    reason: detectedReason,
-                    targetOrder: {
-                        customer_name: targetOrder.customer_name,
-                        phone: targetOrder.phone,
-                        delivery_address: targetOrder.delivery_address,
-                        delivery_area_name: targetOrder.delivery_area_name,
-                        google_maps_url: targetOrder.google_maps_url,
-                        payment_method: targetOrder.payment_method,
-                    },
-                    timestamp: Date.now(),
-                }, cleanPhone);
+                // Case C: Active Placed Order (PENDING, CONFIRMED, PREPARING, READY, OUT_FOR_DELIVERY) -> Refer directly to Admin
+                const ordNum = targetOrder.order_number;
+                const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent(`Assalam-o-Alaikum Admin, mujhe apna order #${ordNum} cancel karwana hai.`)}`;
 
                 return {
                     handled: true,
-                    routeName: 'fast_cancel_confirm_prompt',
-                    reply: `${custName} Kya aap waqai apna order *#${targetOrder.order_number}* cancel karna chahte hain?\n\nBaraye meherbani tasdeeq ke liye *'Haan cancel kardo'* ya *'Nahi'* likh kar bhej dein. 👍`,
+                    routeName: 'fast_order_cancellation_admin_referral',
+                    reply: `Mafi chahta hoon! Order place hone ke baad main direct order cancel nahi kar sakta kyunki kitchen mein preparation shuru ho chuki hoti hai. 🙏\n\nLekin main aap ko hamare *Admin / Branch Manager* ka contact share kar deta hoon jo aap ki cancellation process kar sakte hain:\n\n👤 *Store Admin / Manager:*\n📞 *Phone:* ${adminContact.displayPhone}\n💬 *WhatsApp Chat:* ${waLink}\n\nAap baraye meharbani apna Order Number (*#${ordNum}*) unhe bata dein taake woh foran aap ki madad kar sakein! 😊`,
                 };
             }
 
-            // Case E: If no placed order found, check if cart has items -> Require Confirmation First!
+            // Case D: If no placed order found, check if draft cart has items -> Clear Cart directly
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
-                setPendingCancellation(userSessionId, {
-                    type: 'CART',
-                    timestamp: Date.now(),
-                }, cleanPhone);
+                await clearCart({ sessionKey: userSessionId });
+                clearSessionOrderDetails(userSessionId, cleanPhone);
                 return {
                     handled: true,
-                    routeName: 'fast_cancel_cart_confirm_prompt',
-                    reply: `Ji! Kya aap waqai apna cart aur order cancel karna chahte hain?\n\nBaraye meherbani tasdeeq ke liye *'Haan cancel kardo'* ya *'Nahi'* likh kar bhej dein. 👍`,
+                    routeName: 'fast_cancel_cart_cleared',
+                    reply: `Aap ka abhi koi confirmed order place nahi hua tha, albata aap ke cart ke items clear kar diye gaye hain. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
                 };
             }
 
+            // Case E: Neither placed order nor cart items
             return {
                 handled: true,
                 routeName: 'fast_cancel_not_found',
-                reply: `Aap ka koi active order ya cart mein koi item nahi mila jise cancel kiya ja sake. Agar aap ne kisi aur number se order kiya tha to baraye meherbani apna Order Number (jaise #CC-123456) likh kar bhej dein. 😊`,
+                reply: `Aap ka koi active order ya cart mein koi item nahi mila jise cancel kiya ja sake. 😊\n\nAgar aap ne kisi aur number se order kiya tha to apna Order Number (jaise #CC-123456) likhein ya hamare Admin se rabta karein:\n📞 Phone: ${adminContact.displayPhone}`,
             };
         } catch (err) {
             console.error('[FAST_ROUTE] Error processing cancellation:', err.message);
@@ -2105,6 +1977,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 };
             }
         }
+
+
 
         // Sub-case 3: Customer inquires about current/previous order details (e.g. "Purany order ka adress kia ha ab?", "Order status kya hai?")
         const isOrderInquiry = /\b(?:puran[aeiy]+|pichl[aeiy]+|mera|previous|last)\s*(?:order|oder)?\s*(?:ka\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|status|name|naam|details|detail|bill|total)\b/i.test(lower) ||

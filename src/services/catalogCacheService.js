@@ -13,7 +13,7 @@
  */
 
 import { getActiveMenu, getActiveDeals } from './menuService.js';
-import { getDefaultRestaurantId } from './restaurantService.js';
+import { getDefaultRestaurantId, formatDisplayPhone, formatWhatsAppPhone } from './restaurantService.js';
 import { getDbClient } from '../db/client.js';
 import { getGlobalDiscountSettings, calculateDiscount } from './discountService.js';
 import { FALLBACK_CATEGORIES, FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
@@ -289,10 +289,18 @@ async function fetchAllCatalog() {
         const radiusSetting = (restaurant?.settings || []).find(s => s.key === 'max_delivery_radius_km');
         const maxDeliveryRadiusKm = (radiusSetting?.value && !isNaN(parseFloat(radiusSetting.value))) ? parseFloat(radiusSetting.value) : 10.0;
 
+        // Dynamic Admin & Support Contact from settings bar
+        const handoffSetting = (restaurant?.settings || []).find(s => s.key === 'human_handoff_phone');
+        const configuredAdminPhone = handoffSetting?.value?.trim() || restaurant?.admin_notification_phone?.trim() || storePhone || process.env.ADMIN_NOTIFICATION_PHONE || process.env.OWNER_NUMBER || '923001234567';
+        const adminDisplayPhone = formatDisplayPhone(configuredAdminPhone);
+        const adminWaPhone = formatWhatsAppPhone(configuredAdminPhone);
+        const adminWhatsappLink = adminWaPhone ? `https://wa.me/${adminWaPhone}` : '';
+
         const cachedStoreInfo = `Name: ${storeName}
 Outlet Address: ${storeAddress}
 Timings: ${storeTimings}
 Phone: ${storePhone}
+Admin / Store Manager Contact: ${adminDisplayPhone}
 Min Order: Rs. ${minOrder} | Default Delivery Fee: Rs. ${deliveryFee}
 Maximum Delivery Radius: ${maxDeliveryRadiusKm} KM (Hamari circular delivery coverage ${maxDeliveryRadiusKm} km tak mehdood hai)
 COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'} (${easypaisaNumber} - ${accountName})`;
@@ -412,6 +420,10 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             storeName,
             storeAddress,
             storePhone,
+            adminPhone: configuredAdminPhone,
+            adminDisplayPhone,
+            adminWhatsappPhone: adminWaPhone,
+            adminWhatsappLink,
             openingTime: openingTimeFormatted,
             closingTime: closingTimeFormatted,
             storeTimings,
@@ -478,6 +490,10 @@ COD: ${codEnabled ? 'Yes' : 'No'} | EasyPaisa: ${easypaisaEnabled ? 'Yes' : 'No'
             storeName: 'Cravey Crust',
             storeAddress: 'Nearby AQ Khan School, Ghauri Town, Islamabad',
             storePhone: '03301233927',
+            adminPhone: '03434919319',
+            adminDisplayPhone: '0343-4919319',
+            adminWhatsappPhone: '923434919319',
+            adminWhatsappLink: 'https://wa.me/923434919319',
             openingTime: '04:00 PM',
             closingTime: '02:00 AM',
             storeTimings: '04:00 PM - 02:00 AM',

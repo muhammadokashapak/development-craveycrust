@@ -1432,78 +1432,28 @@ Payment: ${payMethod} (${payStatus})`,
     // REQUEST_ORDER_CANCELLATION
     if (intent === 'REQUEST_ORDER_CANCELLATION') {
         const orderNum = entities.orderNumber;
-        if (!orderNum) {
-            return {
-                text: 'Barah-e-karam order number mention karein jo aap cancel karna chahte hain (e.g. cancel CC-000123).',
-                intent,
-            };
-        }
+        const { getAdminContact } = await import('./restaurantService.js');
+        const adminContact = await getAdminContact(restaurantId);
+        const ordDisplay = orderNum ? `#${orderNum}` : 'apna Order Number';
+        const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent(`Assalam-o-Alaikum Admin, mujhe apna order ${ordDisplay} cancel karwana hai.`)}`;
 
-        try {
-            const cancelReq = await requestOrderCancellation({
-                restaurantId,
-                orderNumber: orderNum,
-                sessionKey: convSession.session_key,
-            });
-
-            return {
-                text: `Kya aap waqai order #${cancelReq.orderNumber} cancel karna chahte hain?\n\nReply karein: Yes ya No`,
-                intent,
-                stage: 'WAITING_CANCEL_CONFIRMATION',
-            };
-        } catch (err) {
-            return {
-                text: `Cancellation request fail: ${err.message}`,
-                intent,
-            };
-        }
+        return {
+            text: `Mafi chahta hoon! Order place hone ke baad main direct order cancel nahi kar sakta kyunki kitchen mein preparation shuru ho chuki hoti hai. 🙏\n\nLekin main aap ko hamare *Admin / Branch Manager* ka contact share kar deta hoon jo aap ki cancellation process kar sakte hain:\n\n👤 *Store Admin / Manager:*\n📞 *Phone:* ${adminContact.displayPhone}\n💬 *WhatsApp Chat:* ${waLink}\n\nAap baraye meharbani ${ordDisplay} unhe bata dein taake woh foran aap ki madad kar sakein! 😊`,
+            intent,
+        };
     }
 
-    // CONFIRM_CANCELLATION / DECLINE_CANCELLATION (Stage: WAITING_CANCEL_CONFIRMATION)
+    // CONFIRM_CANCELLATION / DECLINE_CANCELLATION (Legacy Stage: WAITING_CANCEL_CONFIRMATION)
     if (convSession.stage === 'WAITING_CANCEL_CONFIRMATION') {
-        const prisma = getDbClient();
-        let targetOrderNumber = null;
-
-        if (convSession.pending_cancel_order_id && prisma) {
-            const ord = await prisma.order.findUnique({
-                where: { id: convSession.pending_cancel_order_id },
-                select: { order_number: true },
-            });
-            targetOrderNumber = ord?.order_number;
-        }
-
-        if (!targetOrderNumber) {
-            await updateSessionStage({ sessionKey: convSession.session_key, stage: 'START' });
-            return { text: 'Koi pending cancellation request nahi mili.', intent };
-        }
-
-        if (intent === 'CONFIRM_CANCELLATION') {
-            const cancelResult = await confirmOrderCancellation({
-                restaurantId,
-                orderNumber: targetOrderNumber,
-                sessionKey: convSession.session_key,
-                confirmed: true,
-            });
-
-            return {
-                text: `Order #${cancelResult.orderNumber} cancel kar diya gaya hai.`,
-                intent,
-                stage: 'CANCELLED',
-            };
-        } else {
-            await confirmOrderCancellation({
-                restaurantId,
-                orderNumber: targetOrderNumber,
-                sessionKey: convSession.session_key,
-                confirmed: false,
-            });
-
-            return {
-                text: `Order #${targetOrderNumber} active rakha gaya hai (cancellation abort).`,
-                intent,
-                stage: 'START',
-            };
-        }
+        await updateSessionStage({ sessionKey: convSession.session_key, stage: 'START' });
+        const { getAdminContact } = await import('./restaurantService.js');
+        const adminContact = await getAdminContact(restaurantId);
+        const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent('Assalam-o-Alaikum Admin, mujhe order cancellation ke silsile mein rabta karna hai.')}`;
+        return {
+            text: `Order direct bot ke zariye cancel nahi kiya ja sakta. Baraye meharbani hamare Admin / Branch Manager se rabta karein:\n\n👤 *Store Admin / Manager:*\n📞 *Phone:* ${adminContact.displayPhone}\n💬 *WhatsApp Chat:* ${waLink}`,
+            intent,
+            stage: 'START',
+        };
     }
 
     // HELP
@@ -1518,7 +1468,7 @@ cart: Apna shopping cart dekhein
 clear cart: Cart khali karein
 checkout: Order complete karein
 status CC-000123: Order track karein
-cancel CC-000123: Order cancel karein
+cancel: Order cancellation / Admin contact
 Direct order: likhein 2 zinger ya 1 pizza`,
             intent,
         };
