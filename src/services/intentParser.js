@@ -233,7 +233,7 @@ export function cleanExtractedAddress(text) {
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
 // Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|tikka|fajita|supreme|tandoori|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|tikka|fajita|supreme|tandoori|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
 
 /**
  * Check if candidate string contains any food item, flavor, topping or size.
@@ -271,7 +271,9 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         /\b(?:yehe|yehi|yahi|same|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp)\b/i.test(lower) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower);
     const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed;
+    const isNegativeSamePhone = isAwaitingPhone && /^(?:ni|nahi|nahin|nhi|nh|na|no|nope|koi\s*(?:bhi\s*)?n(?:ahi|i|hin|h)?(?:\s*krna)?|koi\s*doosra\s*n(?:ahi|i|hin|h)?|koi\s*aur\s*n(?:ahi|i|hin|h)?)[\s.!?]*$/i.test(lower.trim());
     const isContextualSamePhone = isAwaitingPhone && (
+        isNegativeSamePhone ||
         /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
         /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(lower.trim()) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
@@ -368,7 +370,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // SAKHT RULE: ONLY run bare string name check if customer name is NOT yet known!
     // Never extract name if message contains question marks or inquiry words!
     const isQuestionOrInquiry = raw.includes('?') || /\b(?:kya|kia|kab|kese|kaise|kahan|kidhar|kahin|konsa|konse|kyun|kyu|hai\?|he\?|h\?|btao|batao|dikhao|dekhao)\b/i.test(raw);
-    const isMenuOrQueryWord = /\b(?:menu|menue|meny|mainu|mainue|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
+    const isMenuOrQueryWord = /\b(?:menu|manu|manue|menue|meny|mainu|mainue|mny|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
     const nameExplicit = Boolean(nameUpdateMatch || nameBefore || nameAfter);
     if (!nameCandidate && !knownDetails.name && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord && !isQuestionOrInquiry) {
         const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro)[\s.!?]*$/i.test(raw.trim());
@@ -1336,8 +1338,8 @@ const FAST_CHITCHAT_REGEX = /\b(?:k[ae]se\s*(?:h[oi]|ho|hain|hen|h|hy)|kaise\s*(
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
 
-const FAST_MENU_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?[\s.!?]*$/i;
-const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
+const FAST_MENU_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|manu|manue|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?[\s.!?]*$/i;
+const FAST_MENU_CONTAINS = /\b(menu|manu|manue|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
 
 const FAST_DEALS_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
 const FAST_DEALS_CONTAINS = /\b(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|deal\s*list|deals?\s*list|deal\s*card|deals?\s*card|deal\s*flyer|deals?\s*flyer|deals?\s*dikhao|deals?\s*bhejo|deal\s*bhejo|deal\s*chahiye|deals?\s*chahiye)\b/i;
@@ -3613,7 +3615,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_`,
+                reply: `${salutation} *${store}* mein khush aamdeed! Main *${store}* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye *'menu'* ya deals dekhne ke liye *'deals'* likhein! 😊`,
             };
         } catch (_) {}
     }
@@ -3726,6 +3728,45 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         if (!isActivelyCheckingOut) {
             try {
                 const cache = await getCatalogCache();
+
+          // ── Check for specific deal qualifiers (e.g. "midnight deals", "lunch deals", "student deals") ──
+                const dealQualifierMatch = lower.match(/\b(midnight|lunch|student|family|snack|special|iftar|ramadan)\b/i);
+                if (dealQualifierMatch) {
+                    const qualifier = dealQualifierMatch[1].toLowerCase();
+                    const activeDeals = Array.isArray(cache.rawDeals)
+                        ? cache.rawDeals.filter(d => d.is_active !== false)
+                        : [];
+                    const matchedDeals = activeDeals.filter(d => {
+                        const combined = `${d.name} ${d.description || ''} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')}`.toLowerCase();
+                        return combined.includes(qualifier);
+                    });
+
+                    if (matchedDeals.length > 0) {
+                        const dealLines = matchedDeals.map(d => {
+                            const items = (d.deal_items || []).map(di => {
+                                const q = di.quantity > 1 ? `${di.quantity}x ` : '';
+                                return `${q}${di.menu_item?.name || 'Item'}`;
+                            }).join(', ');
+                            const desc = items ? `\n   _${items}_` : (d.description ? `\n   _${d.description}_` : '');
+                            return `• *${d.name}* — Rs. ${Number(d.deal_price)}${desc}`;
+                        });
+                        return {
+                            handled: true,
+                            routeName: 'live_deals_qualified',
+                            reply: `🌙 *Cravey Crust ${qualifier.charAt(0).toUpperCase() + qualifier.slice(1)} Deals:*\n\n${dealLines.join('\n\n')}\n\nIn mein se kaunsi deal add karun aap ke liye? 😊`,
+                            imageUrls: [],
+                            imageUrl: null,
+                        };
+                    } else {
+                        return {
+                            handled: true,
+                            routeName: 'live_deals_qualifier_none',
+                            reply: `Cravey Crust par filhal alag se *${qualifier.charAt(0).toUpperCase() + qualifier.slice(1)} Deals* active nahi hain, lekin hamare paas bohot zabardast aur budget-friendly live deals dastiyab hain! 🍕🍔\n\nHamari live deals dekhne ke liye *'deals'* likhein ya menu dekhne ke liye *'menu'* likhein!`,
+                            imageUrls: [],
+                            imageUrl: null,
+                        };
+                    }
+                }
 
                 // ── Tier 1: Check Deals Images (All pages must be sent, NO text dump) ──
                 let targetDealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
@@ -4412,13 +4453,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed. Main hoon *Burger Raja*! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_`,
+                reply: `${salutation} *${store}* mein khush aamdeed! Main *${store}* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye *'menu'* ya deals dekhne ke liye *'deals'* likhein! 😊_`,
             };
         } catch (_) {
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Hello! Cravey Crust mein khush aamdeed. Main hoon Burger Raja! Kahiye, aaj kya mangwana chahenge? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein!\n\n_(Wese agar aap mujhe apni delivery location ke baray mein bata dein, to delivery confirmation mein asaani ho jayegi 😊)_',
+                reply: 'Hello! *Cravey Crust* mein khush aamdeed! Main *Cravey Crust* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein! 😊',
             };
         }
     }
@@ -4432,13 +4473,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: `Alhamdulillah main bilkul theek hoon! Main *${store}* ka AI assistant *Burger Raja* hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye 'menu' ya 'deals' likhein!`,
+                reply: `Alhamdulillah main bilkul theek hoon! Main *${store}* ka official AI assistant hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye *'menu'* ya *'deals'* likhein! 😊`,
             };
         } catch (_) {
             return {
                 handled: true,
                 routeName: 'quick_reply',
-                reply: 'Alhamdulillah main bilkul theek hoon! Main *Cravey Crust* ka AI assistant *Burger Raja* hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein!',
+                reply: 'Alhamdulillah main bilkul theek hoon! Main *Cravey Crust* ka official AI assistant hoon. Aaj koi lazeez khana mangwana hai? Hamara menu dekhne ke liye \'menu\' ya \'deals\' likhein! 😊',
             };
         }
     }
