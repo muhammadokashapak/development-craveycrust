@@ -1141,9 +1141,15 @@ async function startSession(session, options = {}) {
             try {
                 const res = await executeSend();
                 _jidLastSentTime.set(pacingKey, Date.now());
+                if (typeof sock?.sendPresenceUpdate === 'function') {
+                    sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
+                }
                 return res;
             } catch (sendErr) {
                 _jidLastSentTime.set(pacingKey, Date.now());
+                if (typeof sock?.sendPresenceUpdate === 'function') {
+                    sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
+                }
                 throw sendErr;
             }
         })();
@@ -1405,6 +1411,10 @@ async function handleMessage(sock, msg, session) {
             const audioMsg = extractedAudio.msg;
             console.log(`[VOICE] Received voice/audio message from ${jid} (PTT=${audioMsg.ptt ?? false}, mime=${audioMsg.mimetype || 'unknown'}). Downloading audio stream...`);
 
+            if (!isFromMe && typeof sock?.sendPresenceUpdate === 'function') {
+                sock.sendPresenceUpdate('composing', jid).catch(() => {});
+            }
+
             const stream = await downloadContentFromMessage(audioMsg, 'audio');
             let audioBuffer = Buffer.from([]);
             for await (const chunk of stream) {
@@ -1654,6 +1664,11 @@ async function handleMessage(sock, msg, session) {
                 return; // Ignore empty protocol or cipher stubs
             }
 
+            // Instantly trigger live typing indicator so customer sees immediate response presence
+            if (typeof sock?.sendPresenceUpdate === 'function') {
+                sock.sendPresenceUpdate('composing', jid).catch(() => {});
+            }
+
             // Record incoming customer chat
             recordChatMessage({
                 chatId: jid,
@@ -1706,6 +1721,10 @@ async function handleMessage(sock, msg, session) {
                 await sock.sendMessage(jid, {
                     text: 'Mafi chahta hoon, abhi kuch masla aa gaya. Thodi der baad dobara koshish karein.'
                 }).catch(() => {});
+            } finally {
+                if (typeof sock?.sendPresenceUpdate === 'function') {
+                    sock.sendPresenceUpdate('paused', jid).catch(() => {});
+                }
             }
             return; // Handled by AI Agent
         }
