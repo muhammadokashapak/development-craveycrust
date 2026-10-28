@@ -1662,9 +1662,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         : cleanFinalReply;
 }
 
-// ─── Per-Chat Debounce Buffer & Sequential Message Processing Queue ───
+// ─── Per-Chat Sequential Message Processing Queue ───
 const _chatMessageQueues = new Map();
-const _chatDebounceBuffers = new Map();
 const _lastProcessedMessages = new Map(); // jid -> { text, timestamp }
 
 async function _enqueueMessage(jid, params) {
@@ -1709,42 +1708,7 @@ export async function processMessage(params) {
         return null;
     }
 
-    // 2. Debounce buffer: if rapid follow-up text messages arrive within 1000ms, combine them
-    const hasMediaOrLocation = Boolean(params?.locationData || params?.msg?.message?.imageMessage);
-    const isFastAction = /^(?:confirm|haan|han|ji|g|yes|no|nahi|cod|easypaisa)$/i.test(text);
-
-    if (!hasMediaOrLocation && !isFastAction && text) {
-        const pending = _chatDebounceBuffers.get(jid);
-        if (pending) {
-            clearTimeout(pending.timer);
-            pending.params.text = `${pending.params.text} ${text}`.trim();
-            pending.deferredResolve(null); // The secondary fragment yields null
-
-            return new Promise((resolve) => {
-                pending.timer = setTimeout(async () => {
-                    _chatDebounceBuffers.delete(jid);
-                    const res = await _enqueueMessage(jid, pending.params);
-                    pending.mainResolve(res);
-                }, 1000);
-                pending.deferredResolve = resolve;
-            });
-        }
-
-        return new Promise((resolve) => {
-            const bufferEntry = {
-                params: { ...params },
-                mainResolve: resolve,
-                deferredResolve: () => {},
-                timer: setTimeout(async () => {
-                    _chatDebounceBuffers.delete(jid);
-                    const res = await _enqueueMessage(jid, bufferEntry.params);
-                    bufferEntry.mainResolve(res);
-                }, 1000),
-            };
-            _chatDebounceBuffers.set(jid, bufferEntry);
-        });
-    }
-
+    // Process incoming message immediately without artificial debounce delay
     return _enqueueMessage(jid, params);
 }
 

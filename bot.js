@@ -990,7 +990,7 @@ const autoReplies = {
 // and sequential ordering for consecutive messages to the same user.
 const _jidSendQueues = new Map();
 const _jidLastSentTime = new Map();
-const TYPING_DELAY_MS = 1500; // 1.5 seconds natural human typing delay
+const TYPING_DELAY_MS = 0; // Immediate response (no artificial pause)
 
 function getPacingKey(jid) {
     if (!jid || typeof jid !== 'string') return null;
@@ -1138,32 +1138,12 @@ async function startSession(session, options = {}) {
                 await currentQueue;
             } catch (_) {}
 
-            // Activate typing indicator on customer chat
-            try {
-                if (typeof sock?.sendPresenceUpdate === 'function') {
-                    await sock.sendPresenceUpdate('composing', targetJid);
-                }
-            } catch (_) {}
-
-            // Enforce natural 1-2 seconds human typing delay (1500ms) requested by user
-            await new Promise(resolve => setTimeout(resolve, TYPING_DELAY_MS));
-
             try {
                 const res = await executeSend();
                 _jidLastSentTime.set(pacingKey, Date.now());
-                try {
-                    if (typeof sock?.sendPresenceUpdate === 'function') {
-                        sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
-                    }
-                } catch (_) {}
                 return res;
             } catch (sendErr) {
                 _jidLastSentTime.set(pacingKey, Date.now());
-                try {
-                    if (typeof sock?.sendPresenceUpdate === 'function') {
-                        sock.sendPresenceUpdate('paused', targetJid).catch(() => {});
-                    }
-                } catch (_) {}
                 throw sendErr;
             }
         })();
