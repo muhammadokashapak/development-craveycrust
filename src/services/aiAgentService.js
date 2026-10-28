@@ -1165,11 +1165,15 @@ async function runAgentLoop(messages, context) {
         const dealsAlreadySent = sessionKey ? haveDealsBeenSent(sessionKey, cleanPhone) : false;
         const menuAlreadySent = sessionKey ? hasMenuBeenSent(sessionKey, cleanPhone) : false;
 
-        const isSpecificDealOrHeadcount = /\b(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch)\s*(?:k\s*lie|ke\s*lie|k\s*liye|ke\s*liye|liye|lie)?\s*(?:bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lowerEff) ||
-            /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon)\b/i.test(lowerEff);
+        const hasShowOrSendDealWord = /\b(dikhao|dekhao|dikhayein|dikhana|bhejo|bhajo|bhej\s*do|send|share|list|card|flyer|photos?|pics?|images?)\b/i.test(lowerEff);
+        const isSpecificDealOrHeadcount = !hasShowOrSendDealWord && (
+            /\b(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch)\s*(?:k\s*lie|ke\s*lie|k\s*liye|ke\s*liye|liye|lie)?\s*(?:bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lowerEff) ||
+            /\b(koi\s+(?:achi|acha|best)|konsi|konse|kaunsi|kaunsa|recommend|recommendation|sugest|suggest|suggestion)\b/i.test(lowerEff)
+        );
 
         const isGenericDealsRequest = /\b(?:show\s+|send\s+|bhejo\s+|dikhao\s+|dekhao\s+)?deals?[\s.!?]*$/i.test(lowerEff) ||
-            /\b(?:deals?\s*(?:dikhao|dekhao|bhejo|send|flyer|images?|pics?))\b/i.test(lowerEff);
+            /\b(?:deals?\s*(?:dikhao|dekhao|bhejo|send|flyer|images?|pics?))\b/i.test(lowerEff) ||
+            /\b(?:(?:acha|achha|theek|ok|aur)?\s*(?:deals?|offers?|combos?)\s*(?:dikhao|dekhao|bhejo|send|share))\b/i.test(lowerEff);
 
         if (asksDeals && !dealsAlreadySent && !isSpecificDealOrHeadcount && isGenericDealsRequest) {
             try {
@@ -1190,7 +1194,7 @@ async function runAgentLoop(messages, context) {
                     }
                 }
             } catch (_) {}
-        } else if (asksMenu && !menuAlreadySent && !/\b(koi|konsa|konse|best|acha|achi|ache|pizza|burger|fries|drink)\b/i.test(lowerEff)) {
+        } else if (asksMenu && !menuAlreadySent && (!/\b(koi|konsa|konse|best|pizza|burger|fries|drink)\b/i.test(lowerEff) || /\b(dikhao|dekhao|bhejo|send|card|flyer)\b/i.test(lowerEff))) {
             try {
                 const { getCatalogCache } = await import('./catalogCacheService.js');
                 const cache = await getCatalogCache();

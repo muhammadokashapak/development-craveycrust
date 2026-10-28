@@ -1330,10 +1330,10 @@ const FAST_CHITCHAT_REGEX = /\b(?:k[ae]se\s*(?:h[oi]|ho|hain|hen|h|hy)|kaise\s*(
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
 
-const FAST_MENU_REGEX = /^(?:(?:mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?[\s.!?]*$/i;
+const FAST_MENU_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kya|kia)\s*(?:milta|hai|h|hy|items?\s*hain?|available\s*hai)|apke\s*pas\s*(?:kya\s*kya|kya)\s*(?:hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?[\s.!?]*$/i;
 const FAST_MENU_CONTAINS = /\b(menu|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
 
-const FAST_DEALS_REGEX = /^(?:(?:mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
+const FAST_DEALS_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
 const FAST_DEALS_CONTAINS = /\b(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|deal\s*list|deals?\s*list|deal\s*card|deals?\s*card|deal\s*flyer|deals?\s*flyer|deals?\s*dikhao|deals?\s*bhejo|deal\s*bhejo|deal\s*chahiye|deals?\s*chahiye)\b/i;
 
 
@@ -1369,6 +1369,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const lower = raw.toLowerCase();
     const words = lower.split(/\s+/).filter(Boolean);
     const wordCount = words.length;
+
+    // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
+    const hasCartOrOrderAction = /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
+        /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
+        /^(?:add|order)\s+\d+/i.test(lower) ||
+        /^\d+\s*(?:x\s+)?(?:pizza|burger|deal|zinger|roll)/i.test(lower);
 
     // ── 1. Handover / Complaint / Real Person Request ──
     const isFoodOrDealContext = /\b(?:deals?|meals?|offers?|packages?|combos?|pizza|burger|fries|food|khana|menu|catalog|items?|order|serving|servings|person\s*deal|person\s*meal|bando\s*ki\s*deal|bando\s*k\s*liye|bandon\s*k\s*liye)\b/i.test(lower) ||
@@ -3544,9 +3550,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                 const { haveDealsBeenSent, markDealsSent, getSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const hasShowOrSendWord = /\b(dikhao|dekhao|dikhayein|dikhana|bhejo|bhajo|bhej\s*do|send|share|list|card|cards|flyer|flyers|photos?|pics?|images?)\b/i.test(lower);
                 const isExplicitDealsAsk = FAST_DEALS_REGEX.test(lower) || /\b(deals?|offer|packages?|combos?)\b/i.test(lower);
                 const dealsAlreadySent = userSessionId ? haveDealsBeenSent(userSessionId, cleanPhone) : false;
-                const isSpecificRecommendation = /\b(koi|konsi|konse|best|acha|achi|ache|recommend|recommendation|sugest|suggest|suggestion|family|bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lower);
+                const isSpecificRecommendation = !hasShowOrSendWord && (
+                    /\b(koi\s+(?:achi|acha|best)|konsi|konse|kaunsi|kaunsa|recommend|recommendation|sugest|suggest|suggestion)\b/i.test(lower) ||
+                    /\b(\d+|ek|aik|do|teen|tin|char|chaar|panch|paanch)\s*(?:k\s*lie|ke\s*lie|k\s*liye|ke\s*liye|liye|lie)?\s*(?:bando|bndo|bandon|bndon|bande|bnde|log|logo|logon|person|persons|people)\b/i.test(lower)
+                );
 
                 const isBurger = /\b(?:burgers?|zingers?|zegy|bun\s*kabab)\b/i.test(lower);
                 const isPizza = /\b(?:pi[z]+as?|pizas?|crusts?)\b/i.test(lower);
@@ -3556,9 +3566,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (targetDealsImages.length > 0 && !isSpecificCategoryAsk && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
                     if (userSessionId) markDealsSent(userSessionId, cleanPhone);
                     const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
-                    let dealsCaption = '';
+                    let dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥';
                     if (!currDetails?.address && !currDetails?.location) {
-                        dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                        dealsCaption += '\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
+                    } else {
+                        dealsCaption += '\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
                     }
                     return {
                         handled: true,
@@ -3767,7 +3779,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const isExplicitMenuAsk = FAST_MENU_REGEX.test(lower) || /\b(menu|menue|meny|mainu|card|flyer|list)\b/i.test(lower);
             const menuAlreadySent = userSessionId ? hasMenuBeenSent(userSessionId, cleanPhone) : false;
-            const isSpecificMenuFilter = /\b(koi|konsa|konse|best|acha|achi|ache|recommend|pizza|burger|fries|drink)\b/i.test(lower);
+            const hasShowOrSendMenuWord = /\b(dikhao|dekhao|dikhayein|dikhana|bhejo|bhajo|bhej\s*do|send|share|card|cards|flyer|flyers|photos?|pics?|images?)\b/i.test(lower);
+            const isSpecificMenuFilter = !hasShowOrSendMenuWord && /\b(koi|konsa|konse|best|recommend|pizza|burger|fries|drink)\b/i.test(lower);
 
             if (targetMenuImages.length > 0 && (isExplicitMenuAsk || !menuAlreadySent) && !isSpecificMenuFilter) {
                 if (userSessionId) markMenuSent(userSessionId, cleanPhone);
