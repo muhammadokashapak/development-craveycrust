@@ -9,14 +9,13 @@ let _cachedRestaurantId = null;
  * @returns {Promise<string>}
  */
 export async function getDefaultRestaurantId() {
-    if (_cachedRestaurantId) {
+    if (_cachedRestaurantId && _cachedRestaurantId !== 'default-restaurant') {
         return _cachedRestaurantId;
     }
 
     const prisma = getDbClient();
     if (!prisma) {
-        _cachedRestaurantId = 'default-restaurant';
-        return _cachedRestaurantId;
+        return 'default-restaurant';
     }
 
     try {
@@ -33,18 +32,23 @@ export async function getDefaultRestaurantId() {
             });
         }
 
-        if (restaurant) {
+        if (!restaurant) {
+            restaurant = await prisma.restaurant.findFirst({
+                orderBy: { created_at: 'asc' },
+                select: { id: true },
+            });
+        }
+
+        if (restaurant && restaurant.id) {
             _cachedRestaurantId = restaurant.id;
             return _cachedRestaurantId;
         }
     } catch (err) {
         markDbOffline();
-        _cachedRestaurantId = 'default-restaurant';
-        return _cachedRestaurantId;
+        return 'default-restaurant';
     }
 
-    _cachedRestaurantId = 'default-restaurant';
-    return _cachedRestaurantId;
+    return 'default-restaurant';
 }
 
 /**

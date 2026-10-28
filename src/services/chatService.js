@@ -225,7 +225,7 @@ export async function recordChatMessage({
             if (!restId || restId === 'default-restaurant') {
                 restId = await getDefaultRestaurantId().catch(() => null);
             }
-            if (!restId) return;
+            if (!restId || restId === 'default-restaurant') return;
 
             // If name is still missing, lookup registered customer in DB
             if (!cleanName && cleanPhone) {

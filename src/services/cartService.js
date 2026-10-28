@@ -11,7 +11,13 @@ const _inMemoryCarts = new Map();
  */
 export async function getActiveCart({ sessionKey, restaurantId, chatId, verifiedPhone }) {
     const prisma = getDbClient();
-    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
+    let restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
+    if (prisma && (!restId || restId === 'default-restaurant' || restId === 'cravey-crust-main')) {
+        const resolved = await getDefaultRestaurantId().catch(() => null);
+        if (resolved && resolved !== 'default-restaurant') {
+            restId = resolved;
+        }
+    }
 
     if (!prisma) {
         let cart = _inMemoryCarts.get(sessionKey);
@@ -87,6 +93,29 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
     }
 
     if (!cart) {
+        if (!restId || restId === 'default-restaurant' || restId === 'cravey-crust-main') {
+            const resolved = await getDefaultRestaurantId().catch(() => null);
+            if (resolved && resolved !== 'default-restaurant') {
+                restId = resolved;
+            }
+        }
+        if (!restId || restId === 'default-restaurant' || restId === 'cravey-crust-main') {
+            let fallbackCart = _inMemoryCarts.get(sessionKey);
+            if (!fallbackCart) {
+                fallbackCart = {
+                    id: `cart_${sessionKey}`,
+                    restaurant_id: restId || 'cravey-crust-main',
+                    session_id: session?.id || `sess_${sessionKey}`,
+                    status: 'ACTIVE',
+                    items: [],
+                    created_at: new Date(),
+                    updated_at: new Date(),
+                };
+                _inMemoryCarts.set(sessionKey, fallbackCart);
+            }
+            return fallbackCart;
+        }
+
         cart = await prisma.cart.create({
             data: {
                 restaurant_id: restId,
