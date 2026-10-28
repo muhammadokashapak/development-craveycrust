@@ -579,6 +579,37 @@ export async function clearAllCaches() {
         const { clearAllDealFlavourCaches } = await import('./dealFlavourService.js');
         if (typeof clearAllDealFlavourCaches === 'function') clearAllDealFlavourCaches();
     } catch (_) {}
+    try {
+        const prisma = getDbClient();
+        if (prisma) {
+            const restId = await getDefaultRestaurantId().catch(() => null);
+            if (restId) {
+                for (const fd of FALLBACK_DEALS) {
+                    await prisma.deal.upsert({
+                        where: {
+                            restaurant_id_slug: {
+                                restaurant_id: restId,
+                                slug: fd.slug,
+                            },
+                        },
+                        update: {
+                            name: fd.name,
+                            deal_price: fd.deal_price,
+                            is_active: true,
+                        },
+                        create: {
+                            restaurant_id: restId,
+                            name: fd.name,
+                            slug: fd.slug,
+                            deal_price: fd.deal_price,
+                            sort_order: fd.sort_order || 0,
+                            is_active: true,
+                        },
+                    }).catch(() => {});
+                }
+            }
+        }
+    } catch (_) {}
     _cache = await fetchAllCatalog();
     _cacheTime = Date.now();
     console.log(`[CACHE] All in-memory catalog, deals, and session caches cleared & refreshed on boot/redeploy (syncEpoch: ${_syncEpoch}).`);

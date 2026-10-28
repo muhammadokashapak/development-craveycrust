@@ -284,20 +284,60 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
 
     // Validate Deal
     if (dealId) {
-        const deal = await prisma.deal.findFirst({
-            where: {
-                id: dealId,
-                restaurant_id: restId,
-            },
-            include: {
-                deal_items: {
-                    include: {
-                        menu_item: true,
-                        menu_variant: true,
+        let deal = null;
+        if (prisma) {
+            try {
+                // 1. Try finding by ID
+                deal = await prisma.deal.findFirst({
+                    where: {
+                        id: dealId,
+                        restaurant_id: restId,
                     },
-                },
-            },
-        });
+                    include: {
+                        deal_items: {
+                            include: {
+                                menu_item: true,
+                                menu_variant: true,
+                            },
+                        },
+                    },
+                });
+
+                // 2. If not found by ID, try finding by slug or name in DB
+                if (!deal) {
+                    deal = await prisma.deal.findFirst({
+                        where: {
+                            OR: [
+                                { slug: dealId },
+                                { slug: String(dealId).toLowerCase() },
+                                { name: { equals: String(dealId), mode: 'insensitive' } },
+                            ],
+                            restaurant_id: restId,
+                        },
+                        include: {
+                            deal_items: {
+                                include: {
+                                    menu_item: true,
+                                    menu_variant: true,
+                                },
+                            },
+                        },
+                    });
+                }
+            } catch (_) {}
+        }
+
+        // 3. Fallback to FALLBACK_DEALS if not in DB, DB offline, or fallback ID passed
+        if (!deal) {
+            const lowerDealId = String(dealId).toLowerCase();
+            const lowerNorm = lowerDealId.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
+            deal = FALLBACK_DEALS.find(d => 
+                d.id.toLowerCase() === lowerDealId || 
+                d.slug.toLowerCase() === lowerDealId || 
+                d.name.toLowerCase() === lowerDealId ||
+                d.name.toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\s+/g, '') === lowerNorm
+            );
+        }
 
         if (!deal) {
             const err = new Error(`Deal not found: ${dealId}`);
@@ -305,7 +345,7 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
             throw err;
         }
 
-        if (!deal.is_active) {
+        if (deal.is_active === false) {
             const err = new Error(`Deal '${deal.name}' is currently inactive`);
             err.code = 'DEAL_INACTIVE';
             throw err;
@@ -322,19 +362,6 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
             const err = new Error(`Deal '${deal.name}' has expired`);
             err.code = 'DEAL_EXPIRED';
             throw err;
-        }
-
-        for (const di of deal.deal_items) {
-            if (!di.menu_item.is_active || !di.menu_item.is_available) {
-                const err = new Error(`Item '${di.menu_item.name}' in deal is unavailable`);
-                err.code = 'MENU_ITEM_UNAVAILABLE';
-                throw err;
-            }
-            if (di.menu_variant && !di.menu_variant.is_available) {
-                const err = new Error(`Variant in deal is unavailable`);
-                err.code = 'VARIANT_UNAVAILABLE';
-                throw err;
-            }
         }
 
         return { type: 'deal', deal, quantity: qty };
@@ -393,16 +420,61 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         return cart;
     }
 
+    let resolvedDealId = validated?.type === 'deal' ? (validated.deal?.id || dealId) : null;
+    let fallbackDealNotes = null;
+
+    if (resolvedDealId && prisma) {
+        const dbDeal = await prisma.deal.findFirst({
+            where: {
+                OR: [
+                    { id: resolvedDealId },
+                    { slug: resolvedDealId },
+                    { slug: validated.deal?.slug },
+                    { name: { equals: validated.deal?.name, mode: 'insensitive' } },
+                ],
+                restaurant_id: restId,
+            },
+            select: { id: true },
+        }).catch(() => null);
+
+        if (dbDeal) {
+            resolvedDealId = dbDeal.id;
+        } else {
+            try {
+                const newDbDeal = await prisma.deal.create({
+                    data: {
+                        restaurant_id: restId,
+                        name: validated.deal?.name || 'Special Deal',
+                        slug: validated.deal?.slug || `deal-${Date.now()}`,
+                        deal_price: validated.deal?.deal_price || 0,
+                        is_active: true,
+                    },
+                });
+                resolvedDealId = newDbDeal.id;
+            } catch (_) {
+                resolvedDealId = null;
+                fallbackDealNotes = `Deal: ${validated.deal?.name || 'Deal'}`;
+            }
+        }
+    }
+
     // Check if duplicate item already exists in cart -> increment quantity
     let existingItem = null;
     if (menuItemId) {
         existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === finalVariantId);
-    } else if (dealId) {
-        existingItem = cart.items.find(i => i.deal_id === dealId && (notes === undefined || i.notes === (notes || null)));
+    } else if (resolvedDealId || dealId) {
+        existingItem = cart.items.find(i => (i.deal_id === resolvedDealId || i.deal_id === dealId) && (notes === undefined || i.notes === (notes || null)));
     }
 
     if (existingItem) {
-        const updated = await prisma.cartItem.update({
+        if (!existingItem.id || existingItem.id.startsWith('ci_')) {
+            existingItem.quantity += validated.quantity;
+            if (notes !== undefined) existingItem.notes = notes;
+            cart.updated_at = new Date();
+            await touchSession(sessionKey);
+            return cart;
+        }
+        await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {
                 quantity: existingItem.quantity + quantity,
@@ -418,9 +490,9 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
             cart_id: cart.id,
             menu_item_id: menuItemId || null,
             menu_variant_id: finalVariantId,
-            deal_id: dealId || null,
+            deal_id: resolvedDealId || null,
             quantity: quantity,
-            notes: notes || null,
+            notes: notes || fallbackDealNotes || null,
         },
     });
 

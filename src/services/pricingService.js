@@ -241,28 +241,46 @@ export async function calculatePricing(params) {
 
     // 2. Resolve & calculate Deals
     for (const dealReq of dealsInput) {
-        const deal = await prisma.deal.findFirst({
-            where: {
-                id: dealReq.dealId,
-                restaurant_id: restaurantId,
-            },
-            include: {
-                deal_items: {
-                    include: {
-                        menu_item: { select: { id: true, name: true, is_active: true, is_available: true } },
-                        menu_variant: { select: { id: true, name: true, is_available: true } },
+        let deal = null;
+        if (prisma) {
+            try {
+                deal = await prisma.deal.findFirst({
+                    where: {
+                        OR: [
+                            { id: dealReq.dealId },
+                            { slug: dealReq.dealId },
+                            { name: { equals: String(dealReq.dealId), mode: 'insensitive' } },
+                        ],
+                        restaurant_id: restaurantId,
                     },
-                },
-            },
-        });
-
-        if (!deal) {
-            const err = new Error(`Deal not found: ${dealReq.dealId}`);
-            err.code = 'DEAL_NOT_FOUND';
-            throw err;
+                    include: {
+                        deal_items: {
+                            include: {
+                                menu_item: { select: { id: true, name: true, is_active: true, is_available: true } },
+                                menu_variant: { select: { id: true, name: true, is_available: true } },
+                            },
+                        },
+                    },
+                });
+            } catch (_) {}
         }
 
-        if (!deal.is_active) {
+        if (!deal) {
+            const lowerDealId = String(dealReq.dealId || '').toLowerCase();
+            const lowerNorm = lowerDealId.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
+            deal = FALLBACK_DEALS.find(d => 
+                d.id.toLowerCase() === lowerDealId || 
+                d.slug.toLowerCase() === lowerDealId || 
+                d.name.toLowerCase() === lowerDealId ||
+                d.name.toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\s+/g, '') === lowerNorm
+            );
+        }
+
+        if (!deal) {
+            continue;
+        }
+
+        if (deal.is_active === false) {
             const err = new Error(`Deal '${deal.name}' is inactive`);
             err.code = 'DEAL_INACTIVE';
             throw err;
