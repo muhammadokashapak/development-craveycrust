@@ -3330,6 +3330,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (wantsBurgerOrZinger && !wantsPizza) {
                 candidateDeals = rawDeals.filter(d => {
                     const dName = (d.name || '').toLowerCase();
+                    if (/cravey\s*2\.?0/i.test(dName) && !/\b(?:burger|zinger)\b/i.test(dName)) return false;
                     const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
                     const desc = (d.description || '').toLowerCase();
                     const combined = `${dName} ${itemsText} ${desc}`;
@@ -3347,13 +3348,62 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 });
             }
 
-            const matchedDeal = candidateDeals.find(d => {
-                const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
-                return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
-            }) || rawDeals.find(d => {
-                const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
-                return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
-            });
+            let matchedDeal = null;
+            if (wantsBurgerOrZinger && !wantsPizza) {
+                // NEVER fall back to rawDeals (which could be pizza deals)!
+                matchedDeal = candidateDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm === queryNorm || dNorm === `deal${bMealMatch ? bMealMatch[1] : ''}` || dNorm === `burgermealfor${bMealMatch ? bMealMatch[1] : ''}`;
+                }) || candidateDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm.includes(queryNorm);
+                });
+
+                if (!matchedDeal) {
+                    const bNum = bMealMatch ? bMealMatch[1] : '';
+                    const title = bNum ? `Burger / Zinger Deal ${bNum}` : 'Zinger Deal';
+                    const availableList = candidateDeals.map(d => `• *${d.name}* (Rs. ${Number(d.deal_price)})`).join('\n');
+                    const reply = `Maazrat! "${title}" filhal hamare active menu mein dastiyab nahi hai.\n\nLekin hamari yeh behtareen burger deals mojood hain:\n${availableList || '• Burger Meal For 1 (Rs. 599)\n• Burger Meal For 2 (Rs. 999)\n• Burger Meal For 3 (Rs. 1,599)'}\n\nBataiye in mein se kaunsi deal cart mein add karoon?`;
+                    return {
+                        handled: true,
+                        routeName: 'deal_inquiry',
+                        reply,
+                    };
+                }
+            } else if (wantsPizza && !wantsBurgerOrZinger) {
+                // NEVER fall back to rawDeals (which could be burger deals)!
+                matchedDeal = candidateDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm === queryNorm || dNorm === `deal${pMealMatch ? pMealMatch[1] : ''}` || dNorm === `pizzamealfor${pMealMatch ? pMealMatch[1] : ''}`;
+                }) || candidateDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm.includes(queryNorm);
+                });
+
+                if (!matchedDeal) {
+                    const pNum = pMealMatch ? pMealMatch[1] : '';
+                    const title = pNum ? `Pizza Deal ${pNum}` : 'Pizza Deal';
+                    const availableList = candidateDeals.map(d => `• *${d.name}* (Rs. ${Number(d.deal_price)})`).join('\n');
+                    const reply = `Maazrat! "${title}" filhal hamare active menu mein dastiyab nahi hai.\n\nLekin hamari yeh behtareen pizza deals mojood hain:\n${availableList || '• Pizza Meal For 1 (Rs. 599)\n• Pizza Meal For 2 (Rs. 1,299)\n• Pizza Meal For 3 (Rs. 1,599)'}\n\nBataiye in mein se kaunsi deal cart mein add karoon?`;
+                    return {
+                        handled: true,
+                        routeName: 'deal_inquiry',
+                        reply,
+                    };
+                }
+            } else {
+                // General deal inquiry (e.g. "deal 4", "deal 2")
+                matchedDeal = rawDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm === queryNorm;
+                }) || rawDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return new RegExp(`\\bdeal\\s*#?${queryNorm.replace('deal', '')}\\b`, 'i').test(d.name) && !/cravey\s*2\.?0/i.test(d.name);
+                }) || rawDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm.includes(queryNorm);
+                });
+            }
 
             if (matchedDeal) {
                 const itemsList = matchedDeal.deal_items && matchedDeal.deal_items.length > 0

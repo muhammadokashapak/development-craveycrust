@@ -9,12 +9,14 @@
  *   - Never reads prices or items from FAQ.
  *   - Only returns active categories, active & available items, and active & available variants.
  *   - Handles category-first browsing and fuzzy item resolution without guessing.
+ *   - Resilient against database outages with instant in-memory fallback catalog.
  */
 
 import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { matchVariant } from './cartService.js';
 import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNotes } from './dealFlavourService.js';
+import { FALLBACK_CATEGORIES, FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 
 /**
  * Get all active categories with their active & available items
@@ -23,34 +25,50 @@ import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNo
  */
 export async function getActiveMenu(restaurantId) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) {
+        return FALLBACK_CATEGORIES.map(c => ({
+            ...c,
+            menu_items: FALLBACK_MENU_ITEMS.filter(it => it.category_id === c.id),
+        })).filter(c => !/deals?/i.test(c.name));
+    }
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    try {
+        const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
 
-    const categories = await prisma.category.findMany({
-        where: {
-            restaurant_id: restId,
-            is_active: true,
-        },
-        orderBy: { sort_order: 'asc' },
-        include: {
-            menu_items: {
-                where: {
-                    is_active: true,
-                    is_available: true,
-                },
-                orderBy: { name: 'asc' },
-                include: {
-                    variants: {
-                        where: { is_available: true },
-                        orderBy: { sort_order: 'asc' },
+        const categories = await prisma.category.findMany({
+            where: {
+                restaurant_id: restId,
+                is_active: true,
+            },
+            orderBy: { sort_order: 'asc' },
+            include: {
+                menu_items: {
+                    where: {
+                        is_active: true,
+                        is_available: true,
+                    },
+                    orderBy: { name: 'asc' },
+                    include: {
+                        variants: {
+                            where: { is_available: true },
+                            orderBy: { sort_order: 'asc' },
+                        },
                     },
                 },
             },
-        },
-    });
+        });
 
-    return categories.filter(c => !/deals?/i.test(c.name));
+        const filtered = categories.filter(c => !/deals?/i.test(c.name));
+        return filtered.length > 0 ? filtered : FALLBACK_CATEGORIES.map(c => ({
+            ...c,
+            menu_items: FALLBACK_MENU_ITEMS.filter(it => it.category_id === c.id),
+        })).filter(c => !/deals?/i.test(c.name));
+    } catch (_) {
+        return FALLBACK_CATEGORIES.map(c => ({
+            ...c,
+            menu_items: FALLBACK_MENU_ITEMS.filter(it => it.category_id === c.id),
+        })).filter(c => !/deals?/i.test(c.name));
+    }
 }
 
 /**
@@ -60,38 +78,60 @@ export async function getActiveMenu(restaurantId) {
  */
 export async function getActiveCategories(restaurantId) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) {
+        return FALLBACK_CATEGORIES.filter(c => !/deals?/i.test(c.name)).map((cat, idx) => ({
+            index: idx + 1,
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug,
+            description: cat.description || '',
+            image_url: cat.image_url || null,
+            itemCount: FALLBACK_MENU_ITEMS.filter(it => it.category_id === cat.id).length,
+        }));
+    }
 
-    const restId = restaurantId || await getDefaultRestaurantId();
+    try {
+        const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
 
-    const categories = await prisma.category.findMany({
-        where: {
-            restaurant_id: restId,
-            is_active: true,
-        },
-        orderBy: { sort_order: 'asc' },
-        include: {
-            _count: {
-                select: {
-                    menu_items: {
-                        where: { is_active: true, is_available: true },
+        const categories = await prisma.category.findMany({
+            where: {
+                restaurant_id: restId,
+                is_active: true,
+            },
+            orderBy: { sort_order: 'asc' },
+            include: {
+                _count: {
+                    select: {
+                        menu_items: {
+                            where: { is_active: true, is_available: true },
+                        },
                     },
                 },
             },
-        },
-    });
+        });
 
-    const activeFoodCategories = categories.filter(c => !/deals?/i.test(c.name));
+        const activeFoodCategories = categories.filter(c => !/deals?/i.test(c.name));
 
-    return activeFoodCategories.map((cat, idx) => ({
-        index: idx + 1,
-        id: cat.id,
-        name: cat.name,
-        slug: cat.slug,
-        description: cat.description || '',
-        image_url: cat.image_url || null,
-        itemCount: cat._count.menu_items,
-    }));
+        return activeFoodCategories.map((cat, idx) => ({
+            index: idx + 1,
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug,
+            description: cat.description || '',
+            image_url: cat.image_url || null,
+            itemCount: cat._count.menu_items,
+        }));
+    } catch (_) {
+        return FALLBACK_CATEGORIES.filter(c => !/deals?/i.test(c.name)).map((cat, idx) => ({
+            index: idx + 1,
+            id: cat.id,
+            name: cat.name,
+            slug: cat.slug,
+            description: cat.description || '',
+            image_url: cat.image_url || null,
+            itemCount: FALLBACK_MENU_ITEMS.filter(it => it.category_id === cat.id).length,
+        }));
+    }
 }
 
 /**
@@ -101,13 +141,10 @@ export async function getActiveCategories(restaurantId) {
  * @returns {Promise<Object|null>}
  */
 export async function getCategoryWithItems(identifier, restaurantId) {
-    const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
-
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
     const categories = await getActiveMenu(restId);
 
-    if (categories.length === 0) return null;
+    if (!categories || categories.length === 0) return null;
 
     const isPureNumber = typeof identifier === 'number' || (typeof identifier === 'string' && /^\d+$/.test(identifier.trim()));
     if (isPureNumber) {
@@ -145,47 +182,53 @@ export async function getCategoryWithItems(identifier, restaurantId) {
  */
 export async function getActiveDeals(restaurantId) {
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
+    if (!prisma) return FALLBACK_DEALS;
 
-    const restId = restaurantId || await getDefaultRestaurantId();
-    const now = new Date();
+    try {
+        const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
+        const now = new Date();
 
-    const deals = await prisma.deal.findMany({
-        where: {
-            restaurant_id: restId,
-            is_active: true,
-            AND: [
-                { OR: [{ start_at: null }, { start_at: { lte: now } }] },
-                { OR: [{ end_at: null }, { end_at: { gte: now } }] },
-            ],
-        },
-        orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-        include: {
-            deal_items: {
-                include: {
-                    menu_item: {
-                        select: { id: true, name: true, is_active: true, is_available: true },
-                    },
-                    menu_variant: {
-                        select: { id: true, name: true, is_available: true },
+        const deals = await prisma.deal.findMany({
+            where: {
+                restaurant_id: restId,
+                is_active: true,
+                AND: [
+                    { OR: [{ start_at: null }, { start_at: { lte: now } }] },
+                    { OR: [{ end_at: null }, { end_at: { gte: now } }] },
+                ],
+            },
+            orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+            include: {
+                deal_items: {
+                    include: {
+                        menu_item: {
+                            select: { id: true, name: true, is_active: true, is_available: true },
+                        },
+                        menu_variant: {
+                            select: { id: true, name: true, is_available: true },
+                        },
                     },
                 },
             },
-        },
-    });
-
-    // Verify all items inside deal are active and available
-    return deals.filter(deal => {
-        return deal.deal_items.every(di => {
-            if (!di.menu_item || !di.menu_item.is_active || !di.menu_item.is_available) {
-                return false;
-            }
-            if (di.menu_variant && !di.menu_variant.is_available) {
-                return false;
-            }
-            return true;
         });
-    });
+
+        // Verify all items inside deal are active and available
+        const validDeals = deals.filter(deal => {
+            return deal.deal_items.every(di => {
+                if (!di.menu_item || !di.menu_item.is_active || !di.menu_item.is_available) {
+                    return false;
+                }
+                if (di.menu_variant && !di.menu_variant.is_available) {
+                    return false;
+                }
+                return true;
+            });
+        });
+
+        return validDeals.length > 0 ? validDeals : FALLBACK_DEALS;
+    } catch (_) {
+        return FALLBACK_DEALS;
+    }
 }
 
 /**
@@ -198,7 +241,7 @@ export function extractSizeFromQuery(query) {
     // Check size regex with word boundaries
     const isParty = /\b(?:party\s*size|partysize|party|family)\b/i.test(q);
     const isLarge = !isParty && /\b(?:large|lrg|bada|bara)\b/i.test(q);
-    const isMedium = /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
+    const isMedium = !isParty && /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
     const isSmall = /\b(?:small|chota|chhota)\b/i.test(q);
     const isRegular = /\b(?:regular|reg)\b/i.test(q);
 
@@ -223,6 +266,7 @@ export function extractSizeFromQuery(query) {
 /**
  * Find menu item or deal matching user query
  * Avoids silent guessing: returns multiple candidates if ambiguous.
+ * Resilient to DB offline via instant fallbackCatalog.
  *
  * @param {string} query
  * @param {string} [restaurantId]
@@ -234,9 +278,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     }
 
     const prisma = getDbClient();
-    if (!prisma) throw new Error('Database client not available');
-
-    const restId = restaurantId || await getDefaultRestaurantId();
+    const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
     const cleanQ = query.trim().toLowerCase();
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
 
@@ -249,7 +291,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         };
     }
 
-    // 2. Check if user typed "deal 1", "deal #1", "family feast", etc.
+    // 2. Check if user typed "deal 1", "deal #1", "burger meal 2", "family feast", etc.
     const activeDeals = await getActiveDeals(restId);
     
     function buildDealResult(deal) {
@@ -266,12 +308,20 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         };
     }
 
-    // Exact deal name or slug match first (e.g. "Deal 1", "Burger Meal For 1")
-    const exactDeal = activeDeals.find(d => 
-        d.slug.toLowerCase() === cleanQ || 
-        d.name.toLowerCase() === cleanQ ||
-        (strippedQ && (d.slug.toLowerCase() === strippedQ || d.name.toLowerCase() === strippedQ))
-    );
+    // Normalized queries (stripping "for", spaces, and punctuation for alias comparison)
+    const normCleanQ = cleanQ.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
+    const normStrippedQ = strippedQ ? strippedQ.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '') : '';
+
+    // Exact deal name or slug match first (e.g. "Deal 1", "Burger Meal For 1", "Burger Meal 2")
+    const exactDeal = activeDeals.find(d => {
+        const dNorm = (d.name || '').toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
+        const dSlug = (d.slug || '').toLowerCase();
+        const dName = (d.name || '').toLowerCase();
+        return dSlug === cleanQ ||
+            dName === cleanQ ||
+            dNorm === normCleanQ ||
+            (strippedQ && (dSlug === strippedQ || dName === strippedQ || dNorm === normStrippedQ));
+    });
     if (exactDeal) {
         return buildDealResult(exactDeal);
     }
@@ -332,22 +382,34 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         }
     }
 
-    // 3. Fetch all active & available items
-    const allItems = await prisma.menuItem.findMany({
-        where: {
-            restaurant_id: restId,
-            is_active: true,
-            is_available: true,
-            category: { is_active: true },
-        },
-        include: {
-            category: true,
-            variants: {
-                where: { is_available: true },
-                orderBy: { sort_order: 'asc' },
-            },
-        },
-    });
+    // 3. Fetch all active & available items (with in-memory fallback if DB offline)
+    let allItems = [];
+    if (prisma) {
+        try {
+            allItems = await prisma.menuItem.findMany({
+                where: {
+                    restaurant_id: restId,
+                    is_active: true,
+                    is_available: true,
+                    category: { is_active: true },
+                },
+                include: {
+                    category: true,
+                    variants: {
+                        where: { is_available: true },
+                        orderBy: { sort_order: 'asc' },
+                    },
+                },
+            });
+        } catch (_) {}
+    }
+
+    if (!allItems || allItems.length === 0) {
+        allItems = FALLBACK_MENU_ITEMS.map(it => ({
+            ...it,
+            variants: it.variants || [],
+        }));
+    }
 
     // Handle "Chicken Lover" specifically -> suggests Cheese Lover (nearest item) + available chicken pizzas
     if (cleanQ.includes('chicken lover') || (strippedQ && strippedQ.includes('chicken lover'))) {
