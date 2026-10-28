@@ -1187,11 +1187,7 @@ async function runAgentLoop(messages, context) {
                     aiImageUrl = images[0];
                     if (sessionKey) markDealsSent(sessionKey, cleanPhone);
                     const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
-                    if (!sDetails?.address && !sDetails?.location) {
-                        aiResponse = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
-                    } else {
-                        aiResponse = '';
-                    }
+                    aiResponse = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
                 }
             } catch (_) {}
         } else if (asksMenu && !menuAlreadySent && (!/\b(koi|konsa|konse|best|pizza|burger|fries|drink)\b/i.test(lowerEff) || /\b(dikhao|dekhao|bhejo|send|card|flyer)\b/i.test(lowerEff))) {
@@ -1206,11 +1202,7 @@ async function runAgentLoop(messages, context) {
                     aiImageUrl = images[0];
                     if (sessionKey) markMenuSent(sessionKey, cleanPhone);
                     const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
-                    if (!sDetails?.address && !sDetails?.location) {
-                        aiResponse = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
-                    } else {
-                        aiResponse = '';
-                    }
+                    aiResponse = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\nBataiye in mein se kya mangwana pasand karenge? 😊';
                 }
             } catch (_) {}
         }

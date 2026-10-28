@@ -3358,14 +3358,67 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     `Aapke liye kaunsi deal add karun? Bas naam bata dein! 😊`;
             }
         } else {
-            recReply = `🎉 *${detectedHeadcount} Bandon / Party ke liye Cravey Crust ki Best Deals:*\n\n` +
-                `🍕 *Pizza Meal For 4* — Rs. 2,499 (1x Giant Party Size 16-inch Pizza + 1.5L Drink)\n` +
-                `🍕 *Deal 3* — Rs. 2,999 (2x Large Pizzas + 1L Drink)\n` +
-                `🍗 *Full Box* — Rs. 2,199 (8 Pcs Fresh Fried Chicken + Fries + Garlic Sauce + 2 Buns)\n` +
-                `🍱 *Premium Platter* — Rs. 1,099 (4 Pcs Behari Roll + 6 Pcs Wings + Fries & Dip)\n\n` +
-                `Aap kitne pizzas ya burgers order karna chahenge? Hum aapke liye best combo ready kar dete hain! 😊`;
+            // For 5+ persons: dynamically calculate accurate combos & quantities based on exact headcount
+            const count = detectedHeadcount;
+            const deal3Qty = Math.max(2, Math.ceil(count / 4));
+            const deal3Total = deal3Qty * 2999;
+            const deal3Pizzas = deal3Qty * 2;
+            const deal3Drinks = deal3Qty;
+
+            const pm4Qty = Math.max(2, Math.ceil(count / 4));
+            const pm4Total = pm4Qty * 2499;
+
+            const deal5Qty = Math.max(2, Math.ceil(count / 3));
+            const deal5Total = deal5Qty * 1099;
+            const deal5Burgers = deal5Qty * 3;
+
+            const deal4Qty = Math.max(2, Math.ceil(count / 4));
+            const deal4Total = deal4Qty * 999;
+            const deal4Burgers = deal4Qty * 4;
+
+            const isDirectOrderAsk = /\b(?:d[eo]|de\s*do|kardo|krdo|daal\s*do|bhej\s*do|bhejo|mangwa\s*do|chahiye)\b/i.test(lower);
+
+            if (isBurger) {
+                recReply = `🍔 *${count} Bandon ke liye Best Burger Combos:*\n\n` +
+                    `1️⃣ *${deal5Qty}x Deal 5* — Rs. ${deal5Total.toLocaleString()} ⭐ (Most Popular)\n` +
+                    `   • ${deal5Burgers}x Crispy Zinger Burgers + ${deal5Qty}x 1L Soft Drinks\n\n` +
+                    `2️⃣ *${deal4Qty}x Deal 4* — Rs. ${deal4Total.toLocaleString()} (Budget Value)\n` +
+                    `   • ${deal4Burgers}x Juicy Zegy Burgers\n\n` +
+                    (isDirectOrderAsk
+                        ? `Aap Deal 5 add karwana chahenge ya Deal 4? Bas bata dein, main order ready kar doon! 😊`
+                        : `Aap in mein se kaunsa combo order karna chahenge? Bas bata dein! 😊`);
+            } else if (isPizza) {
+                recReply = `🍕 *${count} Bandon ke liye Best Pizza Combos:*\n\n` +
+                    `1️⃣ *${deal3Qty}x Deal 3* — Rs. ${deal3Total.toLocaleString()} ⭐ (Sab se Best Feast)\n` +
+                    `   • ${deal3Pizzas}x Large Pizzas (Apni pasand ke flavours) + ${deal3Drinks}x 1L Drinks\n\n` +
+                    `2️⃣ *${pm4Qty}x Pizza Meal For 4* — Rs. ${pm4Total.toLocaleString()}\n` +
+                    `   • ${pm4Qty}x Giant Party Size (16") Pizzas + ${pm4Qty}x 1.5L Drinks\n\n` +
+                    (isDirectOrderAsk
+                        ? `Aap Deal 3 add karwana chahenge ya Pizza Meal For 4? Bas bata dein, main order ready kar doon! 😊`
+                        : `In mein se kaunsa combo aap ke liye cart mein add karun? 😊`);
+            } else {
+                recReply = isDirectOrderAsk
+                    ? `🎉 *${count} Bandon ke liye Cravey Crust ke 2 Top Combos:*\n\n` +
+                      `🍕 *Option A (Pizza Feast):* ${deal3Qty}x Deal 3 (${deal3Pizzas}x Large Pizzas + ${deal3Drinks}x 1L Drinks) — Rs. ${deal3Total.toLocaleString()}\n\n` +
+                      `🍔 *Option B (Zinger Feast):* ${deal5Qty}x Deal 5 (${deal5Burgers}x Crispy Zinger Burgers + ${deal5Qty}x 1L Drinks) — Rs. ${deal5Total.toLocaleString()}\n\n` +
+                      `Aap **Option A (Pizza)** add karwana chahenge ya **Option B (Burger)**? Bas 'Option A' ya 'Option B' likh kar bata dein taake main foran order process kar doon! 😊`
+                    : `🎉 *${count} Bandon / Gathering ke liye Best Recommendations:*\n\n` +
+                      `🍕 *Option 1 (Pizza Feast):*\n` +
+                      `   • *${deal3Qty}x Deal 3* — Rs. ${deal3Total.toLocaleString()}\n` +
+                      `   _(${deal3Pizzas}x Large Pizzas + ${deal3Drinks}x 1L Soft Drinks)_\n\n` +
+                      `🍕 *Option 2 (Giant 16" Party Pizzas):*\n` +
+                      `   • *${pm4Qty}x Pizza Meal For 4* — Rs. ${pm4Total.toLocaleString()}\n` +
+                      `   _(${pm4Qty}x 16-inch Giant Pizzas + ${pm4Qty}x 1.5L Soft Drinks)_\n\n` +
+                      `🍔 *Option 3 (Zinger Burger Feast):*\n` +
+                      `   • *${deal5Qty}x Deal 5* — Rs. ${deal5Total.toLocaleString()}\n` +
+                      `   _(${deal5Burgers}x Crispy Zinger Burgers + ${deal5Qty}x 1L Soft Drinks)_\n\n` +
+                      `Aap **Pizza Combo** pasand karenge ya **Burger Combo**? Bas bata dein, main order ready kar deta hoon! 😊`;
+            }
         }
 
+        // Only send images if customer explicitly asked for photos / pictures / flyers;
+        // Never spam images repeatedly on text advice/recommendation questions!
+        const wantsPhotos = /\b(?:pictures?|pics?|photos?|images?|flyers?|pamphlets?|cards?)\b/i.test(lower);
         const defaultDealsImages = [
             'assets/menu/cravey_crust_deals_menu.png',
             'assets/menu/cravey_crust_cravey20_deals.png'
@@ -3375,8 +3428,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             handled: true,
             routeName: 'headcount_deal_recommendation',
             reply: recReply,
-            imageUrls: defaultDealsImages,
-            imageUrl: defaultDealsImages[0],
+            imageUrls: wantsPhotos ? defaultDealsImages : [],
+            imageUrl: wantsPhotos ? (defaultDealsImages[0] || null) : null,
         };
     }
 
@@ -3469,11 +3522,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
             }
 
-            if (!currDetails?.address && !currDetails?.location) {
-                caption += '\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
-            } else {
-                caption += '\n\nAap in mein se kya order karna chahenge? Bas bata dein! 😊';
-            }
+            caption += '\n\nAap in mein se kya order karna chahenge? Bas bata dein! 😊';
 
             return {
                 handled: true,
@@ -3566,12 +3615,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (targetDealsImages.length > 0 && !isSpecificCategoryAsk && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
                     if (userSessionId) markDealsSent(userSessionId, cleanPhone);
                     const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
-                    let dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥';
-                    if (!currDetails?.address && !currDetails?.location) {
-                        dealsCaption += '\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
-                    } else {
-                        dealsCaption += '\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
-                    }
+                    const dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
                     return {
                         handled: true,
                         routeName: 'live_deals_image',
@@ -3785,10 +3829,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (targetMenuImages.length > 0 && (isExplicitMenuAsk || !menuAlreadySent) && !isSpecificMenuFilter) {
                 if (userSessionId) markMenuSent(userSessionId, cleanPhone);
                 const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
-                let menuCaption = 'Cravey Crust ka menu haazir hai! 🍕🍔';
-                if (!currDetails?.address && !currDetails?.location) {
-                    menuCaption += '\n\n📍 Wese aap kis delivery location / area se hain? Apna area bata dein taake delivery confirmation mein asaani ho jaye 😊';
-                }
+                const menuCaption = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\nBataiye in mein se kya mangwana pasand karenge? 😊';
                 return {
                     handled: true,
                     routeName: 'live_menu_images',
