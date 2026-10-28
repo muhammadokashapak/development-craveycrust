@@ -39,7 +39,6 @@ import n8nRouter, { injectSessions } from './routes/n8n.js';
 
 // ─── Standalone AI Agent (n8n-free) ──────────────────────────────────────
 import { processMessage as aiProcessMessage } from './src/services/aiAgentService.js';
-import { transcribeVoiceNote } from './src/services/voiceTranscriptionService.js';
 
 // ─── Phase 1: Feature Flags + Health Route ────────────────
 import { logFlags } from './src/config/flags.js';
@@ -1401,75 +1400,46 @@ async function handleMessage(sock, msg, session) {
     const isGroup = jid.endsWith('@g.us');
     let isVoiceNote = false;
 
-    // ─── Voice Note (Audio / PTT) Decoding via Gemini ─────────
+    // ─── Voice Note (Audio / PTT) Handling (Disabled — Admin Handover) ─────────
     const extractedAudio = extractMediaMessage(msg.message);
     const hasAudio = extractedAudio && extractedAudio.type === 'audio' && extractedAudio.msg;
 
     if (hasAudio) {
-        let voiceHandled = false;
-        try {
-            const audioMsg = extractedAudio.msg;
-            console.log(`[VOICE] Received voice/audio message from ${jid} (PTT=${audioMsg.ptt ?? false}, mime=${audioMsg.mimetype || 'unknown'}). Downloading audio stream...`);
+        if (!isFromMe && !isGroup) {
+            const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '').replace('@lid', '');
+            const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
 
-            if (!isFromMe && typeof sock?.sendPresenceUpdate === 'function') {
-                sock.sendPresenceUpdate('composing', jid).catch(() => {});
-            }
+            if (!muteStatus?.isMuted) {
+                try {
+                    const { getAdminContact } = await import('./src/services/restaurantService.js');
+                    const adminContact = await getAdminContact();
+                    const adminPhoneStr = adminContact?.displayPhone || adminContact?.raw || 'our support number';
+                    const adminLinkStr = adminContact?.whatsappLink ? `\n💬 *WhatsApp:* ${adminContact.whatsappLink}` : '';
 
-            const stream = await downloadContentFromMessage(audioMsg, 'audio');
-            let audioBuffer = Buffer.from([]);
-            for await (const chunk of stream) {
-                audioBuffer = Buffer.concat([audioBuffer, chunk]);
-            }
+                    const voiceDisabledReply = `Sorry, main voice messages process nahi kar sakta. Aap hamare admin se baat kar lein wo aap ko guide kar dein ge. 😊\n\n📞 *Admin Number:* ${adminPhoneStr}${adminLinkStr}\n\n_(Aap text message likh kar bhi apna order yahan de saktay hain! 🍕)_`;
 
-            if (audioBuffer && audioBuffer.length > 0) {
-                console.log(`[VOICE] Downloaded ${audioBuffer.length} bytes of audio. Transcribing with Gemini...`);
-                const transcription = await transcribeVoiceNote(audioBuffer, audioMsg.mimetype);
-
-                if (transcription?.success && transcription.text) {
-                    text = transcription.text;
-                    isVoiceNote = true;
-                    voiceHandled = true;
-                    console.log(`[VOICE] Transcribed voice note from ${jid}: "${text}"`);
-                } else if (!isFromMe && !isGroup) {
-                    voiceHandled = true;
-                    // Check if chat is muted for human handover
-                    const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '');
-                    const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
-
-                    if (!muteStatus?.isMuted) {
-                        const errMsg = transcription?.userFriendlyError || 
-                            'Aap ki voice note mili hai! 🎙️ Baraye meharbani voice message ki bajaye text likh kar bhejein taake aap ka order foran process ho sake. 🙏\n(Aap "menu" ya "deals" likh kar menu dekh sakte hain)';
-                        // Send text message directly so customer always receives a text reply
-                        await sock.sendMessage(jid, { text: errMsg }).catch((sendErr) => {
-                            console.error(`[VOICE] Failed to send text reply to ${jid}:`, sendErr.message);
-                        });
-                    }
+                    await sock.sendMessage(jid, { text: voiceDisabledReply });
 
                     recordChatMessage({
                         chatId: jid,
                         phone: senderNum,
                         customerName: msg.pushName || null,
                         sender: 'user',
-                        message: '🎙️ [Voice Note: Inaudible / Unclear]',
+                        message: '🎙️ [Voice Note / Audio]',
                     }).catch(() => {});
-                    return; // Early return since voice note could not be transcribed
+
+                    recordChatMessage({
+                        chatId: jid,
+                        phone: senderNum,
+                        customerName: msg.pushName || null,
+                        sender: 'bot',
+                        message: voiceDisabledReply,
+                    }).catch(() => {});
+                } catch (sendErr) {
+                    console.error(`[VOICE] Failed to send admin contact on audio message to ${jid}:`, sendErr.message);
                 }
             }
-        } catch (voiceErr) {
-            console.error(`[VOICE] Error processing audio message from ${jid}:`, voiceErr.message);
-        }
-
-        // Guaranteed fallback if voice note was not handled above (e.g. empty buffer, download error)
-        if (!voiceHandled && !isFromMe && !isGroup) {
-            const senderNum = sender.split(':')[0].replace('@s.whatsapp.net', '');
-            const muteStatus = isChatMuted(jid) || isChatMuted(sender) || isChatMuted(senderNum);
-            if (!muteStatus?.isMuted) {
-                const errMsg = 'Aap ki voice note mili hai! 🎙️ Baraye meharbani voice message ki bajaye text likh kar bhejein taake aap ka order foran process ho sake. 🙏\n(Aap "menu" ya "deals" likh kar menu dekh sakte hain)';
-                await sock.sendMessage(jid, { text: errMsg }).catch((sendErr) => {
-                    console.error(`[VOICE] Fallback text send error to ${jid}:`, sendErr.message);
-                });
-            }
-            return;
+            return; // Stop processing voice message immediately
         }
     }
 
