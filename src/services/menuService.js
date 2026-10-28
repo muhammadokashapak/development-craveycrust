@@ -276,14 +276,14 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         return buildDealResult(exactDeal);
     }
 
-    // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "burger meal 3", "pizza deal 2")
-    const burgerDealMatch = cleanQ.match(/\bburger\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-3])\b/i) ||
-        (strippedQ && strippedQ.match(/\bburger\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-3])\b/i));
+    // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "zinger deal 4", "pizza deal 2")
+    const burgerDealMatch = cleanQ.match(/\b(?:burger|zinger|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
+        (strippedQ && strippedQ.match(/\b(?:burger|zinger|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
     if (burgerDealMatch) {
         const bNum = burgerDealMatch[1];
         const bDeal = activeDeals.find(d => 
             new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${bNum}\\b`, 'i').test(d.name) ||
-            new RegExp(`\\bburger\\s*deal\\s*#?${bNum}\\b`, 'i').test(d.name)
+            (new RegExp(`\\bdeal\\s*#?${bNum}\\b`, 'i').test(d.name) && !/cravey\s*2\.?0/i.test(d.name))
         );
         if (bDeal) {
             return buildDealResult(bDeal);
@@ -308,7 +308,25 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         (strippedQ && strippedQ.match(/\bdeal\s*(?:#|no\.?)?\s*(\d+)\b/i));
     if (dealNumMatch) {
         const dNum = dealNumMatch[1];
-        const numMatchedDeal = activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+        const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(cleanQ) || (strippedQ && /\b(?:burger|zinger|zegy)\b/i.test(strippedQ));
+        const wantsPizza = /\b(?:pi[z]+a|piza|crust)\b/i.test(cleanQ) || (strippedQ && /\b(?:pi[z]+a|piza|crust)\b/i.test(strippedQ));
+
+        let candidateDeals = activeDeals.filter(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+        if (wantsBurgerOrZinger && !wantsPizza) {
+            const burgerOnly = candidateDeals.filter(d => {
+                const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
+                return /\b(?:burger|zinger|zegy|chicken)\b/i.test(combined) && !/\b(?:pizza|piza)\b/i.test(combined);
+            });
+            if (burgerOnly.length > 0) candidateDeals = burgerOnly;
+        } else if (wantsPizza && !wantsBurgerOrZinger) {
+            const pizzaOnly = candidateDeals.filter(d => {
+                const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
+                return /\b(?:pizza|piza|crust)\b/i.test(combined);
+            });
+            if (pizzaOnly.length > 0) candidateDeals = pizzaOnly;
+        }
+
+        const numMatchedDeal = candidateDeals[0] || activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
         if (numMatchedDeal) {
             return buildDealResult(numMatchedDeal);
         }

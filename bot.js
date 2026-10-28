@@ -879,6 +879,11 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     const displayHost = process.env.SERVER_IP || process.env.PUBLIC_IP || 'localhost';
     console.log(`🌐 Dashboard web server running at http://${displayHost}:${PORT}`);
 
+    // Automatically flush & pre-warm all catalog and session caches on startup/redeploy
+    import('./src/services/catalogCacheService.js').then(m => {
+        m.clearAllCaches().catch(e => console.error('[BOOT] Cache clear error:', e.message));
+    }).catch(() => {});
+
 });
 
 server.on('error', (err) => {

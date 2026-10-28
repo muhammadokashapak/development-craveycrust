@@ -80,4 +80,24 @@ router.post('/', async (req, res) => {
     }
 });
 
+
+/**
+ * POST /api/admin/sync/clear-cache
+ * Forces immediate cache flush & refresh across all services
+ */
+router.post('/clear-cache', async (req, res) => {
+    try {
+        const { clearAllCaches } = await import('../../src/services/catalogCacheService.js');
+        const refreshed = await clearAllCaches();
+        return res.json({
+            success: true,
+            message: 'All in-memory, catalog, deals, and session caches cleared & refreshed successfully.',
+            dealsCount: refreshed?.rawDeals?.length || 0,
+            categoriesCount: refreshed?.rawCategories?.length || 0,
+        });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 export default router;

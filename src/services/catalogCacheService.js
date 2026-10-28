@@ -560,3 +560,27 @@ export async function refreshCatalogCache() {
     console.log(`[CATALOG] Cache force-refreshed (syncEpoch: ${_syncEpoch}).`);
     return _cache;
 }
+
+/**
+ * Flushes all catalog, session, and fast-route caches across the system on redeploy/boot.
+ */
+export async function clearAllCaches() {
+    _invalidateCache();
+    bumpSyncEpoch();
+    try {
+        const { clearAllSessionCaches } = await import('./sessionService.js');
+        if (typeof clearAllSessionCaches === 'function') clearAllSessionCaches();
+    } catch (_) {}
+    try {
+        const { clearAllFastRouteCaches } = await import('./intentParser.js');
+        if (typeof clearAllFastRouteCaches === 'function') clearAllFastRouteCaches();
+    } catch (_) {}
+    try {
+        const { clearAllDealFlavourCaches } = await import('./dealFlavourService.js');
+        if (typeof clearAllDealFlavourCaches === 'function') clearAllDealFlavourCaches();
+    } catch (_) {}
+    _cache = await fetchAllCatalog();
+    _cacheTime = Date.now();
+    console.log(`[CACHE] All in-memory catalog, deals, and session caches cleared & refreshed on boot/redeploy (syncEpoch: ${_syncEpoch}).`);
+    return _cache;
+}

@@ -406,3 +406,8 @@ export function isFlavourResponse(text) {
     // Must match at least one flavour keyword
     return AVAILABLE_PIZZA_FLAVOURS.some(f => f.regex.test(lower));
 }
+
+export function clearAllDealFlavourCaches() {
+    _pendingDealFlavourBySession.clear();
+    console.log('[DEAL_FLAVOUR] All deal flavour caches cleared.');
+}

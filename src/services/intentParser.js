@@ -42,6 +42,12 @@ export function clearLastDiscussedDeal(sessionKey) {
 // Session memory for pizza/item size follow-ups (e.g. customer saying "medium", "party krdo")
 const _lastDiscussedItemBySession = new Map();
 
+export function clearAllFastRouteCaches() {
+    _lastDiscussedDealBySession.clear();
+    _lastDiscussedItemBySession.clear();
+    console.log('[FAST_ROUTE] All fast route memory caches cleared.');
+}
+
 export function setLastDiscussedItem(sessionKey, item, variant = null) {
     if (!sessionKey || !item) return;
     _lastDiscussedItemBySession.set(sessionKey, {
@@ -1163,7 +1169,7 @@ export class DeterministicIntentProvider {
         }
 
         // Add item Pattern F: "burger deal 1", "burger meal 2", "pizza deal 3", "pizza meal 1"
-        const mealDealMatch = lower.match(/^(?:burger|pi[z]+a)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-4]$/i);
+        const mealDealMatch = lower.match(/^(?:burger|zinger|pi[z]+a)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]$/i);
         if (mealDealMatch) {
             return {
                 intent: 'ADD_ITEM',
@@ -2477,7 +2483,131 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
+        // ── Check Direct Deal Order (Zero Tokens, e.g. "pizza meal for 3 krdo", "zinger deal 4 kr do", "deal 1 kr do") ──
+    const ACTION_SUFFIX_REGEX = /\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|pack\s*karo|pack\s*krdo|bhejo|bhej\s*do|order|laga\s*do)$/i;
+    const PREFIX_STRIP_REGEX = /^(?:order|add|daal\s*do|bhej\s*do|mujhe|mjhy|humein|humey)\s+/i;
+    const isDealOrderCandidate = /\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i.test(lower);
+    const isDealInquiryCandidate = /\b(?:(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay|hy|hega)|detail|details|shamil|includes?|items?|batao|bataiye|dikhao|info)\b/i.test(lower);
+
+    if (isDealOrderCandidate && !isDealInquiryCandidate && userSessionId) {
+        let cleanDealText = lower.trim().replace(PREFIX_STRIP_REGEX, '').replace(ACTION_SUFFIX_REGEX, '');
+        let dealQty = 1;
+        const qtyMatch = cleanDealText.match(/^(\d+)\s*(?:x\s+)?(.+)$/i);
+        if (qtyMatch) {
+            dealQty = parseInt(qtyMatch[1], 10);
+            cleanDealText = qtyMatch[2].trim();
+        }
+
+        const dealMatch = cleanDealText.match(/^((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])(?:\s+(.+))?$/i);
+        if (dealMatch) {
+            try {
+                const cache = await getCatalogCache();
+                const rawDeals = cache.rawDeals || [];
+                let queryNorm = dealMatch[1].replace(/#|\s+/g, '').replace(/piza/gi, 'pizza').toLowerCase();
+
+                const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(lower);
+                const wantsPizza = /\b(?:pizza|piza)\b/i.test(lower);
+
+                const bMealMatch = queryNorm.match(/(?:burger|zinger)(?:deal|meal)(?:for)?([1-5])/);
+                if (bMealMatch) {
+                    const num = parseInt(bMealMatch[1], 10);
+                    if (num >= 4) {
+                        queryNorm = `deal${num}`;
+                    } else {
+                        queryNorm = `burgermealfor${num}`;
+                    }
+                }
+                const pMealMatch = queryNorm.match(/pizza(?:deal|meal)(?:for)?([1-5])/);
+                if (pMealMatch) {
+                    queryNorm = `pizzamealfor${pMealMatch[1]}`;
+                }
+
+                let candidateDeals = rawDeals;
+                if (wantsBurgerOrZinger && !wantsPizza) {
+                    candidateDeals = rawDeals.filter(d => {
+                        const dName = (d.name || '').toLowerCase();
+                        const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                        const desc = (d.description || '').toLowerCase();
+                        const combined = `${dName} ${itemsText} ${desc}`;
+                        const hasBurgerItem = /\b(?:burger|zinger|zegy|chicken\s*piece|crispy)\b/i.test(combined);
+                        const hasPizzaItem = /\b(?:pizza|piza|crust)\b/i.test(combined);
+                        return hasBurgerItem && !hasPizzaItem;
+                    });
+                } else if (wantsPizza && !wantsBurgerOrZinger) {
+                    candidateDeals = rawDeals.filter(d => {
+                        const dName = (d.name || '').toLowerCase();
+                        const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                        const desc = (d.description || '').toLowerCase();
+                        const combined = `${dName} ${itemsText} ${desc}`;
+                        return /\b(?:pizza|piza|crust)\b/i.test(combined);
+                    });
+                }
+
+                const matchedDeal = candidateDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
+                }) || rawDeals.find(d => {
+                    const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                    return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
+                });
+
+                if (matchedDeal) {
+                    const pizzaInfo = getDealPizzaInfo(matchedDeal);
+                    const flavourCandidate = (dealMatch[2] || '').trim();
+                    const extracted = pizzaInfo.isPizzaDeal ? extractFlavoursFromText(flavourCandidate || lower, pizzaInfo.pizzaCount) : [];
+
+                    if (pizzaInfo.isPizzaDeal && extracted.length === 0) {
+                        setPendingDealFlavour(userSessionId, {
+                            deal: matchedDeal,
+                            quantity: dealQty,
+                            pizzaInfo,
+                        });
+                        return {
+                            handled: true,
+                            routeName: 'deal_flavour_prompt',
+                            reply: formatDealFlavourPrompt(matchedDeal, pizzaInfo),
+                        };
+                    }
+
+                    const flavourNotes = extracted.length > 0 ? formatFlavourNotes(extracted) : undefined;
+                    const { getActiveCart, addToCart } = await import('./cartService.js');
+                    await addToCart({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        chatId,
+                        verifiedPhone: whatsappPhone,
+                        dealId: matchedDeal.id,
+                        quantity: dealQty,
+                        notes: flavourNotes,
+                    });
+
+                    _lastDiscussedDealBySession.delete(userSessionId);
+                    clearPendingDealFlavour(userSessionId);
+
+                    const dealName = matchedDeal.name;
+                    const dealDesc = flavourNotes ? ` (${flavourNotes})` : (matchedDeal.description ? ` (${matchedDeal.description})` : '');
+                    const dealPrice = Number(matchedDeal.deal_price) * dealQty;
+
+                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart: cartNow,
+                        cache,
+                        introMessage: `Zabardast! *${dealName}* cart mein add kar di gayi hai! 🎉\n• ${dealQty > 1 ? `${dealQty}x ` : ''}${dealName}${dealDesc} — Rs. ${dealPrice}`,
+                    });
+                }
+            } catch (err) {
+                console.error('[FAST_ROUTE] Error processing direct deal order:', err.message);
+            }
+        }
+    }
+
+// ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
     const isSizeFollowup = /^(?:small|smal|medium|medum|med|large|larg|lrg|party(?:b?\s*size)?|partyb?size|regular|reg|chota|chhota|bara|bada)(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
     if (isSizeFollowup && userSessionId && _lastDiscussedItemBySession.has(userSessionId)) {
         const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId);
@@ -3167,25 +3297,58 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── Check Specific Deal Inquiry (Zero Tokens, e.g. "deal 5 mai kya kya h?", "deal 5", "deal 1 details") ──
-    const specificDealMatch = lower.match(/\b(burger\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-3]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-4]|deal\s*#?\s*[1-5])\b/i);
+    // ── Check Specific Deal Inquiry (Zero Tokens, e.g. "deal 5 mai kya kya h?", "deal 5", "zinger deal 4") ──
+    const specificDealMatch = lower.match(/\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i);
     if (specificDealMatch && wordCount <= 12 && !hasCartOrOrderAction) {
         try {
             const cache = await getCatalogCache();
             const rawDeals = cache.rawDeals || [];
             let queryNorm = specificDealMatch[1].replace(/#|\s+/g, '').replace(/piza/gi, 'pizza').toLowerCase();
 
-            // Normalize burger / pizza deal aliases to match actual deal names
-            const bMealMatch = queryNorm.match(/burger(?:deal|meal)(?:for)?([1-3])/);
+            const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(lower);
+            const wantsPizza = /\b(?:pizza|piza)\b/i.test(lower);
+
+            // Normalize burger / zinger / pizza deal aliases to match actual deal names
+            const bMealMatch = queryNorm.match(/(?:burger|zinger)(?:deal|meal)(?:for)?([1-5])/);
             if (bMealMatch) {
-                queryNorm = `burgermealfor${bMealMatch[1]}`;
+                const num = parseInt(bMealMatch[1], 10);
+                if (num >= 4) {
+                    queryNorm = `deal${num}`;
+                } else {
+                    queryNorm = `burgermealfor${num}`;
+                }
             }
-            const pMealMatch = queryNorm.match(/pizza(?:deal|meal)(?:for)?([1-4])/);
+            const pMealMatch = queryNorm.match(/pizza(?:deal|meal)(?:for)?([1-5])/);
             if (pMealMatch) {
                 queryNorm = `pizzamealfor${pMealMatch[1]}`;
             }
 
-            const matchedDeal = rawDeals.find(d => {
+            // Category-aware filtering: if customer asks for zinger/burger, exclude pure pizza deals!
+            let candidateDeals = rawDeals;
+            if (wantsBurgerOrZinger && !wantsPizza) {
+                candidateDeals = rawDeals.filter(d => {
+                    const dName = (d.name || '').toLowerCase();
+                    const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                    const desc = (d.description || '').toLowerCase();
+                    const combined = `${dName} ${itemsText} ${desc}`;
+                    const hasBurgerItem = /\b(?:burger|zinger|zegy|chicken\s*piece|crispy)\b/i.test(combined);
+                    const hasPizzaItem = /\b(?:pizza|piza|crust)\b/i.test(combined);
+                    return hasBurgerItem && !hasPizzaItem;
+                });
+            } else if (wantsPizza && !wantsBurgerOrZinger) {
+                candidateDeals = rawDeals.filter(d => {
+                    const dName = (d.name || '').toLowerCase();
+                    const itemsText = (d.deal_items || []).map(di => di.menu_item?.name || '').join(' ').toLowerCase();
+                    const desc = (d.description || '').toLowerCase();
+                    const combined = `${dName} ${itemsText} ${desc}`;
+                    return /\b(?:pizza|piza|crust)\b/i.test(combined);
+                });
+            }
+
+            const matchedDeal = candidateDeals.find(d => {
+                const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
+                return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
+            }) || rawDeals.find(d => {
                 const dNorm = (d.name || '').replace(/#|\s+/g, '').toLowerCase();
                 return dNorm.includes(queryNorm) || queryNorm.includes(dNorm);
             });

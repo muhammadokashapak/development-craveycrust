@@ -12,7 +12,8 @@
     "db:deploy": "./node_modules/.bin/prisma migrate deploy",
     "db:studio": "./node_modules/.bin/prisma studio",
     "db:seed": "node prisma/seed.js",
-    "db:reset": "./node_modules/.bin/prisma migrate reset"
+    "db:reset": "./node_modules/.bin/prisma migrate reset",
+    "clear-cache": "node scripts/clear_cache.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"

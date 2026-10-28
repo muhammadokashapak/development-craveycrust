@@ -808,7 +808,24 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
         if (dMatch) {
             const dNum = dMatch[1];
             const deals = await getActiveDeals(restaurantId);
-            const targetDeal = deals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+            const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(cleanText);
+            const wantsPizza = /\b(?:pi[z]+a|piza|crust)\b/i.test(cleanText);
+
+            let candidateDeals = deals.filter(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+            if (wantsBurgerOrZinger && !wantsPizza) {
+                const burgerOnly = candidateDeals.filter(d => {
+                    const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
+                    return /\b(?:burger|zinger|zegy|chicken)\b/i.test(combined) && !/\b(?:pizza|piza)\b/i.test(combined);
+                });
+                if (burgerOnly.length > 0) candidateDeals = burgerOnly;
+            } else if (wantsPizza && !wantsBurgerOrZinger) {
+                const pizzaOnly = candidateDeals.filter(d => {
+                    const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
+                    return /\b(?:pizza|piza|crust)\b/i.test(combined);
+                });
+                if (pizzaOnly.length > 0) candidateDeals = pizzaOnly;
+            }
+            const targetDeal = candidateDeals[0] || deals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
             if (targetDeal) {
                 draft.lastInquiredDeal = targetDeal;
                 let msg = `*${targetDeal.name}* (Rs. ${Number(targetDeal.deal_price)}):\n\n`;

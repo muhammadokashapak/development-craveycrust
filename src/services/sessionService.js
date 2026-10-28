@@ -517,3 +517,11 @@ export function clearMenuSentTracking(sessionKey, altKey) {
     if (sessionKey) _menuSentTracker.delete(sessionKey);
     if (altKey) _menuSentTracker.delete(altKey);
 }
+
+export function clearAllSessionCaches() {
+    _pendingOrderUpdate.clear();
+    _pendingCancellation.clear();
+    _menuSentTracker.clear();
+    _sessionOrderDetails.clear();
+    console.log('[SESSION] All session memory caches cleared.');
+}
