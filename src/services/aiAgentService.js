@@ -1335,8 +1335,6 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 
     // ── 5b. Update Session Order Details from incoming message ──
     const sessionDetails = getSessionOrderDetails(sessionKey, whatsappPhone);
-    const { getRememberedCustomerDetails, rememberCustomerDetails } = await import('./sessionService.js');
-    const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
 
     if (activeLocation) {
         updateSessionOrderDetails(sessionKey, {
@@ -1346,35 +1344,6 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     }
     const extracted = extractCustomerDetails(effectiveText, sessionDetails);
     const updatePayload = {};
-
-    // Check if customer explicitly requests to use their previous/remembered order details
-    const isExplicitPreviousRequest =
-        /\b(?:pichli|purani|previous|old)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|number|info)?\s*(?:pe|par|per|hi|theek|sahi|use|rakho|bhej|bhejo|daal|kardo|kar\s*do|kr\s*do|krdo|place|confirm|lagado|laga\s*do)\b/i.test(effectiveText.toLowerCase()) ||
-        /\b(?:use|bhej|send|confirm|kar\s*do|kr\s*do|kardo|krdo|place)\s*(?:my\s+)?(?:old|previous|purani|pichli)\s*(?:details?|detail|address|info)\b/i.test(effectiveText.toLowerCase()) ||
-        /\b(?:same|yehi|yahi|wahi)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|jagah)\s*(?:pe|par|per|rakho|use|bhej|kardo|kar\s*do|kr\s*do|krdo|place|confirm)?\b/i.test(effectiveText.toLowerCase());
-
-    const isAffirmativeForRemembered = isExplicitPreviousRequest;
-
-    let isRemAddressInRange = true;
-    if (rememberedDetails?.address) {
-        try {
-            const { checkDeliveryAvailability } = await import('./deliveryService.js');
-            const remCheck = await checkDeliveryAvailability({
-                restaurantId: restId,
-                address: rememberedDetails.address,
-            });
-            if (!remCheck.available) isRemAddressInRange = false;
-        } catch (_) {}
-    }
-
-    if (isAffirmativeForRemembered && isRemAddressInRange && rememberedDetails?.name && rememberedDetails?.address && (!sessionDetails.name || !sessionDetails.address)) {
-        updatePayload.name = rememberedDetails.name;
-        updatePayload.phone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
-        updatePayload.phoneConfirmed = true;
-        updatePayload.address = rememberedDetails.address;
-        updatePayload.paymentMethod = rememberedDetails.paymentMethod || 'COD';
-        updatePayload.previousDetailsConfirmed = true;
-    }
 
     if (extracted.name) {
         if (!sessionDetails.name) {
