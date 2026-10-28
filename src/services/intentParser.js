@@ -1604,7 +1604,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_reorder_guidance',
-                    reply: `Ji ${remembered.name}! Hamare menu mein se apna pasandeeda item choose karein. 🍕🍔\n\nAap ki pichli delivery details hamare pas mehfooz hain, item choose karne ke baad hum aap se confirm kar ke foran order place kar dein ge!\n\nHamara menu dekhne ke liye *'menu'* ya deals ke liye *'deals'* likhein. 😊`,
+                    reply: `Ji ${remembered.name}! Hamare menu mein se apna pasandeeda item choose karein. 🍕🍔\n\nHamara menu dekhne ke liye *'menu'* ya deals ke liye *'deals'* likhein. 😊`,
                 };
             }
             return {
@@ -2346,6 +2346,46 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 routeName: 'fast_order_confirm_failed',
                 reply: userFriendlyMsg,
             };
+        }
+    }
+
+    // ── Check Fast Route: Customer Explicitly Requests to Use Previous/Saved Details (Zero Tokens) ──
+    const isExplicitUsePreviousDetails =
+        /\b(?:pichli|purani|previous|old)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|number|info)?\s*(?:pe|par|per|hi|theek|sahi|use|rakho|bhej|bhejo|daal|kardo|kar\s*do|kr\s*do|krdo|place|confirm|lagado|laga\s*do)\b/i.test(lower) ||
+        /\b(?:use|bhej|send|confirm|kar\s*do|kr\s*do|kardo|krdo|place)\s*(?:my\s+)?(?:old|previous|purani|pichli)\s*(?:details?|detail|address|info)\b/i.test(lower) ||
+        /\b(?:same|yehi|yahi|wahi)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|jagah)\s*(?:pe|par|per|rakho|use|bhej|kardo|kar\s*do|kr\s*do|krdo|place|confirm)?\b/i.test(lower);
+
+    if (isExplicitUsePreviousDetails && userSessionId) {
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (cart?.items && cart.items.length > 0) {
+                const { getRememberedCustomerDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
+
+                if (remembered?.name && remembered?.address) {
+                    const updatePayload = {
+                        name: remembered.name,
+                        phone: remembered.phone || cleanPhone,
+                        phoneConfirmed: true,
+                        address: remembered.address,
+                        paymentMethod: remembered.paymentMethod || 'COD',
+                        previousDetailsConfirmed: true,
+                    };
+                    const details = updateSessionOrderDetails(userSessionId, updatePayload, cleanPhone);
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart,
+                        cache,
+                        introMessage: `Theek hai ${details.name} bhai! Aap ki pichli details note kar li hain.`,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing explicit use previous details:', err.message);
         }
     }
 

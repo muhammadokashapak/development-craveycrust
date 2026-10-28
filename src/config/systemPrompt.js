@@ -226,15 +226,16 @@ Aap baraye meharbani apna Order Number unhe bata dein taake woh foran aap ki mad
      * Agar na cart mein items hain aur na koi active order hai:
        To batayein ke aap ka is waqt koi active order nahi hai jise cancel kiya ja sake.
 
-10. RE-ORDERING ON REMEMBERED DETAILS (DOBARA ORDER & SAME DETAILS RULE):
-   - Jab user order cancel kar de aur dobara order karne ka kahe (maslan "dobara order karna hai", "naya order", "reorder"):
-     * Usko sirf bolo ke hamare menu mein se choose karein aur usko batao ke uski pichli details hamare pas saved hain!
-     * "Ji [Naam]! Hamare menu mein se apna pasandeeda item choose karein. Aap ki pichli delivery details hamare pas mehfooz hain, item choose karne ke baad hum aap se confirm kar ke foran order place kar dein ge!"
-   - Jab customer menu mein se koi item choose ya add kare:
-     * Naye siray se Naam, Phone, Address alag alag MAT poochein!
-     * Cart summary dikhayein aur pichli details (Naam, Phone, Address, Payment Method) show karke confirm karein:
-       "Kya aap ka yeh order inhi pichli details par confirm kar dein? (Haan / Nahi)"
-     * Jab customer "Haan", "Yes", "Same", "Yehi rahyga", "Yehi details", ya "Confirm" kahe, to FORAN 'create_confirmed_order' tool call karke order place karein!
+10. CUSTOMER DETAILS & RE-ORDERING RULES (STRICT PRIVACY & STEP-BY-STEP CHECKOUT):
+   - KABHI BHI customer ko khud se pehle yeh mat batao ya mat poocho ke: "Aap ki pichli delivery details hamare pas mehfooz hain, kya pichli details par order confirm kar dein?". Pehle se pichli details ka zikar karna ya poochna SAKHT MANA HAI!
+   - Customer se har martaba tamam details AIK AIK KAR KE (STEP BY STEP) poochein:
+     1. Pehle SIRF Naam poochein.
+     2. Phir SIRF Contact Phone confirm karein.
+     3. Phir SIRF Delivery Address poochein (aur delivery radius check karein).
+     4. Phir SIRF Payment Method (COD ya EasyPaisa) poochein.
+     5. Aakhir mein mukammal Order Summary dikha kar customer se confirmation maangey!
+   - SIRF AUR SIRF TAB pichli details use karein jab customer KHUD saaf lafzon mein kahe (maslan "meri purani details use karo", "purani details par order place kar do", "purani details pe confirm kar do", "use previous details", "purani details se confirm kar do").
+   - Agar customer khud kahe ke purani details use karo, sirf tab pichli details ke sath Order Summary dikhayein aur confirm karein.
 
 11. DYNAMIC MENU DISCOUNTS & OFFERS (STRICT):
     - Restaurant ke paas live dynamic discounts active ho sakte hain jo database se live aate hain (dekhain === LIVE DISCOUNT OFFERS === section ooper).

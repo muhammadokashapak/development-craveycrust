@@ -1347,15 +1347,13 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const extracted = extractCustomerDetails(effectiveText, sessionDetails);
     const updatePayload = {};
 
-    // Check if customer affirms previous/remembered order details (Re-order Confirmation)
+    // Check if customer explicitly requests to use their previous/remembered order details
     const isExplicitPreviousRequest =
-        /\b(?:pichli|purani|previous)\s*(?:details?|address|location|pata|number)?\s*(?:pe|par|hi|theek|sahi|use|rakho)\b/i.test(effectiveText.toLowerCase()) ||
-        /\b(?:same|yehi|yahi|wahi)\s*(?:address|location|pata|jagah)\b/i.test(effectiveText.toLowerCase());
+        /\b(?:pichli|purani|previous|old)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|number|info)?\s*(?:pe|par|per|hi|theek|sahi|use|rakho|bhej|bhejo|daal|kardo|kar\s*do|kr\s*do|krdo|place|confirm|lagado|laga\s*do)\b/i.test(effectiveText.toLowerCase()) ||
+        /\b(?:use|bhej|send|confirm|kar\s*do|kr\s*do|kardo|krdo|place)\s*(?:my\s+)?(?:old|previous|purani|pichli)\s*(?:details?|detail|address|info)\b/i.test(effectiveText.toLowerCase()) ||
+        /\b(?:same|yehi|yahi|wahi)\s*(?:wali\s*)?(?:details?|detail|address|location|pata|jagah)\s*(?:pe|par|per|rakho|use|bhej|kardo|kar\s*do|kr\s*do|krdo|place|confirm)?\b/i.test(effectiveText.toLowerCase());
 
-    const isAffirmativeForRemembered = Boolean(
-        (sessionDetails?.askedPreviousDetails && /^(?:haan?|han|ji|jee|yes|y|theek\s*(?:hai|hy)?|ok|okay|done|sure|confirm|bilkul)[\s!.?]*$/i.test(effectiveText.trim())) ||
-        isExplicitPreviousRequest
-    );
+    const isAffirmativeForRemembered = isExplicitPreviousRequest;
 
     let isRemAddressInRange = true;
     if (rememberedDetails?.address) {
@@ -1490,40 +1488,13 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     let checkoutStepGuidance = '';
     const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
-        if (isRemAddressInRange && rememberedDetails?.name && rememberedDetails?.address && !updatedDetails.previousDetailsConfirmed && (!updatedDetails.name || !updatedDetails.address)) {
-            const remName = rememberedDetails.name;
-            const remPhone = rememberedDetails.phone || displayPhone;
-            const remAddress = rememberedDetails.address;
-            const remPayment = rememberedDetails.paymentMethod === 'EASYPAISA' ? 'EasyPaisa' : 'Cash on Delivery (COD)';
-
-            try {
-                updateSessionOrderDetails(sessionKey, { askedPreviousDetails: true }, whatsappPhone);
-            } catch (_) {}
-
-            checkoutStepGuidance = `\n\n🚨 RE-ORDER CHECKOUT PROTOCOL (PICHLI DETAILS CONFIRMATION):
-- Customer ka cart active hai aur pichli order details hamare pas pehle se mojood hain (in range):
-  👤 Naam: ${remName}
-  📞 Contact Phone: ${remPhone}
-  📍 Delivery Address: ${remAddress}
-  💵 Payment Method: ${remPayment}
-- Is turn mein customer ko cart items aur total batayein, aur pichli details confirm karne ka poochein:
-  "Aap ka item cart mein add ho gaya hai! 🎉
-
-  📋 *Pichli Delivery Details:*
-  👤 Naam: ${remName}
-  📞 Phone: ${remPhone}
-  📍 Address: ${remAddress}
-  💵 Payment: ${remPayment}
-
-  Kya aap ka yeh order inhi pichli details par confirm kar dein? (Haan / Nahi)"
-- Agar customer pichli details confirm kare, to pehle mukammal Order Summary card dikhayein aur aakhri confirmation ke baad 'create_confirmed_order' call karein!
-- Agar customer koi detail badalna chahe (maslan "address yeh hai" ya "naam badal do"), to naye address/naam ke sath update karein.`;
-        } else if (!updatedDetails.name) {
+        if (!updatedDetails.name) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 1 (CUSTOMER NAME).
 - Customer ka cart active hai lekin Naam missing hai.
 - Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
-- SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+- SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!
+- SAKHT MANA: Customer ko khud se pichli details bilkul mat batayein aur na hi unka poochein! Sirf step by step naam poochein.`;
         } else if (!updatedDetails.phoneConfirmed) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 2 (CONTACT PHONE).
