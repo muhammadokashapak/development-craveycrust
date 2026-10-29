@@ -201,7 +201,7 @@ export async function touchSession(sessionKey) {
 // ─── In-Memory Conversation History (10 messages, v9-ep{syncEpoch}) ──────
 
 const _memoryStore = new Map();
-const MAX_HISTORY_TURNS = 6; // last 6 turns (3 customer + 3 assistant)
+const MAX_HISTORY_TURNS = 15; // last 15 messages (history turns)
 
 export function getSessionHistoryKey(sessionKey, syncEpoch = 1) {
     return `${sessionKey}-v9-ep${syncEpoch}`;
@@ -219,8 +219,8 @@ export function appendSessionHistory(sessionKey, role, content, syncEpoch = 1) {
     const history = getSessionHistory(sessionKey, syncEpoch);
     let safeContent = typeof content === 'string' ? content : JSON.stringify(content);
     // Token Saver: Never blow up context history with full menu or deal catalog dumps
-    if (safeContent.includes('HAMARA MENU') || safeContent.includes('PREMIUM PIZZAS') || safeContent.length > 300) {
-        safeContent = safeContent.slice(0, 180) + '... [catalog details omitted from history to save tokens]';
+    if (safeContent.includes('HAMARA MENU') || safeContent.includes('PREMIUM PIZZAS') || safeContent.length > 500) {
+        safeContent = safeContent.slice(0, 300) + '... [catalog details omitted from history to save tokens]';
     }
     history.push({ role, content: safeContent });
     while (history.length > MAX_HISTORY_TURNS) {

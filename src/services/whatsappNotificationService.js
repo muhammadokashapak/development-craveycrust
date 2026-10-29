@@ -437,6 +437,88 @@ ${locationBlock}
  * Send cancellation notification to admin/support agent and optionally customer.
  * Default notifyCustomer: false ensures customer only receives the single direct bot reply.
  */
+/**
+ * Send WhatsApp notification to Admin/Support when customer REQUESTS cancellation of an active order.
+ * Forwards customer details, order number, and items to admin immediately.
+ */
+export async function sendAdminOrderCancellationRequest({ order, reason = 'Customer requested cancellation via WhatsApp', restaurantId, sock, customerPhone: overridePhone }) {
+    try {
+        if (!order) return { success: false, error: 'No order provided' };
+
+        const prisma = getDbClient();
+        const restId = restaurantId || order.restaurantId || order.restaurant_id || await getDefaultRestaurantId();
+
+        const { recipients, activeSock, configuredPhone } = await getDynamicAdminRecipients({ restaurantId: restId, sock });
+
+        if (recipients.size === 0) {
+            logger.warn({ orderNumber: order.order_number || order.orderNumber }, '[NOTIFY] Admin cancellation request alert skipped: No valid admin phone configured');
+            return { success: false, error: 'No valid admin phone configured' };
+        }
+
+        if (!activeSock) {
+            logger.warn({ orderNumber: order.order_number || order.orderNumber }, '[NOTIFY] Admin cancellation request alert skipped: WhatsApp socket not connected');
+            return { success: false, error: 'WhatsApp socket not connected' };
+        }
+
+        // Enrich order if missing items or customer details
+        let enrichedOrder = order;
+        if (prisma && (!order.items || order.items.length === 0) && (!order.order_items || order.order_items.length === 0)) {
+            try {
+                const { getOrderByNumber } = await import('./orderService.js');
+                const full = await getOrderByNumber({ restaurantId: restId, orderNumber: order.order_number || order.orderNumber, orderId: order.id });
+                if (full) enrichedOrder = full;
+            } catch (_) {}
+        }
+
+        const orderId = enrichedOrder.orderNumber || enrichedOrder.order_number;
+        const customerName = enrichedOrder.customerName || enrichedOrder.customer_name || enrichedOrder.customer?.name || 'Customer';
+        const customerPhone = overridePhone || enrichedOrder.phone || enrichedOrder.customer?.phone || enrichedOrder.whatsapp_phone || enrichedOrder.whatsappPhone || '';
+
+        let itemsLines = '';
+        if (Array.isArray(enrichedOrder.items) && enrichedOrder.items.length > 0) {
+            itemsLines = enrichedOrder.items.map(i => {
+                const name = i.dealName || i.itemName || i.item_name_snapshot || 'Item';
+                const variant = i.variantName || i.variant_name_snapshot ? ` (${i.variantName || i.variant_name_snapshot})` : '';
+                const lineTotal = Number(i.lineTotal ?? i.line_total ?? (Number(i.unitPrice ?? i.unit_price ?? 0) * Number(i.quantity ?? 1))).toLocaleString('en-PK');
+                return `• ${i.quantity}x ${name}${variant} — Rs. ${lineTotal}`;
+            }).join('\n');
+        } else if (Array.isArray(enrichedOrder.order_items) && enrichedOrder.order_items.length > 0) {
+            itemsLines = enrichedOrder.order_items.map(i => {
+                const name = i.deal_name_snapshot || i.deal?.name || i.item_name_snapshot || i.menu_item?.name || 'Item';
+                const variant = i.variant_name_snapshot || i.menu_variant?.name ? ` (${i.variant_name_snapshot || i.menu_variant?.name})` : '';
+                const lineTotal = Number(i.line_total ?? (Number(i.unit_price ?? 0) * Number(i.quantity ?? 1))).toLocaleString('en-PK');
+                return `• ${i.quantity}x ${name}${variant} — Rs. ${lineTotal}`;
+            }).join('\n');
+        }
+
+        const total = Number(enrichedOrder.pricing?.total ?? enrichedOrder.total ?? enrichedOrder.final_total ?? 0).toLocaleString('en-PK');
+
+        const requestText = 
+`🚨 *CUSTOMER ORDER CANCELLATION REQUEST!*
+Customer ne WhatsApp bot par apna order cancel karne ki request ki hai:
+
+• Order Number: *#${orderId}*
+• Current Status: *${enrichedOrder.order_status || 'CONFIRMED'}*
+• Customer Name: *${customerName}*
+• Customer Phone: *${customerPhone}*
+• Total Bill: *Rs. ${total}*
+• Items:
+${itemsLines || '• Food items'}
+
+⚠️ *Action Required:* Baraye meherbani customer se foran rabta karein ya Store Dashboard se order cancellation review/process karein.`;
+
+        for (const adminJid of recipients) {
+            await activeSock.sendMessage(adminJid, { text: requestText });
+            logger.info({ orderNumber: orderId, adminJid }, '[NOTIFY] Admin WhatsApp order cancellation request forwarded');
+        }
+
+        return { success: true };
+    } catch (err) {
+        logger.error({ err: err.message, orderNumber: order?.order_number || order?.orderNumber }, '[NOTIFY] Failed to forward cancellation request to admin');
+        return { success: false, error: err.message };
+    }
+}
+
 export async function sendCancellationNotification({ order, reason, sock, notifyCustomer = false }) {
     const results = { customer: null, admin: null };
     if (notifyCustomer) {

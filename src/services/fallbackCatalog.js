@@ -50,8 +50,8 @@ export const FALLBACK_MENU_ITEMS = [
     // King's Rolls
     {
         id: 'item-5', category_id: 'cat-2', name: 'Behari Roll', slug: 'behari-roll',
-        description: 'Delicious freshly rolled paratha stuffed with spicy behari chicken & special sauce', base_price: 599, spicy_level: 'MEDIUM', is_available: true, is_active: true,
-        variants: [{ id: 'v-5-1', name: 'Standard', price: 599 }],
+        description: '1 Single Paratha Roll freshly rolled with spicy behari chicken & special sauce (1 Pc - Rs. 599). Platters mein multiple pieces aate hain.', base_price: 599, spicy_level: 'MEDIUM', is_available: true, is_active: true,
+        variants: [{ id: 'v-5-1', name: '1 Pc (Single Roll)', price: 599 }],
     },
 
     // Chicken Box

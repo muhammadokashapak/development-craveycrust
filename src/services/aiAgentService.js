@@ -1499,6 +1499,31 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         }
     }
 
+    // Look up customer's live active order in DB (Database Ground Truth)
+    let activeOrderSummary = 'Customer ka is waqt koi active order process nahi ho raha.';
+    let activePlacedOrder = null;
+    try {
+        const prisma = getDbClient();
+        if (prisma) {
+            const orConditions = await getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsappPhone });
+            if (orConditions.length > 0) {
+                activePlacedOrder = await prisma.order.findFirst({
+                    where: {
+                        restaurant_id: restId,
+                        OR: orConditions,
+                        order_status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'] },
+                    },
+                    orderBy: { created_at: 'desc' },
+                    include: { order_items: true },
+                });
+                if (activePlacedOrder) {
+                    const itms = (activePlacedOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}`).join(', ');
+                    activeOrderSummary = `Order #${activePlacedOrder.order_number} | Status: ${activePlacedOrder.order_status} | Items: ${itms || 'Food'} | Total: Rs. ${activePlacedOrder.total}`;
+                }
+            }
+        }
+    } catch (_) {}
+
     const customerDetailsSummary = `Naam: ${updatedDetails.name || 'Not provided'}\nPhone: ${updatedDetails.phoneConfirmed || updatedDetails.phone ? displayPhone : 'Not confirmed'}\nDelivery Address: ${updatedDetails.address || (activeLocation?.formattedAddress || 'Not provided')}\nPayment Method: ${updatedDetails.paymentMethod || 'Not selected'}${checkoutStepGuidance}`;
 
     // Compute live discount context for AI from cache
@@ -1526,6 +1551,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     // Build grounded System Prompt (Hissa 6)
     const systemPromptText = buildSystemPrompt({
         whatsappPhone,
+        activeOrderSummary,
         storeName: cache.storeName || 'Cravey Crust',
         cachedCategoriesSummary: cache.cachedCategoriesSummary,
         cachedMenuCatalog: cache.cachedMenuCatalog,
@@ -1545,7 +1571,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         ? `${systemPromptText}\n\n${TOOLS_SCHEMA}`
         : (TOOLS_SCHEMA || '');
 
-    // Load last 10 messages from sessionService (sessionKey + '-v9-ep' + syncEpoch)
+    // Load last 15 messages from sessionService (sessionKey + '-v9-ep' + syncEpoch)
     const history = getSessionHistory(sessionKey, syncEpoch);
 
     let locationPromptAddon = '';

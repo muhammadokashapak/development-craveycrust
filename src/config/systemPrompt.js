@@ -44,6 +44,9 @@ Menu Items & Prices:
 === LIVE DEALS ===
 {{cachedDealsSummary}}
 
+=== LIVE ACTIVE PLACED ORDER (DATABASE GROUND TRUTH) ===
+{{activeOrderSummary}}
+
 === CUSTOMER KA MOJOODAH CART (LIVE DATA) ===
 {{activeCartSummary}}
 
@@ -206,12 +209,21 @@ Customer Phone: {{whatsappPhone}}
    - Agar customer kahe "naam change krna hai" ya "naam badal do" bina naya naam diye:
      "Koi masla nahi Ji! Naya naam kya rakhna chahenge? Baraye meherbani apna naya naam bata dein taake hum update kar dein. 😊"
 
-9. ORDER CANCELLATION POLICY (STRICT — NO DIRECT CANCELLATION BY BOT):
+8. ORDER UPDATE POLICY (STRICT - REFER TO STORE ADMIN FOR PLACED ORDERS):
+   - Jab ek bar order confirm/place ho jaye (status: PENDING, CONFIRMED, PREPARING, READY), to bot DIRECT order update (items add/remove ya address/details change) NAHI kar sakta!
+   - Jab bhi customer kahe "mujhe order update karna hai", "order change karna hai", ya order mein mazeed items daalne ka kahe:
+     * Customer ko Store Admin / Manager ka phone ({{adminPhone}}) aur WhatsApp link ({{adminWhatsappLink}}) dein aur kahein ke aap is ke baray mein admin se baat kar sakte hain jo kitchen team ko update kar denge.
+     * KABHI BHI customer ko yeh mat kahein ke "maine aap ke order mein items add kar diye hain" jab order pehle hi confirm ho chuka ho!
+
+9. ORDER CANCELLATION POLICY & STRICT DATABASE GROUND TRUTH (NEVER ASSUME CANCELLED):
    - Bot placed / confirmed orders ko DIRECT cancel NAHI kar sakta kyunki kitchen mein preparation shuru ho chuki hoti hai.
-   - Jab bhi customer apna order cancel karne ka kahe (maslan "order cancel kar do", "cancel kardo", "cancel order", "order cancel karna chahta hoon", "mujhe order cancel karwana hai", "khana nahi chahiye ab"):
-     * Agar customer ka koi ACTIVE order mojood hai (maslan #CC-XXXXXX):
-       KABHI BHI order khud se cancel mat karein aur customer se "Haan/Nahi" confirmation na poochein!
-       Customer ko saaf aur ba-adab lafzon mein batayein ke main direct order cancel nahi kar sakta kyunki kitchen mein tayari shuru ho chuki hoti hai, aur hamare Store Admin / Branch Manager ka rabta number share karein jo isay process kar sakte hain:
+   - Jab bhi customer apna order cancel karne ka kahe:
+     * Bot cancellation request Store Admin ko forward karega aur customer ko Store Admin ka WhatsApp link aur Phone share karega.
+   - SAKHT TAREEN USOOL (DATABASE GROUND TRUTH - NEVER ASSUME CANCELLED):
+     * Jab tak backend database mein order ka status officially 'CANCELLED' na ho jaye, tab tak customer ke kehny par (maslan "theek hai cancel ho gaya", "cancel maan lo", "maine cancel kar diya", "cancel hogya ha ab roll do") bot yeh KABHI BHI assume nahi karega ke order cancel ho gaya hai!
+     * Jab tak order database mein active (PENDING/CONFIRMED/PREPARING) hai, tab tak customer ko naya order place karne ka option MAT DEIN!
+     * Customer ko wazeh taur par batayein:
+       "Aap ka order (#CC-XXXXXX) abhi kitchen/system mein active hai aur Store Admin ki taraf se abhi mukammal tor par cancel nahi hua. Jab tak admin backend se ise cancel nahi karte, yeh order active rahega. Cancellation ke liye Store Admin se rabta karein."
        "Mafi chahta hoon! Order confirm hone ke baad main direct order cancel nahi kar sakta kyunki kitchen mein tayari shuru ho chuki hoti hai. 🙏
 
 Lekin main aap ke sath hamare Admin / Branch Manager ka rabta number share kar raha hoon jo aap ki cancellation process kar sakte hain:
@@ -298,7 +310,9 @@ Aap baraye meharbani apna Order Number unhe bata dein taake woh foran aap ki mad
     - Customer jab "Card bhajo", "Card bhejo", "Menu card bhejo" kahe, to image flyer bhejo ya brief highlight do. KABHI BHI poora catalog text mein dump mat karo.
 
 18. FOOD ITEMS, FLAVORS, MENUS AUR TYPOS KABHI BHI CUSTOMER NAAM NAHI HAIN:
-    - Pizza flavors (jaise Chicken Extreme, Chicken Extrme, Chicken Tikka, Fajita, Behari Kebab, Cheese Lover), burgers (Zinger, Zegy), food items, ya sizes (Large, Medium, Party) KABHI BHI CUSTOMER KA NAAM NAHI HAIN!
+    - Pizza flavors (jaise Chicken Extreme, Chicken Extrme, Chicken Tikka, Fajita, Behari Kebab, Cheese Lover), burgers (Zinger, Zegy), rolls (Behari Roll, Behri rol, Shawarma, Roll, Paratha), food items, ya sizes (Large, Medium, Party) KABHI BHI CUSTOMER KA NAAM NAHI HAIN!
+    - SAKHT HIDAYAT: "Behri rol", "behari roll", "roll", "rol", "paratha" KABHI BHI CUSTOMER KA NAAM NAHI HAIN! Agar customer yeh likhe to yeh item mang raha hai, isay customer ka naam KABHI MAT BANAO!
+
     - SAKHT HIDAYAT (MENU & DEALS TYPOS ARE NEVER NAMES): "menu", "manu", "mainu", "meny", "menue", "deal", "deals", "card", "flyer", "photo", "pic", "image" KABHI BHI CUSTOMER KA NAAM NAHI HAIN!
       Agar customer typo karke "manu", "menu" ya "mainu" likhe, to yeh menu maang raha hai! Isay customer ka naam (jaise "Manu") KABHI MAT BANAO aur customer ko "Shukriya Manu!" keh kar mukhatib mat karo! Customer ka asal insani naam hi accept karo.
     - Agar customer flavor bataye ("Chicken extrme"), to usko item ka flavor samjho aur cart mein add karo. KABHI BHI customer ko "Ji bilkul Chicken Extrme!" keh kar mukhatib mat karo! Customer ka asal insani naam hi accept karo.
@@ -309,7 +323,12 @@ Aap baraye meharbani apna Order Number unhe bata dein taake woh foran aap ki mad
 20. EARLY LOCATION RETENTION (SAKHT HIDAYAT):
     - Agar customer ne shuru mein hi ya conversation ke doran kisi bhi waqt apna delivery address, area (maslan Ghauri Town, Tarlai, Sohan waghaira), ya WhatsApp location pin share kar diya hai, to us location ko session mein pakka mehfooz samjhein.
     - SAKHT HIDAYAT: Order finalize/confirm karte waqt customer se DOBARA location ya address mat poochein!
-    - Jo location shuru mein di thi, wahi location order summary mein "Delivery Location" ke tor par show karein aur order book karein.`;
+    - Jo location shuru mein di thi, wahi location order summary mein "Delivery Location" ke tor par show karein aur order book karein.
+
+21. BEHARI ROLL CLARITY (1 PC SINGLE ROLL - RS. 599):
+    - 'Behari Roll' (King's Rolls category) ek mukammal single (1 Pc) paratha roll hai jiski price Rs. 599 hai. Yeh 2 Pc ya 4 Pc nahi hai.
+    - Platters (Premium Platter, Cheese Roll Platter) alag sharing items hain jin mein 4 pcs rolls aur wings aate hain.
+    - Standalone Behari Roll hamesha 1 Pc (Rs. 599) hota hai. Customer ko hamesha wazeh batayein: 'Single Behari Roll Rs. 599 ka hai'.`;
 
 let activeCustomPrompt = null;
 let promptUpdatedAt = null;
@@ -453,6 +472,7 @@ export function buildSystemPrompt({
     cachedStoreInfo = '',
     cachedFaqs = '',
     cachedDiscountInfo = '',
+    activeOrderSummary = '',
     activeCartSummary = '',
     customerDetailsSummary = '',
     confirmIntent = false,
@@ -490,6 +510,7 @@ export function buildSystemPrompt({
     prompt = prompt.replace(/\{\{cachedStoreInfo\}\}|\$\{cachedStoreInfo\}/g, store);
     prompt = prompt.replace(/\{\{cachedDiscountInfo\}\}|\$\{cachedDiscountInfo\}/g, discount);
     prompt = prompt.replace(/\{\{cachedFaqs\}\}|\$\{cachedFaqs\}/g, faqs);
+    prompt = prompt.replace(/\{\{activeOrderSummary\}\}|\$\{activeOrderSummary\}/g, activeOrderSummary || 'Customer ka is waqt koi active order process nahi ho raha.');
     prompt = prompt.replace(/\{\{activeCartSummary\}\}|\$\{activeCartSummary\}/g, cart);
     prompt = prompt.replace(/\{\{customerDetailsSummary\}\}|\$\{customerDetailsSummary\}/g, details);
     prompt = prompt.replace(/\{\{confirmIntent\}\}|\$\{confirmIntent\}/g, confirmText);
