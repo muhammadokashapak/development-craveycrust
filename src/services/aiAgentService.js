@@ -1571,7 +1571,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         ? `${systemPromptText}\n\n${TOOLS_SCHEMA}`
         : (TOOLS_SCHEMA || '');
 
-    // Load last 15 messages from sessionService (sessionKey + '-v9-ep' + syncEpoch)
+    // Load last 30 messages from sessionService (sessionKey + '-v9-ep' + syncEpoch)
     const history = getSessionHistory(sessionKey, syncEpoch);
 
     let locationPromptAddon = '';

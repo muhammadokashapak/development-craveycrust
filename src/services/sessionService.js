@@ -198,10 +198,10 @@ export async function touchSession(sessionKey) {
     });
 }
 
-// ─── In-Memory Conversation History (10 messages, v9-ep{syncEpoch}) ──────
+// ─── In-Memory Conversation History (30 messages, v9-ep{syncEpoch}) ──────
 
 const _memoryStore = new Map();
-const MAX_HISTORY_TURNS = 15; // last 15 messages (history turns)
+const MAX_HISTORY_TURNS = 30; // last 30 messages (history turns)
 
 export function getSessionHistoryKey(sessionKey, syncEpoch = 1) {
     return `${sessionKey}-v9-ep${syncEpoch}`;
