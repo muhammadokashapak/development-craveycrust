@@ -21,6 +21,7 @@ import {
     extractFlavoursFromText,
     formatFlavourNotes,
     formatDealFlavourPrompt,
+    formatSingleFlavourConfirmationPrompt,
     setPendingDealFlavour,
     getPendingDealFlavour,
     clearPendingDealFlavour,
@@ -2595,43 +2596,114 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Follow-up: Flavour specification for pending Pizza Deal (Zero Tokens) ──
     const pendingFlavour = userSessionId ? getPendingDealFlavour(userSessionId) : null;
-    if (pendingFlavour && (isFlavourResponse(lower) || extractFlavoursFromText(lower).length > 0)) {
+    if (pendingFlavour) {
         const d = pendingFlavour.deal;
         const pizzaInfo = pendingFlavour.pizzaInfo || getDealPizzaInfo(d);
-        const extracted = extractFlavoursFromText(lower, pizzaInfo.pizzaCount);
-        if (extracted.length > 0) {
-            clearPendingDealFlavour(userSessionId);
-            _lastDiscussedDealBySession.delete(userSessionId);
+        const qty = pendingFlavour.quantity || 1;
+        const is2PizzaDeal = pizzaInfo.pizzaCount === 2;
 
-            const flavourNotes = formatFlavourNotes(extracted);
-            const { getActiveCart, addToCart } = await import('./cartService.js');
-            const cache = await getCatalogCache();
-            const qty = pendingFlavour.quantity || 1;
+        // Subcase A: Customer was already asked whether both pizzas should be firstFlavour, and is now replying
+        if (is2PizzaDeal && pendingFlavour.firstFlavour) {
+            const isCancel = /^(?:cancel|cancle|no|nahi|nahii|nhi|nh|mat)\b/i.test(lower);
+            if (isCancel) {
+                clearPendingDealFlavour(userSessionId);
+                return {
+                    reply: 'Deal flavour selection cancel kar di gayi. Aap koi doosri deal ya menu item select kar sakte hain.',
+                };
+            }
 
-            await addToCart({
-                sessionKey: userSessionId,
-                restaurantId: cache.restId,
-                chatId,
-                verifiedPhone: whatsappPhone,
-                dealId: d.id,
-                quantity: qty,
-                notes: flavourNotes,
-            });
+            const isAffirmativeBoth = /^(?:dono|both|same|same\s*hi|aik\s*jaise|ek\s*jaise|g|ji|jee|haan|han|hn|yes|yahi|yehi|wahi|isi|ok|theek|done|yahi\s*rakh|dono\s*fajita|dono\s*tikka|dono\s*supreme|bilkul|haan\s*dono|g\s*dono)\b/i.test(lower);
+            const extracted2 = extractFlavoursFromText(lower, 1);
+            let finalFlavours = null;
+            if (isAffirmativeBoth) {
+                finalFlavours = [pendingFlavour.firstFlavour, pendingFlavour.firstFlavour];
+            } else if (extracted2.length > 0) {
+                finalFlavours = [pendingFlavour.firstFlavour, extracted2[0]];
+            }
 
-            const dealName = d.name;
-            const dealPrice = Number(d.deal_price) * qty;
-            const { getSessionOrderDetails } = await import('./sessionService.js');
-            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-            const details = getSessionOrderDetails(userSessionId, cleanPhone);
-            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (finalFlavours) {
+                clearPendingDealFlavour(userSessionId);
+                _lastDiscussedDealBySession.delete(userSessionId);
 
-            return await getNextCheckoutStepResponse({
-                details,
-                whatsappPhone,
-                cart: cartNow,
-                cache,
-                introMessage: `Zabardast! *${dealName}* (*${flavourNotes}*) cart mein add kar di gayi hai! 🎉\n• ${qty}x ${dealName} (${flavourNotes}) — Rs. ${dealPrice}`,
-            });
+                const flavourNotes = formatFlavourNotes(finalFlavours);
+                const { getActiveCart, addToCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    dealId: d.id,
+                    quantity: qty,
+                    notes: flavourNotes,
+                });
+
+                const dealName = d.name;
+                const dealPrice = Number(d.deal_price) * qty;
+                const { getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart: cartNow,
+                    cache,
+                    introMessage: `Zabardast! *${dealName}* (*${flavourNotes}*) cart mein add kar di gayi hai! 🎉\n• ${qty}x ${dealName} (${flavourNotes}) — Rs. ${dealPrice}`,
+                });
+            }
+        }
+
+        // Subcase B: Customer provides flavour(s) for pending pizza deal
+        if (isFlavourResponse(lower) || extractFlavoursFromText(lower).length > 0) {
+            const extracted = extractFlavoursFromText(lower, pizzaInfo.pizzaCount);
+            if (extracted.length > 0) {
+                // If it's a 2-pizza deal and customer gave only 1 flavour (without saying dono/both)
+                if (is2PizzaDeal && extracted.length === 1) {
+                    const firstFlv = extracted[0];
+                    setPendingDealFlavour(userSessionId, {
+                        ...pendingFlavour,
+                        firstFlavour: firstFlv,
+                    });
+                    return {
+                        reply: formatSingleFlavourConfirmationPrompt(firstFlv, pizzaInfo),
+                    };
+                }
+
+                clearPendingDealFlavour(userSessionId);
+                _lastDiscussedDealBySession.delete(userSessionId);
+
+                const flavourNotes = formatFlavourNotes(extracted);
+                const { getActiveCart, addToCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    dealId: d.id,
+                    quantity: qty,
+                    notes: flavourNotes,
+                });
+
+                const dealName = d.name;
+                const dealPrice = Number(d.deal_price) * qty;
+                const { getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart: cartNow,
+                    cache,
+                    introMessage: `Zabardast! *${dealName}* (*${flavourNotes}*) cart mein add kar di gayi hai! 🎉\n• ${qty}x ${dealName} (${flavourNotes}) — Rs. ${dealPrice}`,
+                });
+            }
         }
     }
 

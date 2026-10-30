@@ -33,6 +33,7 @@ import {
     extractFlavoursFromText,
     formatFlavourNotes,
     formatDealFlavourPrompt,
+    formatSingleFlavourConfirmationPrompt,
     setPendingDealFlavour,
     getPendingDealFlavour,
     clearPendingDealFlavour,
@@ -397,6 +398,15 @@ Reply cart to view cart ya checkout to proceed.`,
 
             const globalDiscount = await getGlobalDiscountSettings(restaurantId);
 
+            const isDrinkItem = /drink|pepsi|coke|beverage/i.test(resolved.item.name);
+            if (isDrinkItem) {
+                const varListStr = resolved.variants.map(v => `${v.name} (Rs. ${Number(v.price)})`).join(', ');
+                return {
+                    text: `Zaroor! *${resolved.item.name}* ka kaunsa size add karun — ${varListStr}?`,
+                    intent: 'ADD_ITEM',
+                };
+            }
+
             let varMsg = `*${resolved.item.name}*\n\n`;
             resolved.variants.forEach((v) => {
                 const vPrice = Number(v.price);
@@ -616,15 +626,76 @@ Reply cart to view cart ya checkout to continue.`,
     if (pendingFlavourDeal) {
         const pDeal = pendingFlavourDeal.deal;
         const pizzaInfo = pendingFlavourDeal.pizzaInfo || getDealPizzaInfo(pDeal);
-        const extracted = extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount);
+        const qty = pendingFlavourDeal.quantity || 1;
+        const is2PizzaDeal = pizzaInfo.pizzaCount === 2;
 
+        if (cleanText.toLowerCase() === 'cancel' || cleanText.toLowerCase() === 'no') {
+            draft.pendingDealFlavour = null;
+            clearPendingDealFlavour(convSession.session_key);
+            return {
+                text: 'Deal flavour selection cancel kar di gayi.',
+                intent: 'CANCEL',
+            };
+        }
+
+        // Subcase A: Customer already picked 1st flavour and was asked if both pizzas should be that flavour
+        if (is2PizzaDeal && pendingFlavourDeal.firstFlavour) {
+            const isAffirmativeBoth = /^(?:dono|both|same|same\s*hi|aik\s*jaise|ek\s*jaise|g|ji|jee|haan|han|hn|yes|yahi|yehi|wahi|isi|ok|theek|done|yahi\s*rakh|dono\s*fajita|dono\s*tikka|dono\s*supreme|bilkul|haan\s*dono|g\s*dono)\b/i.test(cleanText.toLowerCase());
+            const extracted2 = extractFlavoursFromText(cleanText, 1);
+            let finalFlavours = null;
+            if (isAffirmativeBoth) {
+                finalFlavours = [pendingFlavourDeal.firstFlavour, pendingFlavourDeal.firstFlavour];
+            } else if (extracted2.length > 0) {
+                finalFlavours = [pendingFlavourDeal.firstFlavour, extracted2[0]];
+            }
+
+            if (finalFlavours) {
+                draft.pendingDealFlavour = null;
+                clearPendingDealFlavour(convSession.session_key);
+
+                const flavourNotes = formatFlavourNotes(finalFlavours);
+                await addItemToCart({
+                    sessionKey: convSession.session_key,
+                    restaurantId,
+                    dealId: pDeal.id,
+                    quantity: qty,
+                    notes: flavourNotes,
+                });
+
+                await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
+                const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+
+                return {
+                    text: `Added to Cart!\n\n${qty}x ${pDeal.name} (${flavourNotes}): Rs.${Number(pDeal.deal_price) * qty}\nSubtotal: Rs.${cartTotals.subtotal}\n\nReply cart to view cart ya checkout to continue.`,
+                    intent: 'ADD_ITEM',
+                    stage: 'BUILDING_CART',
+                };
+            }
+        }
+
+        const extracted = extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount);
         if (extracted.length > 0) {
+            if (is2PizzaDeal && extracted.length === 1) {
+                const firstFlv = extracted[0];
+                draft.pendingDealFlavour = {
+                    ...pendingFlavourDeal,
+                    firstFlavour: firstFlv,
+                };
+                setPendingDealFlavour(convSession.session_key, {
+                    ...pendingFlavourDeal,
+                    firstFlavour: firstFlv,
+                });
+                return {
+                    text: formatSingleFlavourConfirmationPrompt(firstFlv, pizzaInfo),
+                    intent: 'PROMPT_DEAL_FLAVOUR',
+                    stage: convSession.stage,
+                };
+            }
+
             draft.pendingDealFlavour = null;
             clearPendingDealFlavour(convSession.session_key);
 
             const flavourNotes = formatFlavourNotes(extracted);
-            const qty = pendingFlavourDeal.quantity || 1;
-
             await addItemToCart({
                 sessionKey: convSession.session_key,
                 restaurantId,
@@ -637,23 +708,9 @@ Reply cart to view cart ya checkout to continue.`,
             const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
 
             return {
-                text: 
-`Added to Cart!
-
-${qty}x ${pDeal.name} (${flavourNotes}): Rs.${Number(pDeal.deal_price) * qty}
-Subtotal: Rs.${cartTotals.subtotal}
-
-Reply cart to view cart ya checkout to continue.`,
+                text: `Added to Cart!\n\n${qty}x ${pDeal.name} (${flavourNotes}): Rs.${Number(pDeal.deal_price) * qty}\nSubtotal: Rs.${cartTotals.subtotal}\n\nReply cart to view cart ya checkout to continue.`,
                 intent: 'ADD_ITEM',
                 stage: 'BUILDING_CART',
-            };
-        }
-        if (cleanText.toLowerCase() === 'cancel' || cleanText.toLowerCase() === 'no') {
-            draft.pendingDealFlavour = null;
-            clearPendingDealFlavour(convSession.session_key);
-            return {
-                text: 'Deal flavour selection cancel kar di gayi.',
-                intent: 'CANCEL',
             };
         }
     }

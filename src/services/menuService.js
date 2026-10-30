@@ -247,6 +247,9 @@ export function extractSizeFromQuery(query) {
     const q = query.trim().toLowerCase();
 
     // Check size regex with word boundaries
+    const is1_5L = /\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter)\b/i.test(q);
+    const is1L = !is1_5L && /\b(?:1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l)\b/i.test(q);
+    const isCan = /\b(?:can|tin\s*pack)\b/i.test(q);
     const isParty = /\b(?:party\s*size|partysize|party|family)\b/i.test(q);
     const isLarge = !isParty && /\b(?:large|lrg|bada|bara)\b/i.test(q);
     const isMedium = !isParty && /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
@@ -254,7 +257,10 @@ export function extractSizeFromQuery(query) {
     const isRegular = /\b(?:regular|reg)\b/i.test(q);
 
     let size = null;
-    if (isParty) size = 'Party Size';
+    if (is1_5L) size = '1.5 Liter';
+    else if (is1L) size = '1 Liter';
+    else if (isCan) size = 'Can';
+    else if (isParty) size = 'Party Size';
     else if (isLarge) size = 'Large';
     else if (isMedium) size = 'Medium';
     else if (isSmall) size = 'Small';
@@ -262,7 +268,7 @@ export function extractSizeFromQuery(query) {
 
     // Strip size keywords and common ordering verbs to extract item name
     let clean = q
-        .replace(/\b(?:party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
+        .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin\s*pack|party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
         .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
         .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
@@ -288,9 +294,10 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const prisma = getDbClient();
     const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
 
-    // Strip leading quantity (e.g. "2 zinger burger" -> "zinger burger", "do ziggy burger" -> "ziggy burger")
+    // Strip leading integer quantity (e.g. "2 zinger burger" -> "zinger burger", "do ziggy burger" -> "ziggy burger")
+    // Use negative lookahead to protect decimal sizes like "1.5 liter drink" and bottle volumes like "1 liter drink"
     let rawItemQ = query.trim().toLowerCase();
-    rawItemQ = rawItemQ.replace(/^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
+    rawItemQ = rawItemQ.replace(/^(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
     // Also strip trailing ordering verbs
     rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
     const cleanQ = rawItemQ;
@@ -433,6 +440,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isHotWings = /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(strippedQ));
     const isOvenBakedWings = /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(strippedQ));
     const isBehariRoll = /\b(?:behari|bihari|behri)\s*roll\b/i.test(cleanQ) || (strippedQ && /\b(?:behari|bihari|behri)\s*roll\b/i.test(strippedQ));
+    const isDrink = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
 
     let aliasTargetItem = null;
     if (isZiggy && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
@@ -449,6 +457,8 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         aliasTargetItem = allItems.find(i => i.slug === 'oven-baked-wings' || /oven\s*baked/i.test(i.name));
     } else if (isBehariRoll) {
         aliasTargetItem = allItems.find(i => i.slug === 'behari-roll' || /behari\s*roll/i.test(i.name));
+    } else if (isDrink && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name));
     }
 
     if (aliasTargetItem) {

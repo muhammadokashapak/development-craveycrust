@@ -35,7 +35,7 @@ import { calculatePricing } from './pricingService.js';
 import { calculateDiscount, getGlobalDiscountSettings } from './discountService.js';
 import { muteChatForHandover, isChatMuted } from './handoverService.js';
 import { getDbClient } from '../db/client.js';
-import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNotes, setPendingDealFlavour, clearPendingDealFlavour } from './dealFlavourService.js';
+import { isPizzaDeal, getDealPizzaInfo, extractFlavoursFromText, formatFlavourNotes, formatSingleFlavourConfirmationPrompt, setPendingDealFlavour, getPendingDealFlavour, clearPendingDealFlavour } from './dealFlavourService.js';
 
 // ─── Detect Confirm Intent (Hissa 3) ──────────────────────────────────────
 /**
@@ -388,6 +388,31 @@ async function executeTool(toolName, args, context) {
                             };
                         }
                     }
+                } else if (dealId && notes) {
+                    const activeDeals = await getActiveDeals(restId);
+                    const foundDeal = activeDeals.find(d => d.id === dealId);
+                    if (foundDeal) {
+                        const pizzaInfo = getDealPizzaInfo(foundDeal);
+                        if (pizzaInfo.isPizzaDeal) {
+                            const extracted = extractFlavoursFromText(notes, pizzaInfo.pizzaCount);
+                            if (pizzaInfo.pizzaCount === 2 && extracted.length === 1) {
+                                setPendingDealFlavour(sessionKey, {
+                                    deal: foundDeal,
+                                    quantity,
+                                    pizzaInfo,
+                                    firstFlavour: extracted[0],
+                                });
+                                return {
+                                    requiresFlavourConfirmation: true,
+                                    firstFlavour: extracted[0],
+                                    dealName: foundDeal.name,
+                                    message: formatSingleFlavourConfirmationPrompt(extracted[0], pizzaInfo),
+                                };
+                            } else if (extracted.length > 0) {
+                                notes = formatFlavourNotes(extracted);
+                            }
+                        }
+                    }
                 }
 
                 // Handle bulk / all deals request
@@ -455,28 +480,48 @@ async function executeTool(toolName, args, context) {
                                 const pizzaInfo = resolved.pizzaInfo || getDealPizzaInfo(resolved.deal);
                                 const dealNotes = notes || resolved.flavourNotes;
 
-                                if (pizzaInfo.isPizzaDeal && !dealNotes) {
-                                    setPendingDealFlavour(sessionKey, {
-                                        deal: resolved.deal,
-                                        quantity,
-                                        pizzaInfo,
-                                    });
-                                    return {
-                                        requiresFlavour: true,
-                                        dealName: resolved.deal.name,
-                                        pizzaCount: pizzaInfo.pizzaCount,
-                                        sizeName: pizzaInfo.sizeName,
-                                        availableFlavours: [
-                                            "Chicken Tikka",
-                                            "Chicken Fajita",
-                                            "Chicken Supreme",
-                                            "Cheese Lover",
-                                            "Chicken Tandori",
-                                            "Behari Kebab Pizza",
-                                            "Chicken Extreme"
-                                        ],
-                                        message: `"${resolved.deal.name}" mein ${pizzaInfo.pizzaCount > 1 ? `${pizzaInfo.pizzaCount}x ${pizzaInfo.sizeName} Pizzas` : `1x ${pizzaInfo.sizeName} Pizza`} shamil hai. Pehle customer se unki pasand ka flavour poochein (Available flavours: Chicken Tikka, Chicken Fajita, Chicken Supreme, Cheese Lover, Chicken Tandori, Behari Kebab, Chicken Extreme). Flavour milne ke baad add_to_cart(..., notes: "Flavours: ...") call karein.`
-                                    };
+                                if (pizzaInfo.isPizzaDeal) {
+                                    if (!dealNotes) {
+                                        setPendingDealFlavour(sessionKey, {
+                                            deal: resolved.deal,
+                                            quantity,
+                                            pizzaInfo,
+                                        });
+                                        return {
+                                            requiresFlavour: true,
+                                            dealName: resolved.deal.name,
+                                            pizzaCount: pizzaInfo.pizzaCount,
+                                            sizeName: pizzaInfo.sizeName,
+                                            availableFlavours: [
+                                                "Chicken Tikka",
+                                                "Chicken Fajita",
+                                                "Chicken Supreme",
+                                                "Cheese Lover",
+                                                "Chicken Tandori",
+                                                "Behari Kebab Pizza",
+                                                "Chicken Extreme"
+                                            ],
+                                            message: `"${resolved.deal.name}" mein ${pizzaInfo.pizzaCount > 1 ? `${pizzaInfo.pizzaCount}x ${pizzaInfo.sizeName} Pizzas` : `1x ${pizzaInfo.sizeName} Pizza`} shamil hai. Pehle customer se unki pasand ka flavour poochein (Available flavours: Chicken Tikka, Chicken Fajita, Chicken Supreme, Cheese Lover, Chicken Tandori, Behari Kebab, Chicken Extreme). Flavour milne ke baad add_to_cart(..., notes: "Flavours: ...") call karein.`
+                                        };
+                                    } else {
+                                        const extracted = extractFlavoursFromText(dealNotes, pizzaInfo.pizzaCount);
+                                        if (pizzaInfo.pizzaCount === 2 && extracted.length === 1) {
+                                            setPendingDealFlavour(sessionKey, {
+                                                deal: resolved.deal,
+                                                quantity,
+                                                pizzaInfo,
+                                                firstFlavour: extracted[0],
+                                            });
+                                            return {
+                                                requiresFlavourConfirmation: true,
+                                                firstFlavour: extracted[0],
+                                                dealName: resolved.deal.name,
+                                                message: formatSingleFlavourConfirmationPrompt(extracted[0], pizzaInfo),
+                                            };
+                                        } else if (extracted.length > 0) {
+                                            notes = formatFlavourNotes(extracted);
+                                        }
+                                    }
                                 }
                                 if (dealNotes && !notes) {
                                     notes = dealNotes;
@@ -1014,6 +1059,11 @@ export function sanitizeOutput(text) {
         return 'Aap ki request note kar li gayi hai! Kya iske sath mazeed kuch add karna chahenge ya order finalize karein? 😊';
     }
 
+    // 0c. Suppress hallucinated apologies when adding drink without size
+    if (/\b(?:maazrat|maafi)\s+(?:chahta|chahti)?\s*hoon!?[^.!?\n]*(?:mushkil|rukawat)[^.!?\n]*(?:drink|drinks|soft\s*drink)/i.test(clean)) {
+        return 'Zaroor! Soft Drink ka kaunsa size add karun — Regular (Rs. 110), Can (Rs. 130), 1 Liter (Rs. 200), ya 1.5 Liter (Rs. 240)?';
+    }
+
     // 1. Remove all internal IDs (menuItemId, variantId, dealId, cartItemId, id)
     clean = clean.replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '');
     // 2. Remove all asterisks
@@ -1159,6 +1209,41 @@ async function runAgentLoop(messages, context) {
 
             const result = await executeTool(toolCall.tool, toolCall.args || {}, context);
             allToolResults.push(result);
+
+            // Direct variant prompt (Zero hallucination, never apologizes for variants or drinks)
+            if (result?.requiresVariant) {
+                const itemName = result.itemName || 'Item';
+                const isDrinkItem = /drink|pepsi|coke|beverage/i.test(itemName);
+                const variantList = (result.variants || []).map(v => {
+                    const pStr = v.hasDiscount ? `~Rs. ${v.originalPrice}~ Rs. ${v.discountedPrice}` : `Rs. ${v.price}`;
+                    return `${v.name} (${pStr})`;
+                }).join(', ');
+                const replyText = isDrinkItem
+                    ? `Zaroor! ${itemName} ka kaunsa size add karun — ${variantList}?`
+                    : `Zaroor! ${itemName} ke yeh sizes dastiyab hain:\n${variantList}\n\nAap kaunsa size pasand karenge?`;
+                return {
+                    text: replyText,
+                    imageUrl: null,
+                    imageUrls: null,
+                    toolResults: allToolResults,
+                    calledToolNames,
+                    tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
+                    providerInfo: { provider: lastProvider, model: lastModel, keyIndex: lastKeyIndex },
+                };
+            }
+
+            // Direct single-flavour confirmation prompt for 2-pizza deals
+            if (result?.requiresFlavourConfirmation) {
+                return {
+                    text: result.message,
+                    imageUrl: null,
+                    imageUrls: null,
+                    toolResults: allToolResults,
+                    calledToolNames,
+                    tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
+                    providerInfo: { provider: lastProvider, model: lastModel, keyIndex: lastKeyIndex },
+                };
+            }
 
             // If we are at the last allowable tool round, do not loop again: produce customer answer directly from tool result
             if (round === MAX_TOOL_ROUNDS - 1) {
@@ -1380,8 +1465,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         sessionDetails.savedAddress = rememberedDetails.address;
     }
     if (!sessionDetails.phone && (rememberedDetails?.phone || whatsappPhone)) {
-        sessionDetails.phone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
-        sessionDetails.savedPhone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
+        sessionDetails.phone = rememberedDetails?.phone || (whatsappPhone || '').replace(/\D/g, '');
+        sessionDetails.savedPhone = rememberedDetails?.phone || (whatsappPhone || '').replace(/\D/g, '');
         sessionDetails.phoneConfirmed = true;
     }
 

@@ -159,11 +159,27 @@ export function matchVariant(variants, query) {
     if (bySlug) return bySlug;
 
     // 4. Normalized alias match (with typo tolerance e.g. 'Partybsize', 'medum', 'larg')
+    const is1_5Liter = /\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter)\b/i.test(q) || qSlug.includes('15liter') || qSlug.includes('15l');
+    const is1Liter = !is1_5Liter && (/\b(?:1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l)\b/i.test(q) || qSlug.includes('1liter') || qSlug.includes('1l') || qSlug === 'liter');
+    const isCan = /\b(?:can|tin\s*pack)\b/i.test(q) || qSlug === 'can';
     const isParty = /\b(?:party|family|partyb?size)\b/i.test(q) || qSlug.includes('partysize') || qSlug.includes('partybsize') || qSlug.startsWith('party');
     const isLarge = !isParty && (/\b(?:large|larg|lrg|bada|bara)\b/i.test(q) || /^(?:l|large|larg)$/i.test(q.trim()) || qSlug.includes('largesize'));
     const isMedium = /\b(?:medium|medum|med|darmiyan|darmiyana)\b/i.test(q) || /^(?:m|med|medium|medum)$/i.test(q.trim()) || qSlug.includes('mediumsize');
     const isSmall = /\b(?:small|smal|chota|chhota)\b/i.test(q) || /^(?:s|sm|small|smal)$/i.test(q.trim()) || qSlug.includes('smallsize');
     const isRegular = /\b(?:regular|reg)\b/i.test(q);
+
+    if (is1_5Liter) {
+        const found = variants.find(v => /1\.5/i.test(v.name));
+        if (found) return found;
+    }
+    if (is1Liter) {
+        const found = variants.find(v => /\b1\s*liter\b|\b1l\b/i.test(v.name) && !/1\.5/i.test(v.name));
+        if (found) return found;
+    }
+    if (isCan) {
+        const found = variants.find(v => /can/i.test(v.name));
+        if (found) return found;
+    }
 
     if (isParty) {
         const found = variants.find(v => /party/i.test(v.name));

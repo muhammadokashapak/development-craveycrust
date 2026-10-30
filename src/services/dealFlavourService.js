@@ -9,27 +9,27 @@ export const CLASSIC_PIZZA_FLAVOURS = [
     {
         name: 'Chicken Tikka',
         slug: 'chicken-tikka',
-        regex: /\b(?:chicken\s*)?tikk?a+h?\b/i,
+        regex: /\b(?:chicken\s*)?tikk?a+h?s?\b/i,
     },
     {
         name: 'Chicken Fajita',
         slug: 'chicken-fajita',
-        regex: /\b(?:chicken\s*)?faj[ie]ta+h?\b/i,
+        regex: /\b(?:chicken\s*)?faj[ie]ta+h?s?\b/i,
     },
     {
         name: 'Chicken Supreme',
         slug: 'chicken-supreme',
-        regex: /\b(?:chicken\s*)?supr[ie]me\b/i,
+        regex: /\b(?:chicken\s*)?supr[ie]me?s?\b/i,
     },
     {
         name: 'Cheese Lover',
         slug: 'cheese-lover',
-        regex: /\b(?:cheese\s*lover|cheesy\s*lover|chees\s*lover|plain\s*cheese|extra\s*cheese|cheese)\b/i,
+        regex: /\b(?:cheese\s*lovers?|cheesy\s*lovers?|chees\s*lovers?|plain\s*cheese|extra\s*cheese|cheese)\b/i,
     },
     {
         name: 'Chicken Tandori',
         slug: 'chicken-tandori',
-        regex: /\b(?:chicken\s*)?tando?ori\b/i,
+        regex: /\b(?:chicken\s*)?tando?ori?s?\b/i,
     },
 ];
 
@@ -37,27 +37,27 @@ export const PREMIUM_PIZZA_FLAVOURS = [
     {
         name: 'Chicken Extreme',
         slug: 'chicken-extreme',
-        regex: /\b(?:chicken\s*)?extr[e|m]me\b/i,
+        regex: /\b(?:chicken\s*)?extr[e|m]me?s?\b/i,
     },
     {
         name: 'Peri Peri Pizza',
         slug: 'peri-peri',
-        regex: /\bperi(?:\s*[-]?\s*peri)?(?:\s*pizza)?\b/i,
+        regex: /\bperi(?:\s*[-]?\s*peri)?(?:\s*pizzas?)?\b/i,
     },
     {
         name: 'Behari Kebab Pizza',
         slug: 'behari-kebab',
-        regex: /\b(?:behari|bihari)(?:\s*kebab)?(?:\s*pizza)?\b/i,
+        regex: /\b(?:behari|bihari)(?:\s*kebabs?)?(?:\s*pizzas?)?\b/i,
     },
     {
         name: 'Crown Crust',
         slug: 'crown-crust',
-        regex: /\bcrown(?:\s*crust)?\b/i,
+        regex: /\bcrown(?:\s*crusts?)?\b/i,
     },
     {
         name: 'Stuffed Crust',
         slug: 'stuffed-crust',
-        regex: /\bstuff(?:ed)?(?:\s*crust)?\b/i,
+        regex: /\bstuff(?:ed)?(?:\s*crusts?)?\b/i,
     },
 ];
 
@@ -221,7 +221,7 @@ export function extractFlavoursFromText(text, targetPizzaCount = 1) {
     const lower = text.toLowerCase().trim();
 
     // Check for "dono [flavour]" or "[flavour] dono" or "same [flavour]"
-    const isBothSame = /\b(?:dono|both|same|2\s*x|do\s*hi|dono\s*hi)\b/i.test(lower);
+    const isBothSame = /\b(?:dono|both|same|2\s*x|do\s*hi|dono\s*hi|aik\s*jaise|ek\s*jaise|same\s*hi|dono\s*me|dono\s*mein|2\s*pizzas?|do\s*pizzas?)\b/i.test(lower);
 
     const matches = [];
 
@@ -271,7 +271,7 @@ export function extractFlavoursFromText(text, targetPizzaCount = 1) {
     // If deal needs 2 pizzas and customer only provided 1 flavour (e.g. "chicken tikka"):
     // Treat as both pizzas in that flavour
     if (targetPizzaCount === 2 && matchedNames.length === 1) {
-        return [matchedNames[0], matchedNames[0]];
+        return [matchedNames[0]];
     }
 
     return matchedNames;
@@ -365,16 +365,25 @@ export function formatDealFlavourPrompt(deal, pizzaInfo) {
     return `${header}\n\n${flvList}\n\n${footer}`;
 }
 
+export function formatSingleFlavourConfirmationPrompt(flavourName, pizzaInfo = {}) {
+    const isPremium = pizzaInfo.pizzaType === 'PREMIUM';
+    const altFlavours = isPremium
+        ? 'Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, ya Stuffed Crust'
+        : 'Chicken Tikka, Chicken Supreme, Cheese Lover, ya Chicken Tandori';
+    return `Aap ne ${flavourName} select kiya hai. Kya dono pizzas ${flavourName} rakhne hain ya doosre pizza ke liye koi aur flavour chunna chahenge (jaise ${altFlavours})?`;
+}
+
 // ─── Session State for Pending Deal Flavour ───────────────────────────────
 const _pendingDealFlavourBySession = new Map();
 const FLAVOUR_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
-export function setPendingDealFlavour(sessionKey, { deal, quantity = 1, pizzaInfo }) {
+export function setPendingDealFlavour(sessionKey, { deal, quantity = 1, pizzaInfo, firstFlavour = null }) {
     if (!sessionKey) return;
     _pendingDealFlavourBySession.set(sessionKey, {
         deal,
         quantity,
         pizzaInfo,
+        firstFlavour: firstFlavour || null,
         timestamp: Date.now(),
     });
 }
