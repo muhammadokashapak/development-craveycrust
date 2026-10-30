@@ -159,6 +159,15 @@ export async function getCategoryWithItems(identifier, restaurantId) {
     cleanStr = cleanStr.replace(/(?:\s+(?:mai|me|mein)\s+(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay)?|\s+(?:dikhao|bhejo|options|list|items?))$/i, '').trim();
     const cleanSingular = cleanStr.replace(/s$/, '');
 
+    // SAKHT GUARD: If the query contains food item names or ordering quantities, NEVER treat it as a generic category!
+    const hasFoodItemKeywords = /\b(zinger|ziggy|zegy|zeggy|wing|wings|fries|tikka|fajita|extreme|supreme|kebab|roll|rolls|crispy|oven|baked|junior|chunks|alfredo|pasta|shawarma|wrap|nugget|nuggets|box|platter)\b/i.test(cleanStr);
+    const hasQuantitySignals = /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\b/i.test(cleanStr);
+    if (hasFoodItemKeywords || hasQuantitySignals) {
+        // Only allow exact match on category name or slug if explicitly requested as a category
+        const exactMatch = categories.find(c => c.id === identifier || c.slug.toLowerCase() === cleanStr || c.name.toLowerCase() === cleanStr);
+        return exactMatch || null;
+    }
+
     const found = categories.find(c => {
         const cName = c.name.toLowerCase();
         const cSlug = c.slug.toLowerCase();
@@ -167,9 +176,8 @@ export async function getCategoryWithItems(identifier, restaurantId) {
                cSlug === cleanStr ||
                cName === cleanStr ||
                cSingular === cleanSingular ||
-               cName.includes(cleanStr) ||
-               cleanStr.includes(cName) ||
-               cleanStr.includes(cSingular);
+               cSingular === cleanStr ||
+               cName.includes(cleanStr);
     });
 
     return found || null;
@@ -279,7 +287,13 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
 
     const prisma = getDbClient();
     const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
-    const cleanQ = query.trim().toLowerCase();
+
+    // Strip leading quantity (e.g. "2 zinger burger" -> "zinger burger", "do ziggy burger" -> "ziggy burger")
+    let rawItemQ = query.trim().toLowerCase();
+    rawItemQ = rawItemQ.replace(/^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
+    // Also strip trailing ordering verbs
+    rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
+    const cleanQ = rawItemQ;
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
 
     // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small")
@@ -409,6 +423,47 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             ...it,
             variants: it.variants || [],
         }));
+    }
+
+    // 3b. Explicit item aliases (e.g. "ziggy burger" / "ziggy" -> Zegy Burger, "zinger" -> Zinger Burger, etc.)
+    const isZiggy = /\b(?:ziggy|zeggy|zigy|zigi|zegy)\b/i.test(cleanQ) || (strippedQ && /\b(?:ziggy|zeggy|zigy|zigi|zegy)\b/i.test(strippedQ));
+    const isZinger = /\b(?:zinger|zingr|zingrr|zingar)\b/i.test(cleanQ) || (strippedQ && /\b(?:zinger|zingr|zingrr|zingar)\b/i.test(strippedQ));
+    const isChickenBurger = /\b(?:chicken\s*burger|chkn\s*burger)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*burger|chkn\s*burger)\b/i.test(strippedQ));
+    const isLoadedFries = /\b(?:loaded\s*fries|frenzy\s*fries\s*loaded|load\s*fries)\b/i.test(cleanQ) || (strippedQ && /\b(?:loaded\s*fries|frenzy\s*fries\s*loaded|load\s*fries)\b/i.test(strippedQ));
+    const isHotWings = /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(strippedQ));
+    const isOvenBakedWings = /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(strippedQ));
+    const isBehariRoll = /\b(?:behari|bihari|behri)\s*roll\b/i.test(cleanQ) || (strippedQ && /\b(?:behari|bihari|behri)\s*roll\b/i.test(strippedQ));
+
+    let aliasTargetItem = null;
+    if (isZiggy && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'zegy-burger' || /zegy\s*burger/i.test(i.name));
+    } else if (isZinger && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'zinger-burger' || /zinger\s*burger/i.test(i.name));
+    } else if (isChickenBurger && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-burger' || /chicken\s*burger/i.test(i.name));
+    } else if (isLoadedFries) {
+        aliasTargetItem = allItems.find(i => i.slug === 'loaded-fries' || /loaded\s*fries/i.test(i.name));
+    } else if (isHotWings) {
+        aliasTargetItem = allItems.find(i => i.slug === 'hot-wings' || /hot\s*wings/i.test(i.name));
+    } else if (isOvenBakedWings) {
+        aliasTargetItem = allItems.find(i => i.slug === 'oven-baked-wings' || /oven\s*baked/i.test(i.name));
+    } else if (isBehariRoll) {
+        aliasTargetItem = allItems.find(i => i.slug === 'behari-roll' || /behari\s*roll/i.test(i.name));
+    }
+
+    if (aliasTargetItem) {
+        const matchedVariant = (extractedSize && aliasTargetItem.variants?.length > 0)
+            ? matchVariant(aliasTargetItem.variants, extractedSize)
+            : null;
+        return {
+            status: 'EXACT_MATCH',
+            type: 'ITEM',
+            item: aliasTargetItem,
+            hasVariants: (aliasTargetItem.variants || []).length > 0,
+            variants: aliasTargetItem.variants || [],
+            matchedVariant,
+            extractedSize,
+        };
     }
 
     // Handle "Chicken Lover" specifically -> suggests Cheese Lover (nearest item) + available chicken pizzas

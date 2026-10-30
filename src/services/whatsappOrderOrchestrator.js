@@ -94,6 +94,27 @@ function clearDraft(sessionId) {
  *   "2 Deal 1" -> quantity: 2, query: "Deal 1"
  *   "Chicken Extreme" -> quantity: 1, query: "Chicken Extreme"
  */
+const WORD_TO_QTY = {
+    'ek': 1, 'aik': 1, 'ik': 1, 'one': 1, '1': 1,
+    'do': 2, 'doo': 2, 'two': 2, '2': 2,
+    'teen': 3, 'tin': 3, 'three': 3, '3': 3,
+    'char': 4, 'chaar': 4, 'four': 4, '4': 4,
+    'panch': 5, 'paanch': 5, 'five': 5, '5': 5,
+    'chay': 6, 'chey': 6, 'che': 6, 'six': 6, '6': 6,
+    'saat': 7, 'sat': 7, 'seven': 7, '7': 7,
+    'aath': 8, 'ath': 8, 'eight': 8, '8': 8,
+    'nau': 9, 'no': 9, 'nine': 9, '9': 9,
+    'dus': 10, 'das': 10, 'ten': 10, '10': 10,
+    'gyara': 11, 'gyarah': 11, 'eleven': 11, '11': 11,
+    'bara': 12, 'barah': 12, 'twelve': 12, '12': 12,
+};
+const parseQtyToken = (tok) => {
+    if (!tok) return 1;
+    const s = String(tok).trim().toLowerCase();
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    return WORD_TO_QTY[s] || 1;
+};
+
 export function extractQuantityAndQuery(input) {
     let raw = (input || '').trim();
     if (!raw) return { quantity: 1, query: '' };
@@ -106,28 +127,28 @@ export function extractQuantityAndQuery(input) {
         raw = cartWrapper[1].trim();
     }
 
-    // Deal with explicit leading quantity: "2 Deal 1", "2x Deal 1"
-    const dealLeadingQty = raw.match(/^(\d+)\s+(?:x\s+)?(deal\s*(?:#|no\.?)?\s*\d+)$/i);
+    // Deal with explicit leading quantity (digits or words): "2 Deal 1", "do Deal 1"
+    const dealLeadingQty = raw.match(/^(?:(\d+)|(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s+(?:x\s+)?(deal\s*(?:#|no\.?)\s*\d+)$/i);
     if (dealLeadingQty) {
-        return { quantity: parseInt(dealLeadingQty[1], 10), query: dealLeadingQty[2].trim() };
+        return { quantity: parseQtyToken(dealLeadingQty[1] || dealLeadingQty[2]), query: dealLeadingQty[3].trim() };
     }
     // Deal with trailing quantity: "Deal 1 x2", "Deal 1 * 2"
-    const dealTrailingQty = raw.match(/^(deal\s*(?:#|no\.?)?\s*\d+)\s*(?:x|\*)\s*(\d+)$/i);
+    const dealTrailingQty = raw.match(/^(deal\s*(?:#|no\.?)\s*\d+)\s*(?:x|\*)\s*(\d+)$/i);
     if (dealTrailingQty) {
         return { quantity: parseInt(dealTrailingQty[2], 10), query: dealTrailingQty[1].trim() };
     }
     // Direct deal without quantity: "Deal 1", "deal 2"
-    if (/^deal\s*(?:#|no\.?)?\s*\d+$/i.test(raw)) {
+    if (/^deal\s*(?:#|no\.?)\s*\d+$/i.test(raw)) {
         return { quantity: 1, query: raw.trim() };
     }
 
-    // Leading quantity: "2 Chicken Extreme", "1 Pizza", "2 P5 Crispy Zinger", "5 hot wings kr dain"
-    const leadingMatch = raw.match(/^(\d+)\s*(?:x\s+)?(.+)$/i);
-    if (leadingMatch && leadingMatch[2].trim().length > 1) {
-        const cleanedQ = leadingMatch[2]
-            .replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '')
+    // Leading quantity (digits or words): "2 Chicken Extreme", "1 Pizza", "5 hot wings kr dain", "do ziggy burger"
+    const leadingMatch = raw.match(/^(?:(\d+)|(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(.+)$/i);
+    if (leadingMatch && leadingMatch[3].trim().length > 1) {
+        const cleanedQ = leadingMatch[3]
+            .replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '')
             .trim();
-        return { quantity: parseInt(leadingMatch[1], 10), query: cleanedQ || leadingMatch[2].trim() };
+        return { quantity: parseQtyToken(leadingMatch[1] || leadingMatch[2]), query: cleanedQ || leadingMatch[3].trim() };
     }
 
     // Trailing quantity: "Chicken Extreme 2", "Chicken Extreme x2"
@@ -336,8 +357,38 @@ Reply cart to view cart ya checkout to proceed.`,
             };
         }
 
-        // If item has variants but no size was specified, prompt for size
+        // If item has variants but no size was specified, prompt for size (or auto-add if only 1 Standard variant)
         if (resolved.hasVariants && resolved.variants && resolved.variants.length > 0) {
+            // Auto-add if item only has 1 variant or variant is "Standard" (e.g. Burgers, Fries, Single portions)
+            if (resolved.variants.length === 1 || resolved.variants[0].name.toLowerCase() === 'standard') {
+                const autoVariant = resolved.variants[0];
+                await addItemToCart({
+                    sessionKey: convSession.session_key,
+                    restaurantId,
+                    menuItemId: resolved.item.id,
+                    variantId: autoVariant.id,
+                    quantity,
+                });
+                await updateSessionStage({ sessionKey: convSession.session_key, stage: 'BUILDING_CART' });
+                const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+                const globalDiscount = await getGlobalDiscountSettings(restaurantId);
+                const disc = calculateDiscount(
+                    autoVariant.price,
+                    autoVariant.discount_percent ?? resolved.item.discount_percent,
+                    autoVariant.discount_fixed ?? resolved.item.discount_fixed,
+                    globalDiscount
+                );
+                const originalPrice = Number(autoVariant.price);
+                const unitPriceStr = disc.hasDiscount
+                    ? `~Rs. ${originalPrice * quantity}~ Rs. ${disc.discountedPrice * quantity} (${disc.label})`
+                    : `Rs. ${originalPrice * quantity}`;
+                const discountLine = cartTotals.discountTotal > 0 ? `\nDiscount: -Rs. ${cartTotals.discountTotal}\nTotal: Rs. ${cartTotals.total}` : '';
+                return {
+                    text: `Added to Cart!\n\n${quantity}x ${resolved.item.name}: ${unitPriceStr}\nSubtotal: Rs. ${cartTotals.subtotal}${discountLine}\n\nReply cart to view cart ya checkout to proceed.`,
+                    intent: 'ADD_ITEM',
+                    stage: 'BUILDING_CART',
+                };
+            }
             draft.pendingVariantItem = {
                 item: resolved.item,
                 variants: resolved.variants,
@@ -686,28 +737,32 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
     let matchedCategory = null;
     const catQuery = entities?.categoryName || cleanText.replace(/piza\b/gi, 'pizza');
 
-    if (intent === 'SHOW_CATEGORY' || entities?.categoryName) {
-        matchedCategory = await getCategoryWithItems(catQuery, restaurantId);
-    } else if (
-        !/^(?:deals?|special\s+deals|offers|menu)$/i.test(cleanText.trim()) &&
-        !/^(?:g|ji|jee|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|thk|ok|okay|confirm|sahi|bilkul|hi+|hello+|hey+|salam|slam|aoa)[\s.!?]*$/i.test(cleanText.trim()) &&
-        cleanText.trim().length >= 3 &&
-        convSession.stage !== 'COLLECTING_DETAILS' &&
-        convSession.stage !== 'CONFIRMING_ORDER' &&
-        convSession.stage !== 'AWAITING_PAYMENT'
-    ) {
-        // Check if query matches or contains any active category name (e.g. "drinks", "drinks mai kya ha", "premium pizzas")
-        const allCategories = await getActiveCategories(restaurantId);
-        const lowerQ = cleanText.toLowerCase().replace(/piza\b/g, 'pizza');
-        const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        for (const c of allCategories) {
-            const cName = c.name.toLowerCase();
-            const cSingular = cName.replace(/s$/, '');
-            const isExact = lowerQ === cName || lowerQ === cSingular;
-            const isWordMatch = cName.length >= 4 && (new RegExp(`\\b${escapeReg(cName)}\\b`, 'i').test(lowerQ) || new RegExp(`\\b${escapeReg(cSingular)}\\b`, 'i').test(lowerQ));
-            if (isExact || isWordMatch) {
-                matchedCategory = await getCategoryWithItems(c.id, restaurantId);
-                break;
+    const isExplicitAddItem = intent === 'ADD_ITEM' || intentResult?.intent === 'ADD_ITEM' || Boolean(entities?.itemQuery);
+    const hasOrderQuantityOrItem = /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\b/i.test(cleanText) ||
+        /\b(zinger|ziggy|zegy|zeggy|hot\s*wings|oven\s*baked|loaded\s*fries|behari\s*roll|tikka|fajita|extreme|supreme)\b/i.test(cleanText);
+
+    if (!isExplicitAddItem && !hasOrderQuantityOrItem) {
+        if (intent === 'SHOW_CATEGORY' || entities?.categoryName) {
+            matchedCategory = await getCategoryWithItems(catQuery, restaurantId);
+        } else if (
+            !/^(?:deals?|special\s+deals|offers|menu)$/i.test(cleanText.trim()) &&
+            !/^(?:g|ji|jee|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|thk|ok|okay|confirm|sahi|bilkul|hi+|hello+|hey+|salam|slam|aoa)[\s.!?]*$/i.test(cleanText.trim()) &&
+            cleanText.trim().length >= 3 &&
+            convSession.stage !== 'COLLECTING_DETAILS' &&
+            convSession.stage !== 'CONFIRMING_ORDER' &&
+            convSession.stage !== 'AWAITING_PAYMENT'
+        ) {
+            // Check if query matches an active category name strictly
+            const allCategories = await getActiveCategories(restaurantId);
+            const lowerQ = cleanText.toLowerCase().replace(/piza\b/g, 'pizza').trim();
+            for (const c of allCategories) {
+                const cName = c.name.toLowerCase();
+                const cSlug = c.slug.toLowerCase();
+                const cSingular = cName.replace(/s$/, '');
+                if (lowerQ === cName || lowerQ === cSlug || lowerQ === cSingular) {
+                    matchedCategory = await getCategoryWithItems(c.id, restaurantId);
+                    break;
+                }
             }
         }
     }
@@ -1543,15 +1598,28 @@ Direct order: likhein 2 zinger ya 1 pizza`,
 
     // ── 6. Dynamic Entity Resolution Architecture ─────────────────────────
     // Resolution Hierarchy (Live DB / Services driven):
-    //   1. Active Category (by index if browsing, or by name/slug/singular)
-    //   2. Active Menu Item or Active Deal
+    //   1. Active Menu Item or Active Deal (FIRST PRIORITY!)
+    //   2. Active Category (by index if browsing, or by explicit category query)
     //   3. Centralized Knowledge Resolver (Delivery Areas DB, Deals DB, FAQ, Safe Fallback)
 
     const { quantity: parsedQty, query: extractedQuery } = extractQuantityAndQuery(cleanText);
     const resolvedQty = entities?.quantity || parsedQty || 1;
     const candidateQuery = entities?.itemQuery || extractedQuery || entities?.categoryName || cleanText;
 
-    // 1. Check Active Category
+    // 1. Check Active Menu Item or Active Deal FIRST
+    const resolvedEntity = await resolveMenuItemOrDeal(candidateQuery, restaurantId);
+    if (resolvedEntity && (resolvedEntity.status === 'EXACT_MATCH' || resolvedEntity.status === 'PARTIAL_MATCH' || resolvedEntity.status === 'AMBIGUOUS')) {
+        const itemResult = await handleResolvedItemOrDeal({
+            resolved: resolvedEntity,
+            quantity: resolvedQty,
+            convSession,
+            restaurantId,
+            draft,
+        });
+        if (itemResult) return itemResult;
+    }
+
+    // 2. Check Active Category ONLY if not resolved as item or deal
     let category = null;
     const isPureNum = /^\d+$/.test(candidateQuery.trim());
     const cleanedCatQ = candidateQuery.trim().toLowerCase()
@@ -1589,7 +1657,7 @@ Direct order: likhein 2 zinger ya 1 pizza`,
         if (convSession.stage === 'BROWSING_MENU' || entities?.categoryIndex) {
             category = await getCategoryWithItems(parseInt(candidateQuery, 10), restaurantId);
         }
-    } else {
+    } else if (!hasOrderQuantityOrItem) {
         category = await getCategoryWithItems(candidateQuery, restaurantId);
     }
 
@@ -1602,19 +1670,6 @@ Direct order: likhein 2 zinger ya 1 pizza`,
             intent: 'SHOW_CATEGORY',
             stage: 'BROWSING_MENU',
         };
-    }
-
-    // 2. Check Active Menu Item or Active Deal
-    const resolvedEntity = await resolveMenuItemOrDeal(candidateQuery, restaurantId);
-    if (resolvedEntity && (resolvedEntity.status === 'EXACT_MATCH' || resolvedEntity.status === 'PARTIAL_MATCH' || resolvedEntity.status === 'AMBIGUOUS')) {
-        const itemResult = await handleResolvedItemOrDeal({
-            resolved: resolvedEntity,
-            quantity: resolvedQty,
-            convSession,
-            restaurantId,
-            draft,
-        });
-        if (itemResult) return itemResult;
     }
 
     // 3. Centralized Knowledge Resolution (Structured DB -> FAQ -> Fallback)

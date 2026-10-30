@@ -327,14 +327,33 @@ async function executeTool(toolName, args, context) {
                 let quantity   = parseInt(args.quantity || 1, 10);
                 let notes      = args.notes || undefined;
 
-                // Quantity Auto-Rescue: If quantity is 1 or missing, but user text had explicit quantity (e.g. "5 hot wings", "2 loaded fries", "6 zinger burger")
+                // Quantity Auto-Rescue: If quantity is 1 or missing, but user text had explicit quantity (e.g. "5 hot wings", "2 loaded fries", "6 zinger burger", "do ziggy burger")
                 if ((!args.quantity || quantity === 1) && text) {
-                    const explicitQtyMatch = text.match(/\b(\d+)\s*(?:x\s+)?(?:pcs?|pieces?|portion|orders?|boxes?)?\s*(?:hot\s*wings|wings|fries|loaded\s*fries|pizza|burger|deal|zinger|roll|chicken|piece)/i) ||
-                                             text.match(/^(\d+)\s+/);
-                    if (explicitQtyMatch) {
-                        const parsedQ = parseInt(explicitQtyMatch[1], 10);
+                    const QTY_WORD_MAP = {
+                        'ek': 1, 'aik': 1, 'ik': 1, 'one': 1, '1': 1,
+                        'do': 2, 'doo': 2, 'two': 2, '2': 2,
+                        'teen': 3, 'tin': 3, 'three': 3, '3': 3,
+                        'char': 4, 'chaar': 4, 'four': 4, '4': 4,
+                        'panch': 5, 'paanch': 5, 'five': 5, '5': 5,
+                        'chay': 6, 'chey': 6, 'che': 6, 'six': 6, '6': 6,
+                        'saat': 7, 'sat': 7, 'seven': 7, '7': 7,
+                        'aath': 8, 'ath': 8, 'eight': 8, '8': 8,
+                        'nau': 9, 'no': 9, 'nine': 9, '9': 9,
+                        'dus': 10, 'das': 10, 'ten': 10, '10': 10,
+                    };
+                    const digitQtyMatch = text.match(/\b(\d+)\s*(?:x\s+)?(?:pcs?|pieces?|portion|orders?|boxes?)?\s*(?:hot\s*wings|wings|fries|loaded\s*fries|pizza|burger|deal|zinger|ziggy|zegy|zeggy|roll|chicken|piece)/i) ||
+                                          text.match(/^(\d+)\s+/);
+                    const wordQtyMatch = text.match(/\b(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:x\s+)?(?:pcs?|pieces?|portion|orders?|boxes?)?\s*(?:hot\s*wings|wings|fries|loaded\s*fries|pizza|burger|deal|zinger|ziggy|zegy|zeggy|roll|chicken|piece)/i) ||
+                                         text.match(/^(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten)\s+/i);
+                    if (digitQtyMatch) {
+                        const parsedQ = parseInt(digitQtyMatch[1], 10);
                         if (parsedQ > 1 && parsedQ <= 50) {
                             quantity = parsedQ;
+                        }
+                    } else if (wordQtyMatch) {
+                        const wordVal = QTY_WORD_MAP[wordQtyMatch[1].toLowerCase()];
+                        if (wordVal && wordVal > 1 && wordVal <= 50) {
+                            quantity = wordVal;
                         }
                     }
                 }
@@ -473,6 +492,8 @@ async function executeTool(toolName, args, context) {
                                         const matchedVariant = matchVariant(resolved.variants, rawVariant || args.itemName);
                                         if (matchedVariant) {
                                             variantId = matchedVariant.id;
+                                        } else if (resolved.variants?.[0]?.name?.toLowerCase() === 'standard') {
+                                            variantId = resolved.variants[0].id;
                                         } else {
                                             setLastDiscussedItem(sessionKey, resolved.item);
                                             const globalDiscount = await getGlobalDiscountSettings(restId).catch(() => null);

@@ -1141,17 +1141,42 @@ export class DeterministicIntentProvider {
             };
         }
 
-        // Add item Pattern A: "2 zinger", "3 chicken pizza", "1 deal 1"
-        const prefixQtyMatch = lower.match(/^(\d+)\s+(?:x\s+)?([a-zA-Z0-9\s-]+)$/);
-        if (prefixQtyMatch && prefixQtyMatch[2].trim().length > 1) {
-            return {
-                intent: 'ADD_ITEM',
-                entities: {
-                    quantity: parseInt(prefixQtyMatch[1], 10),
-                    itemQuery: prefixQtyMatch[2].trim(),
-                },
-                confidence: 0.9,
-            };
+        // Add item Pattern A: "2 zinger", "3 chicken pizza", "1 deal 1", "do ziggy burger", "do ziggy burger kar dein", "5 hot wings kr dain"
+        const QTY_WORD_MAP = {
+            'ek': 1, 'aik': 1, 'ik': 1, 'one': 1, '1': 1,
+            'do': 2, 'doo': 2, 'two': 2, '2': 2,
+            'teen': 3, 'tin': 3, 'three': 3, '3': 3,
+            'char': 4, 'chaar': 4, 'four': 4, '4': 4,
+            'panch': 5, 'paanch': 5, 'five': 5, '5': 5,
+            'chay': 6, 'chey': 6, 'che': 6, 'six': 6, '6': 6,
+            'saat': 7, 'sat': 7, 'seven': 7, '7': 7,
+            'aath': 8, 'ath': 8, 'eight': 8, '8': 8,
+            'nau': 9, 'no': 9, 'nine': 9, '9': 9,
+            'dus': 10, 'das': 10, 'ten': 10, '10': 10,
+            'gyara': 11, 'gyarah': 11, 'eleven': 11, '11': 11,
+            'bara': 12, 'barah': 12, 'twelve': 12, '12': 12,
+        };
+        const parseAnyQty = (val) => {
+            if (!val) return 1;
+            const str = String(val).trim().toLowerCase();
+            if (/^\d+$/.test(str)) return parseInt(str, 10);
+            return QTY_WORD_MAP[str] || 1;
+        };
+
+        const prefixQtyMatch = lower.match(/^(?:(\d+)|(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|gyara|gyarah|bara|barah|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?([a-zA-Z0-9\s-]+?)(?:\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do)))?[\s.!?]*$/i);
+        if (prefixQtyMatch && prefixQtyMatch[3].trim().length > 1) {
+            const rawItem = prefixQtyMatch[3].trim();
+            const isNotCategoryAlone = !/^(?:menu|deals?|categories)$/i.test(rawItem);
+            if (isNotCategoryAlone) {
+                return {
+                    intent: 'ADD_ITEM',
+                    entities: {
+                        quantity: parseAnyQty(prefixQtyMatch[1] || prefixQtyMatch[2]),
+                        itemQuery: rawItem,
+                    },
+                    confidence: 0.95,
+                };
+            }
         }
 
         // Add item Pattern B: "zinger x2", "deal 1 x2"
@@ -1417,15 +1442,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const wordCount = words.length;
 
     // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
-    const hasLeadingOrderQuantity = /^\d+\s*(?:x\s+)?(?:small|medium|large|party(?:\s*size)?|reg|regular)?\s*(?:pizza|burger|deal|zinger|roll|wings?|hot\s*wings|fries|loaded\s*fries|nuggets?|pasta|shawarma|wrap|box|platter|calzone|chicken|piece|pcs?)/i.test(lower) ||
-        /^\d+\s+(?:hot\s*wings|wings?|loaded\s*fries|fries|zinger|burger|pizza|roll|pasta|nuggets?|box|platter)/i.test(lower) ||
-        /^\d+\s*(?:x\s+)?(?:small|medium|large|party|reg|regular)?\s*[a-z]+/i.test(lower);
+    const hasLeadingOrderQuantity = /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(?:small|medium|large|party(?:\s*size)?|reg|regular)?\s*(?:pizza|burger|deal|meal|zinger|ziggy|zegy|zeggy|roll|wings?|hot\s*wings|fries|loaded\s*fries|nuggets?|pasta|shawarma|wrap|box|platter|calzone|chicken|piece|pcs?)/i.test(lower) ||
+        /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s+(?:hot\s*wings|wings?|loaded\s*fries|fries|zinger|ziggy|zegy|zeggy|burger|pizza|roll|pasta|nuggets?|box|platter)/i.test(lower) ||
+        /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(?:small|medium|large|party|reg|regular)?\s*[a-z]+/i.test(lower);
 
     const hasCartOrOrderAction = hasLeadingOrderQuantity ||
         /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
         /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
-        /^(?:add|order)\s+\d+/i.test(lower) ||
-        /^\d+\s*(?:x\s+)?(?:pizza|burger|deal|zinger|roll)/i.test(lower);
+        /^(?:add|order)\s+(?:\d+|aik|ek|do|teen|char|paanch)/i.test(lower) ||
+        /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower);
 
     // ── 1. Handover / Complaint / Real Person Request ──
     const isFoodOrDealContext = /\b(?:deals?|meals?|offers?|packages?|combos?|pizza|burger|fries|food|khana|menu|catalog|items?|order|serving|servings|person\s*deal|person\s*meal|bando\s*ki\s*deal|bando\s*k\s*liye|bandon\s*k\s*liye)\b/i.test(lower) ||
