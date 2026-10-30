@@ -1625,11 +1625,8 @@ async function handleMessage(sock, msg, session) {
             // ── Route to Standalone AI Agent (Fast routes + AI + Token logging) ──
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
-            let customerName = msg.pushName || identity?.name || null;
             const liveDetails = getSessionOrderDetails(jid, customerPhone);
-            if (liveDetails?.name) {
-                customerName = liveDetails.name;
-            }
+            let customerName = (liveDetails?.nameExplicit ? liveDetails.name : null) || liveDetails?.name || null;
             console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
 
             const incomingUserMsg = isVoiceNote
@@ -1740,11 +1737,8 @@ async function handleMessage(sock, msg, session) {
         try {
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
-            let customerName = msg.pushName || identity?.name || null;
             const liveDetailsOrder = getSessionOrderDetails(jid, customerPhone);
-            if (liveDetailsOrder?.name) {
-                customerName = liveDetailsOrder.name;
-            }
+            let customerName = (liveDetailsOrder?.nameExplicit ? liveDetailsOrder.name : null) || liveDetailsOrder?.name || null;
 
             const incomingOrderMsg = isVoiceNote
                 ? `🎙️ ${text}`

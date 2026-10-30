@@ -1654,12 +1654,11 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
 
     // Pre-fill returning customer details ONLY if not already explicitly provided in this session
-    // Explicit customer input (e.g. Aslam) MUST NEVER be overwritten by past profile!
-    if (!sessionDetails.name && !sessionDetails.nameExplicit && rememberedDetails?.name) {
-        sessionDetails.name = rememberedDetails.name;
+    // Explicit customer input (e.g. Aslam, Kashii) MUST NEVER be overwritten by past profile!
+    if (rememberedDetails?.name && !sessionDetails.savedName) {
+        sessionDetails.savedName = rememberedDetails.name;
     }
-    if (!sessionDetails.address && rememberedDetails?.address) {
-        sessionDetails.address = rememberedDetails.address;
+    if (rememberedDetails?.address && !sessionDetails.savedAddress) {
         sessionDetails.savedAddress = rememberedDetails.address;
     }
     // ORDER CONTACT PHONE: Always default strictly to sender's WhatsApp phone number (whatsappPhone).

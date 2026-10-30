@@ -407,7 +407,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     }
     if (nameCandidate && !NOT_NAME_REGEX.test(nameCandidate) && !isFoodOrFlavorWord(nameCandidate)) {
         const parsedName = nameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-        if (!knownDetails.name) {
+        if (!knownDetails.name || !knownDetails.nameExplicit) {
             name = parsedName;
         } else if (nameExplicit) {
             const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?(?:naam|name)|(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is)\b/i.test(raw);
@@ -533,11 +533,10 @@ export async function getNextCheckoutStepResponse({
         try {
             const { getRememberedCustomerDetails } = await import('./sessionService.js');
             const remembered = await getRememberedCustomerDetails(null, rawCleanPhone);
-            if (remembered?.name && !details.name && !details.nameExplicit) {
-                details.name = remembered.name;
+            if (remembered?.name && !details.savedName) {
+                details.savedName = remembered.name;
             }
-            if (remembered?.address && !details.address && !details.location) {
-                details.address = remembered.address;
+            if (remembered?.address && !details.savedAddress) {
                 details.savedAddress = remembered.address;
                 details.savedPhone = rawCleanPhone; // Strictly lock to current WhatsApp phone
             }
@@ -1599,10 +1598,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 curr.savedProfileChecked = true;
                 const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
                 if (remembered) {
-                    if (remembered.name && !curr.name && !curr.nameExplicit) {
-                        curr.name = remembered.name;
+                    if (remembered.name && !curr.savedName) {
+                        curr.savedName = remembered.name;
                     }
-                    if (remembered.address && !curr.address && !curr.location) {
+                    if (remembered.address && !curr.savedAddress) {
                         curr.savedAddress = remembered.address;
                         curr.savedPhone = cleanPhone; // Strictly lock to current WhatsApp phone
                     }
@@ -3536,9 +3535,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                // STRICT IMMUTABILITY: Bare string name extraction is ONLY for initial name entry when details.name is NOT set!
-                // An already established name cannot be overwritten by random bare words!
-                if (!details.name) {
+                // STRICT IMMUTABILITY: Bare string name extraction accepts initial name or overrides unconfirmed suggestions!
+                if (!details.name || !details.nameExplicit) {
                     const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                     updateSessionOrderDetails(userSessionId, { name: customerName, nameExplicit: true }, cleanPhone);
                     const updated = getSessionOrderDetails(userSessionId, cleanPhone);

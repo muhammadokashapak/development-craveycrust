@@ -585,6 +585,16 @@ export async function createOrder(params) {
         }).catch(err => console.warn('[ORDER_SERVICE] updateCustomerNameForChat error:', err.message));
     }
 
+    // Clear active session order details after successful order placement so next order starts clean
+    try {
+        const { clearSessionOrderDetails } = await import('./sessionService.js');
+        const cleanPhone = (orderResult.phone || session.verified_phone || '').replace(/\D/g, '');
+        clearSessionOrderDetails(session.id, cleanPhone);
+        if (session.chat_id && session.chat_id !== session.id) {
+            clearSessionOrderDetails(session.chat_id, cleanPhone);
+        }
+    } catch (_) {}
+
     const fullOrder = await getOrderByNumber({ restaurantId: restId, orderNumber: orderResult.order_number });
     
     // Asynchronously dispatch admin WhatsApp notification (never blocks or rolls back order)
