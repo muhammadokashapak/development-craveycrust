@@ -11,51 +11,161 @@
 import axios from 'axios';
 import { env } from '../config/env.js';
 
-// ─── Key Pool Manager ─────────────────────────────────────────────────────
+// ─── Key Pool Manager (Quota-Aware & Load-Balanced) ──────────────────────
 
 class KeyPool {
-    constructor(keysStr) {
+    constructor(keysStr, opts = {}) {
         this._keys = (keysStr || '')
             .split(',')
             .map(k => k.trim())
             .filter(k => k && !/^(key\d*|your_.*_key)$/i.test(k));
-        this._index = 0; // round-robin pointer
-        // Per-key cooldown map: key → timestamp when usable again
-        this._cooldown = new Map();
+
+        // Gemini Free Tier Limits: 15 RPM (Requests Per Minute), 1500 RPD (Requests Per Day)
+        this._rpmLimit = opts.rpmLimit ?? 15;
+        this._rpmSafetyCap = opts.rpmSafetyCap ?? 10; // Safe threshold to prevent 429
+        this._rpdLimit = opts.rpdLimit ?? 1500;
+        this._rpdSafetyCap = opts.rpdSafetyCap ?? 1450; // Daily safe threshold
+
+        this._stats = new Map();
+        for (let i = 0; i < this._keys.length; i++) {
+            this._getOrCreateStats(this._keys[i], i);
+        }
     }
 
     get size() { return this._keys.length; }
 
+    _getOrCreateStats(key, index = -1) {
+        if (!this._stats.has(key)) {
+            const idx = index >= 0 ? index : this._keys.indexOf(key);
+            this._stats.set(key, {
+                key,
+                index: idx,
+                requestTimestamps: [],
+                dailyCount: 0,
+                dayEpoch: new Date().toISOString().slice(0, 10),
+                totalRequests: 0,
+                consecutiveErrors: 0,
+                coolUntil: 0,
+                lastUsedAt: 0,
+                lastResponseTimeMs: 0,
+            });
+        }
+        return this._stats.get(key);
+    }
+
     /**
-     * Get next available (not-cooled-down) key and its index, or null if all are in cooldown.
-     * @returns {{ key: string, index: number }|null}
+     * Get the healthiest key with maximum remaining quota.
+     * Prioritizes lowest RPM in last 60s, lowest daily count, and longest rest time.
+     * @returns {{ key: string, index: number, stats?: object }|null}
      */
     next() {
         if (this._keys.length === 0) return null;
         const now = Date.now();
-        for (let i = 0; i < this._keys.length; i++) {
-            const idx = (this._index + i) % this._keys.length;
-            const key = this._keys[idx];
-            const coolUntil = this._cooldown.get(key) || 0;
-            if (now >= coolUntil) {
-                this._index = (idx + 1) % this._keys.length;
-                return { key, index: idx };
+        const today = new Date().toISOString().slice(0, 10);
+
+        // 1. Refresh stats (clean up requests older than 60s, reset daily counts if new day)
+        for (const key of this._keys) {
+            const s = this._getOrCreateStats(key);
+            if (s.dayEpoch !== today) {
+                s.dayEpoch = today;
+                s.dailyCount = 0;
             }
+            s.requestTimestamps = s.requestTimestamps.filter(t => (now - t) < 60_000);
         }
-        // If single key and cooled down, release cooldown early to allow retries
-        if (this._keys.length === 1) {
-            return { key: this._keys[0], index: 0 };
+
+        // 2. Identify available candidates (not in cooldown, daily quota not exhausted)
+        const candidates = [];
+        for (let i = 0; i < this._keys.length; i++) {
+            const key = this._keys[i];
+            const s = this._stats.get(key);
+            if (now < s.coolUntil) continue;
+            if (s.dailyCount >= this._rpdSafetyCap) continue;
+            candidates.push({ key, index: i, stats: s });
         }
-        return null; // all keys currently in cooldown
+
+        // If all keys in cooldown / single key fallback
+        if (candidates.length === 0) {
+            if (this._keys.length === 1) {
+                const s = this._stats.get(this._keys[0]);
+                return this._claimKey({ key: this._keys[0], index: 0, stats: s }, now);
+            }
+            // Release earliest cooled key early if needed to keep bot responsive
+            const nonDailyKeys = this._keys
+                .map((k, i) => ({ key: k, index: i, stats: this._stats.get(k) }))
+                .filter(c => c.stats.dailyCount < this._rpdSafetyCap);
+            if (nonDailyKeys.length > 0) {
+                nonDailyKeys.sort((a, b) => a.stats.coolUntil - b.stats.coolUntil);
+                const chosen = nonDailyKeys[0];
+                chosen.stats.coolUntil = 0;
+                return this._claimKey(chosen, now);
+            }
+            return null;
+        }
+
+        // 3. Prefer keys under safe RPM threshold (10 RPM)
+        const underRpmLimit = candidates.filter(c => c.stats.requestTimestamps.length < this._rpmSafetyCap);
+        const poolToPickFrom = underRpmLimit.length > 0 ? underRpmLimit : candidates;
+
+        // 4. Sort candidates to pick the BEST key with MAX remaining quota:
+        // - Lowest current RPM count (most available per-minute headroom)
+        // - Lowest daily count (most remaining daily quota)
+        // - Least recently used (longest rest time)
+        // - Lowest consecutive errors
+        poolToPickFrom.sort((a, b) => {
+            const rpmDiff = a.stats.requestTimestamps.length - b.stats.requestTimestamps.length;
+            if (rpmDiff !== 0) return rpmDiff;
+
+            const dailyDiff = a.stats.dailyCount - b.stats.dailyCount;
+            if (dailyDiff !== 0) return dailyDiff;
+
+            const lruDiff = (a.stats.lastUsedAt || 0) - (b.stats.lastUsedAt || 0);
+            if (lruDiff !== 0) return lruDiff;
+
+            return a.stats.consecutiveErrors - b.stats.consecutiveErrors;
+        });
+
+        const chosen = poolToPickFrom[0];
+        return this._claimKey(chosen, now);
+    }
+
+    _claimKey(chosen, now) {
+        chosen.stats.requestTimestamps.push(now);
+        chosen.stats.dailyCount++;
+        chosen.stats.totalRequests++;
+        chosen.stats.lastUsedAt = now;
+        return {
+            key: chosen.key,
+            index: chosen.index,
+            stats: {
+                currentRpm: chosen.stats.requestTimestamps.length,
+                dailyCount: chosen.stats.dailyCount,
+                remainingRpmQuota: Math.max(0, this._rpmLimit - chosen.stats.requestTimestamps.length),
+                remainingDailyQuota: Math.max(0, this._rpdLimit - chosen.stats.dailyCount),
+            }
+        };
     }
 
     /**
-     * Mark a key as temporarily exhausted (default 90 s cooldown, or 3 s if single key).
+     * Mark a key as temporarily cooled down.
      */
-    cooldown(key, durationMs = 90_000) {
+    cooldown(key, durationMs = 60_000) {
         const effectiveMs = this._keys.length === 1 ? Math.min(durationMs, 3_000) : durationMs;
-        this._cooldown.set(key, Date.now() + effectiveMs);
-        console.warn(`[LLM] Key cooled down for ${Math.round(effectiveMs / 1000)}s: ${key.slice(0, 8)}...`);
+        const s = this._getOrCreateStats(key);
+        s.coolUntil = Date.now() + effectiveMs;
+        s.consecutiveErrors++;
+        const idx = this._keys.indexOf(key);
+        console.warn(`[LLM] Key #${idx >= 0 ? idx : '?'} cooled down for ${Math.round(effectiveMs / 1000)}s: ${key.slice(0, 8)}...`);
+    }
+
+    /**
+     * Record a successful response on a key.
+     */
+    recordSuccess(key, latencyMs = 0) {
+        const s = this._stats.get(key);
+        if (s) {
+            s.consecutiveErrors = 0;
+            s.lastResponseTimeMs = latencyMs;
+        }
     }
 }
 
@@ -93,7 +203,7 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
             }
         }, {
             headers: { 'Content-Type': 'application/json' },
-            timeout: 30_000,
+            timeout: 10_000,
         });
 
         const cand = resp.data?.candidates?.[0];
@@ -112,41 +222,15 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
             usage: { promptTokens, replyTokens, totalTokens },
         };
     } catch (nativeErr) {
-        // If transient 503 (high demand) or 429, wait 1.5s and retry once
-        if (nativeErr.response?.status === 503 || nativeErr.response?.status === 429) {
-            console.warn(`[LLM] Gemini returned ${nativeErr.response?.status} — retrying after 1.5s delay...`);
-            await new Promise(r => setTimeout(r, 1500));
-            try {
-                const retryResp = await axios.post(nativeUrl, {
-                    systemInstruction,
-                    contents,
-                    generationConfig: {
-                        temperature: temperature ?? 0.2,
-                        maxOutputTokens: maxTokens ?? 1024,
-                    }
-                }, {
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 30_000,
-                });
-                const cand = retryResp.data?.candidates?.[0];
-                let content = '';
-                if (cand?.content?.parts) {
-                    content = cand.content.parts.map(p => p.text || '').join('');
-                }
-                const usage = retryResp.data?.usageMetadata || {};
-                const promptTokens = usage.promptTokenCount ?? 0;
-                const replyTokens = usage.candidatesTokenCount ?? 0;
-                const totalTokens = usage.totalTokenCount ?? (promptTokens + replyTokens);
-                return { content, usage: { promptTokens, replyTokens, totalTokens } };
-            } catch (_) {}
-        }
+        const status = nativeErr.response?.status;
+        const errCode = nativeErr.code;
 
-        // If 429 / 404 on current model, attempt graceful fallback across modern Gemini flash tiers
-        if (nativeErr.response?.status === 429 || nativeErr.response?.status === 404) {
-            const fallbackChain = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'];
+        // If 429 / 404 / 503 / timeout on current model, attempt graceful fallback across modern Gemini flash tiers
+        if (status === 429 || status === 404 || status === 503 || errCode === 'ECONNABORTED') {
+            const fallbackChain = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'];
             const nextModel = fallbackChain.find(m => m !== model);
             if (nextModel) {
-                console.warn(`[LLM] Model ${model} gave ${nativeErr.response?.status} — auto-recovering with ${nextModel}`);
+                console.warn(`[LLM] Model ${model} gave ${status || errCode} — auto-recovering with ${nextModel}`);
                 return callGemini({ apiKey, model: nextModel, messages, temperature, maxTokens });
             }
         }
@@ -163,7 +247,7 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            timeout: 30_000,
+            timeout: 10_000,
         });
 
         const content = resp.data?.choices?.[0]?.message?.content || '';
@@ -240,10 +324,11 @@ async function callOpenAI({ apiKey, model, baseUrl, messages, temperature, maxTo
 
 function isQuotaOrServerError(err) {
     const status = err?.response?.status;
-    // 429 = rate limit, 503 = overloaded, 500/502 = server error
-    if ([429, 500, 502, 503, 504].includes(status)) return true;
+    const code = err?.code;
+    // 429 = rate limit, 503 = overloaded, 500/502/504 = server error, ECONNABORTED/ETIMEDOUT = timeout
+    if ([429, 500, 502, 503, 504].includes(status) || code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
     const msg = (err?.response?.data?.error?.message || err?.message || '').toLowerCase();
-    return msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted') || msg.includes('overloaded');
+    return msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted') || msg.includes('overloaded') || msg.includes('timeout');
 }
 
 // ─── Key Pools (lazy-initialised once) ───────────────────────────────────
@@ -283,17 +368,20 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
     for (let i = 0; i < attempts; i++) {
         const keyItem = pool.next();
         if (!keyItem) {
-            console.warn(`[LLM] All ${providerName} keys are in cooldown.`);
+            console.warn(`[LLM] All ${providerName} keys are currently exhausted or cooling down.`);
             throw new Error(`ALL_KEYS_EXHAUSTED:${providerName}`);
         }
         const { key, index: keyIndex } = keyItem;
+        const curRpm = keyItem.stats?.currentRpm ?? 1;
+        const remDaily = keyItem.stats?.remainingDailyQuota ?? pool._rpdLimit;
 
+        const startMs = Date.now();
         try {
             let res = null;
             let modelUsed = '';
 
             if (providerName === 'gemini') {
-                modelUsed = env.GEMINI_MODEL || 'gemini-2.5-flash';
+                modelUsed = env.GEMINI_MODEL || 'gemini-3.5-flash';
                 res = await callGemini({
                     apiKey: key,
                     model: modelUsed,
@@ -317,7 +405,10 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
                 });
             }
 
-            console.log(`[LLM] Success via ${providerName} (${modelUsed}) | promptTokens: ${res.usage?.promptTokens || 0} | completionTokens: ${res.usage?.replyTokens || 0} | totalTokens: ${res.usage?.totalTokens || 0}`);
+            const latencyMs = Date.now() - startMs;
+            pool.recordSuccess(key, latencyMs);
+
+            console.log(`[LLM] Success via ${providerName} #${keyIndex} (${modelUsed}) in ${latencyMs}ms | RPM: ${curRpm}/${pool._rpmLimit} | Rem Daily: ${remDaily} | tokens: ${res.usage?.totalTokens || 0}`);
 
             return {
                 content: res.content,
@@ -330,13 +421,14 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
             };
         } catch (err) {
             lastErr = err;
+            const isDaily = (err?.message || '').toLowerCase().includes('daily') || (err?.response?.data?.error?.message || '').toLowerCase().includes('daily');
             if (isQuotaOrServerError(err)) {
-                pool.cooldown(key, 90_000); // 90 s cooldown
-                console.warn(`[LLM] ${providerName} quota/rate-limit/error on key #${keyIndex} (${key.slice(0, 8)}...): ${err.message}. Trying next key.`);
+                const cooldownMs = isDaily ? 3600_000 : 60_000;
+                pool.cooldown(key, cooldownMs);
+                console.warn(`[LLM] ${providerName} rate/quota limit on key #${keyIndex} (${key.slice(0, 8)}...): ${err.message}. Auto-switching to next key with highest quota.`);
             } else {
-                // Non-quota error, cool down briefly and try next key
-                pool.cooldown(key, 30_000);
-                console.warn(`[LLM] ${providerName} error on key #${keyIndex}: ${err.message}. Trying next.`);
+                pool.cooldown(key, 20_000);
+                console.warn(`[LLM] ${providerName} error on key #${keyIndex}: ${err.message}. Trying next available key.`);
             }
         }
     }
