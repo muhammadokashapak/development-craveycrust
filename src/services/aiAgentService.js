@@ -655,7 +655,7 @@ async function executeTool(toolName, args, context) {
                 }
 
                 // ── Strict Validation 3: Delivery Address (Reject outlet branch) ──
-                let trimmedAddress = (deliveryAddress || savedDetails.address || '').trim();
+                let trimmedAddress = (deliveryAddress || savedDetails.address || savedDetails.savedAddress || '').trim();
                 const isRestaurantBranchAddress = /\b(school\s*stop|lehtrar\s*road|lehtrar|fazal\s*e?\s*haq|tarlai\s*kalan|tarlai)\b/i.test(trimmedAddress);
                 const isPlaceholderAddress = /^(islamabad|rawalpindi|customer\s*address|\.)$/i.test(trimmedAddress) || trimmedAddress.length < 5;
 
@@ -1350,15 +1350,18 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const { getRememberedCustomerDetails } = await import('./sessionService.js');
     const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
 
-    // If session has no name, but database has customer's remembered profile, pre-fill it!
+    // If session has no name, address, or phone, pre-fill them directly from database profile!
     if (!sessionDetails.name && rememberedDetails?.name) {
         sessionDetails.name = rememberedDetails.name;
     }
     if (!sessionDetails.address && rememberedDetails?.address) {
+        sessionDetails.address = rememberedDetails.address;
         sessionDetails.savedAddress = rememberedDetails.address;
     }
     if (!sessionDetails.phone && (rememberedDetails?.phone || whatsappPhone)) {
-        sessionDetails.savedPhone = rememberedDetails.phone || whatsappPhone;
+        sessionDetails.phone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
+        sessionDetails.savedPhone = rememberedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
+        sessionDetails.phoneConfirmed = true;
     }
 
     if (activeLocation) {
@@ -1488,7 +1491,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - Customer ka cart active hai lekin Naam missing hai.
 - Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
 - SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!
-- SAKHT MANA: Customer ko khud se pichli details bilkul mat batayein aur na hi unka poochein! Sirf step by step naam poochein.`;
+- Agar customer ka saved profile mojood hai, to unka naam aur delivery address direct use karein!`;
         } else if (!updatedDetails.phoneConfirmed) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 2 (CONTACT PHONE).
@@ -1496,11 +1499,20 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - Aap ko is turn mein LAZMI rabta phone number confirm karna hai: "Shukriya ${updatedDetails.name}! Rabtay ke liye rider ko yahi WhatsApp number (${displayPhone}) dein ya koi doosra contact number likhna hai? 📞".
 - SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Phone confirmation ke baghair order aage process BILKUL nahi karna!`;
         } else if (!updatedDetails.address && !activeLocation?.formattedAddress) {
-            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+            if (updatedDetails.savedAddress) {
+                checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 3 (SAVED DELIVERY ADDRESS CONFIRMATION).
+- Customer ka saved address mojood hai: "${updatedDetails.savedAddress}".
+- Customer se confirm karein: "Aap ka saved Delivery Address: *${updatedDetails.savedAddress}* hamare paas maujood hai. Kya isi address par order proceed karein ya koi tabdeeli karni hai?"
+- Agar customer "Haan", "G", "Yahi", ya "Nahi" (yani koi tabdeeli nahi) kahe, to foran isi saved address ko locked address maan kar Payment Method poochein!
+- SAKHT MANA: Dobara address mat poochein! Customer se naya address tab tak BILKUL MAT POOCHEIN jab tak customer khud tabdeeli ka na kahe!`;
+            } else {
+                checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 3 (DELIVERY ADDRESS).
 - Customer ka Naam aur Contact Phone dono mojood hain.
 - Aap ko is turn mein SIRF Delivery Address ya Location Pin poochna hai: "Delivery kahan karni hai ${updatedDetails.name}? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍".
 - SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
+            }
         } else if (!updatedDetails.paymentMethod) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 4 (PAYMENT METHOD).
@@ -1515,7 +1527,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
   📋 *ORDER SUMMARY:*
   ${activeCartSummary}
   👤 Customer Name: ${updatedDetails.name}
-  📍 Delivery Address: ${updatedDetails.address || activeLocation?.formattedAddress}
+  📍 Delivery Address: ${updatedDetails.address || updatedDetails.savedAddress || activeLocation?.formattedAddress}
   📞 Contact Phone: ${displayPhone}
   💵 Payment Method: ${updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}
   

@@ -401,6 +401,19 @@ export async function createOrder(params) {
         }
 
         if (!finalDeliveryAddress || finalDeliveryAddress.length < 5) {
+            try {
+                const { getRememberedCustomerDetails, getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (phone || '').replace(/\D/g, '');
+                const sessionDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
+                const remembered = await getRememberedCustomerDetails(sessionKey, cleanPhone);
+                const fallbackAddress = sessionDetails?.savedAddress || sessionDetails?.address || remembered?.address;
+                if (fallbackAddress && fallbackAddress.length >= 5) {
+                    finalDeliveryAddress = fallbackAddress;
+                }
+            } catch (_) {}
+        }
+
+        if (!finalDeliveryAddress || finalDeliveryAddress.length < 5) {
             const err = new Error('Valid customer delivery address or location pin is required. Please ask the customer for their specific house/street delivery address.');
             err.code = 'DELIVERY_ADDRESS_REQUIRED';
             throw err;

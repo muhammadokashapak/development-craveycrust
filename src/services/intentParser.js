@@ -516,6 +516,7 @@ export async function getNextCheckoutStepResponse({
                 details.name = remembered.name;
             }
             if (remembered?.address && !details.address && !details.location) {
+                details.address = remembered.address;
                 details.savedAddress = remembered.address;
                 details.savedPhone = remembered.phone || rawCleanPhone;
             }
@@ -548,23 +549,32 @@ export async function getNextCheckoutStepResponse({
 
     // STEP 3: Delivery Address or Location Pin
     if (!details.address && !details.location) {
-        if (details.savedAddress && !details.savedAddressPrompted) {
-            details.savedAddressPrompted = true;
+        if (details.savedAddress) {
+            if (!details.savedAddressPrompted) {
+                details.savedAddressPrompted = true;
+                return {
+                    handled: true,
+                    routeName: 'step_confirm_saved_address',
+                    step: 'ADDRESS',
+                    reply: (introMessage ? `${introMessage}\n\n` : '') +
+                        `Aap ka saved Delivery Address: *${formatAddressTitle(details.savedAddress)}* aur Contact Phone: *${formatPakistaniPhone(details.savedPhone || displayPhone)}* hamare paas maujood hai. 😊\n\nKya isi address par order proceed karein ya aap koi tabdeeli (update) karna chahte hain?`,
+                };
+            } else {
+                // If already prompted once or returning customer, lock in the saved address!
+                // NEVER EVER ask "Delivery kahan karni hai" when a saved address is present!
+                details.address = details.savedAddress;
+                details.savedAddressConfirmed = true;
+                details.locationConfirmed = true;
+            }
+        } else {
             return {
                 handled: true,
-                routeName: 'step_confirm_saved_address',
+                routeName: 'step_address_needed',
                 step: 'ADDRESS',
                 reply: (introMessage ? `${introMessage}\n\n` : '') +
-                    `Aap ka saved Delivery Address: *${formatAddressTitle(details.savedAddress)}* aur Contact Phone: *${formatPakistaniPhone(details.savedPhone || displayPhone)}* hamare paas maujood hai. 😊\n\nKya isi address par order proceed karein ya aap koi tabdeeli (update) karna chahte hain?`,
+                    `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
             };
         }
-        return {
-            handled: true,
-            routeName: 'step_address_needed',
-            step: 'ADDRESS',
-            reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
-        };
     }
 
     // Validate delivery radius whenever address or location pin is provided
@@ -1509,6 +1519,30 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const userSessionId = sessionKey || chatId;
     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
 
+    // Pre-populate remembered customer profile from DB so returning customers are recognized seamlessly
+    if (userSessionId && cleanPhone) {
+        try {
+            const { getSessionOrderDetails, getRememberedCustomerDetails } = await import('./sessionService.js');
+            const curr = getSessionOrderDetails(userSessionId, cleanPhone);
+            if (!curr.savedProfileChecked) {
+                curr.savedProfileChecked = true;
+                const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
+                if (remembered) {
+                    if (remembered.name && !curr.name) {
+                        curr.name = remembered.name;
+                    }
+                    if (remembered.address && !curr.address && !curr.location) {
+                        curr.savedAddress = remembered.address;
+                        curr.savedPhone = remembered.phone || cleanPhone;
+                    }
+                    if (!curr.phone) {
+                        curr.phone = remembered.phone || cleanPhone;
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+
     const isCancellationIntent =
         /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
         /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
@@ -2336,12 +2370,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
-            // If customer has selected payment method (or address/location exists)
-            if (currDetails?.paymentMethod || currDetails?.address || currDetails?.location) {
+            // If customer has selected payment method (or address/savedAddress/location exists)
+            if (currDetails?.paymentMethod || currDetails?.address || currDetails?.savedAddress || currDetails?.location) {
+                if (!currDetails.address && currDetails.savedAddress) {
+                    currDetails.address = currDetails.savedAddress;
+                    currDetails.savedAddressConfirmed = true;
+                    currDetails.locationConfirmed = true;
+                }
                 currDetails.extraItemsAnswered = true;
                 currDetails.extraItemsInquired = true;
                 currDetails.phoneConfirmed = true; // Lock phone confirmation so it never loops back
-                updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true, extraItemsInquired: true, phoneConfirmed: true }, cleanPhone);
+                updateSessionOrderDetails(userSessionId, {
+                    address: currDetails.address,
+                    savedAddressConfirmed: true,
+                    locationConfirmed: true,
+                    extraItemsAnswered: true,
+                    extraItemsInquired: true,
+                    phoneConfirmed: true,
+                }, cleanPhone);
 
                 const { getActiveCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
@@ -2380,7 +2426,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getActiveCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-                const readyToConfirm = Boolean(details.name && (details.address || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
+                const finalAddress = details.address || details.savedAddress || details.location?.address;
+                const readyToConfirm = Boolean(details.name && (finalAddress || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
                 if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
                     const finalPayment = details.paymentMethod || 'COD';
                     const { createOrder } = await import('./orderService.js');
@@ -2390,7 +2437,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         customerName: details.name || 'Customer',
                         phone: details.phone || cleanPhone,
                         delivery: {
-                            address: details.address || details.location?.address || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
+                            address: finalAddress || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
                             latitude: details.location?.latitude ?? null,
                             longitude: details.location?.longitude ?? null,
                         },
@@ -3292,6 +3339,53 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
             // Active checkout awaiting address: Name & Phone are confirmed, Address is missing
             if (currDetails?.name && currDetails?.phoneConfirmed && !currDetails?.address && !currDetails?.location) {
+                // Check if customer is responding to the saved address prompt
+                if (currDetails?.savedAddress) {
+                    const isAffirmativeSavedAddress = /^(?:(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|sahi|theek|thk)\s+)?(?:g|jee?|ji|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|ok|okay|done|confirm|bilkul|zaroor|yahi|yehi|wahi|isi\s*(?:address|jagah|par|pe)?|isi\s*pe|yahi\s*(?:hai|address|ha|jagah|h)|yehi\s*(?:hai|address|ha|jagah|h)|proceed|same|sahi\s*hai)[\s.!?]*$/i.test(lower.trim());
+                    // Customer says "Nahi" (meaning "No update needed / no change, proceed with this saved address")
+                    const isNoUpdateSavedAddress = /^(?:nahi|nahin|na|no|nope|koi\s*(?:tabdeeli|change|update)\s*n(?:ahi|i|hin|h)?|tabdeeli\s*n(?:ahi|i|hin|h)?|change\s*n(?:ahi|i|hin|h)?|update\s*n(?:ahi|i|hin|h)?|kuch\s*n(?:ahi|i|hin|h)?)[\s.!?]*$/i.test(lower.trim());
+                    // Customer explicitly wants to change/update their address
+                    const isChangeAddressRequested = /^(?:(?:haan|han|jee?|ji|g)?\s*)?(?:address\s*(?:change|tabdeel|update|badal)|badal\s*do|change\s*(?:karna|krna|kar\s*do|kr\s*do)|tabdeeli\s*(?:karni|krni|hai)|naya\s*address|dusra\s*address|different\s*address)[\s.!?]*$/i.test(lower.trim());
+
+                    if (isChangeAddressRequested) {
+                        currDetails.address = null;
+                        currDetails.savedAddress = null;
+                        currDetails.savedAddressConfirmed = false;
+                        currDetails.savedAddressPrompted = true;
+                        updateSessionOrderDetails(userSessionId, { address: null, savedAddress: null, savedAddressConfirmed: false, savedAddressPrompted: true }, cleanPhone);
+                        return {
+                            handled: true,
+                            routeName: 'step_address_change_requested',
+                            step: 'ADDRESS',
+                            reply: `Koi masla nahi ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Naya delivery address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp location pin) bhej dein taake hum update kar dein. 📍`,
+                        };
+                    }
+
+                    if (isAffirmativeSavedAddress || isNoUpdateSavedAddress) {
+                        currDetails.address = currDetails.savedAddress;
+                        currDetails.savedAddressConfirmed = true;
+                        currDetails.locationConfirmed = true;
+                        updateSessionOrderDetails(userSessionId, {
+                            address: currDetails.savedAddress,
+                            savedAddressConfirmed: true,
+                            locationConfirmed: true,
+                        }, cleanPhone);
+
+                        const { getActiveCart } = await import('./cartService.js');
+                        const cache = await getCatalogCache();
+                        const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                        if (cart?.items && cart.items.length > 0) {
+                            return await getNextCheckoutStepResponse({
+                                details: currDetails,
+                                whatsappPhone,
+                                cart,
+                                cache,
+                                introMessage: `Theek hai ${currDetails.name ? currDetails.name + ' bhai! ' : ''}Delivery address (*${formatAddressTitle(currDetails.savedAddress)}*) confirm kar liya hai. 👍`,
+                            });
+                        }
+                    }
+                }
+
                 const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
                 if (!isNotAddr && wordCount <= 25) {
                     const { extractLocationFromText } = await import('../../utils/location.js');
