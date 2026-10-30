@@ -259,3 +259,4 @@ run().catch(err => {
     console.error('Test runner fatal error:', err);
     process.exit(1);
 });
+

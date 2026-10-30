@@ -172,7 +172,8 @@ class KeyPool {
 // ─── Provider Implementations ─────────────────────────────────────────────
 
 /**
- * Call Gemini via Google's native API endpoint with fallback to OpenAI-compatible endpoint.
+ * Call Gemini via Google's native API endpoint with automatic model cascading
+ * (e.g. gemini-flash-lite-latest -> gemini-3.5-flash) and fallback to OpenAI-compatible endpoint.
  */
 async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
     // Separate system messages from conversation turns
@@ -192,47 +193,75 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
         contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
     }
 
-    const nativeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-    try {
-        const resp = await axios.post(nativeUrl, {
-            systemInstruction,
-            contents,
-            generationConfig: {
-                temperature: typeof temperature === 'number' ? temperature : (Number.isNaN(Number(env.AI_TEMPERATURE)) ? 0.0 : Number(env.AI_TEMPERATURE)),
-                maxOutputTokens: maxTokens ?? 512,
-                topP: 0.95,
-                topK: 20,
+    // Build intelligent cascade list: requested model first, then ultra-reliable alternates
+    const candidateModels = [];
+    const requested = model || env.GEMINI_MODEL || 'gemini-flash-lite-latest';
+    candidateModels.push(requested);
+    if (!candidateModels.includes('gemini-flash-lite-latest')) candidateModels.push('gemini-flash-lite-latest');
+    if (!candidateModels.includes('gemini-3.5-flash')) candidateModels.push('gemini-3.5-flash');
+
+    let lastError = null;
+
+    for (const targetModel of candidateModels) {
+        const nativeUrl = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+        try {
+            const resp = await axios.post(nativeUrl, {
+                systemInstruction,
+                contents,
+                generationConfig: {
+                    temperature: typeof temperature === 'number' ? temperature : (Number.isNaN(Number(env.AI_TEMPERATURE)) ? 0.0 : Number(env.AI_TEMPERATURE)),
+                    maxOutputTokens: maxTokens ?? 512,
+                    topP: 0.95,
+                    topK: 20,
+                }
+            }, {
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 8_000,
+            });
+
+            const cand = resp.data?.candidates?.[0];
+            let content = '';
+            if (cand?.content?.parts) {
+                content = cand.content.parts.map(p => p.text || '').join('');
             }
-        }, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: 10_000,
-        });
 
-        const cand = resp.data?.candidates?.[0];
-        let content = '';
-        if (cand?.content?.parts) {
-            content = cand.content.parts.map(p => p.text || '').join('');
+            const usage = resp.data?.usageMetadata || {};
+            const promptTokens = usage.promptTokenCount ?? 0;
+            const replyTokens = usage.candidatesTokenCount ?? 0;
+            const totalTokens = usage.totalTokenCount ?? (promptTokens + replyTokens);
+
+            return {
+                content,
+                usage: { promptTokens, replyTokens, totalTokens },
+                modelUsed: targetModel,
+            };
+        } catch (nativeErr) {
+            lastError = nativeErr;
+            const status = nativeErr.response?.status;
+            const code = nativeErr.code;
+            const isTransientServer = [500, 502, 503, 504].includes(status) || code === 'ECONNABORTED' || code === 'ETIMEDOUT';
+
+            // Quota error (429): do not loop candidate models on this key; key is rate limited
+            if (status === 429) {
+                break;
+            }
+
+            // Server overload (503), timeout, or deprecated model (404): cascade to next sibling model on same key!
+            if (isTransientServer || status === 404) {
+                console.warn(`[LLM] Gemini model '${targetModel}' unavailable (${status || code}). Cascading to sibling model...`);
+                continue;
+            }
+
+            break;
         }
+    }
 
-        const usage = resp.data?.usageMetadata || {};
-        const promptTokens = usage.promptTokenCount ?? 0;
-        const replyTokens = usage.candidatesTokenCount ?? 0;
-        const totalTokens = usage.totalTokenCount ?? (promptTokens + replyTokens);
-
-        return {
-            content,
-            usage: { promptTokens, replyTokens, totalTokens },
-        };
-    } catch (nativeErr) {
-        const status = nativeErr.response?.status;
-        const errCode = nativeErr.code;
-
-        // Directive: Never silently switch models. Model failover occurs across healthy API keys in KeyPool for the exact configured model.
-
-        // Fallback to OpenAI-compatible endpoint if native endpoint fails
+    // Secondary fallback: OpenAI-compatible endpoint with the most reliable model
+    const fallbackModel = candidateModels.find(m => m !== 'gemini-3.8-flash') || 'gemini-flash-lite-latest';
+    try {
         const url = `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`;
         const resp = await axios.post(url, {
-            model,
+            model: fallbackModel,
             messages,
             temperature,
             max_tokens: maxTokens,
@@ -241,7 +270,7 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            timeout: 10_000,
+            timeout: 8_000,
         });
 
         const content = resp.data?.choices?.[0]?.message?.content || '';
@@ -252,7 +281,10 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
         return {
             content,
             usage: { promptTokens, replyTokens, totalTokens },
+            modelUsed: fallbackModel,
         };
+    } catch (openaiErr) {
+        throw lastError || openaiErr;
     }
 }
 
@@ -314,15 +346,22 @@ async function callOpenAI({ apiKey, model, baseUrl, messages, temperature, maxTo
     };
 }
 
-// ─── Rate-limit / Quota error detector ───────────────────────────────────
+// ─── Rate-limit / Quota error detector vs Server Overload detector ──────────
 
-function isQuotaOrServerError(err) {
+function isQuotaError(err) {
+    const status = err?.response?.status;
+    const msg = (err?.response?.data?.error?.message || err?.message || '').toLowerCase();
+    return status === 429 || msg.includes('quota') || msg.includes('resource_exhausted') || msg.includes('rate limit');
+}
+
+function isServerError(err) {
     const status = err?.response?.status;
     const code = err?.code;
-    // 429 = rate limit, 503 = overloaded, 500/502/504 = server error, ECONNABORTED/ETIMEDOUT = timeout
-    if ([429, 500, 502, 503, 504].includes(status) || code === 'ECONNABORTED' || code === 'ETIMEDOUT') return true;
-    const msg = (err?.response?.data?.error?.message || err?.message || '').toLowerCase();
-    return msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted') || msg.includes('overloaded') || msg.includes('timeout');
+    return [500, 502, 503, 504].includes(status) || code === 'ECONNABORTED' || code === 'ETIMEDOUT';
+}
+
+function isQuotaOrServerError(err) {
+    return isQuotaError(err) || isServerError(err);
 }
 
 // ─── Key Pools (lazy-initialised once) ───────────────────────────────────
@@ -358,6 +397,7 @@ export function getOpenAiPool() {
 async function tryProvider(providerName, pool, messages, temperature, maxTokens) {
     let lastErr = null;
     const attempts = pool.size || 1;
+    let consecutiveServerErrors = 0;
 
     for (let i = 0; i < attempts; i++) {
         const keyItem = pool.next();
@@ -375,12 +415,13 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
             let modelUsed = '';
 
             if (providerName === 'gemini') {
-                modelUsed = env.GEMINI_MODEL || 'gemini-3.8-flash';
+                modelUsed = env.GEMINI_MODEL || 'gemini-flash-lite-latest';
                 res = await callGemini({
                     apiKey: key,
                     model: modelUsed,
                     messages, temperature, maxTokens,
                 });
+                modelUsed = res.modelUsed || modelUsed;
             } else if (providerName === 'deepseek') {
                 modelUsed = env.DEEPSEEK_MODEL || 'deepseek-chat';
                 res = await callDeepSeek({
@@ -416,12 +457,26 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
         } catch (err) {
             lastErr = err;
             const isDaily = (err?.message || '').toLowerCase().includes('daily') || (err?.response?.data?.error?.message || '').toLowerCase().includes('daily');
-            if (isQuotaOrServerError(err)) {
+
+            if (isQuotaError(err)) {
+                // Genuine rate limit / quota exhaustion: 60s cooldown (or 1hr for daily quota)
                 const cooldownMs = isDaily ? 3600_000 : 60_000;
                 pool.cooldown(key, cooldownMs);
-                console.warn(`[LLM] ${providerName} rate/quota limit on key #${keyIndex} (${key.slice(0, 8)}...): ${err.message}. Auto-switching to next key with highest quota.`);
+                console.warn(`[LLM] ${providerName} quota limit on key #${keyIndex} (${key.slice(0, 8)}...): ${err.message}. Auto-switching to next key with highest quota.`);
+                consecutiveServerErrors = 0;
+            } else if (isServerError(err)) {
+                // Server outage / temporary overload (503/timeout): short 5s cooldown, do not burn key
+                pool.cooldown(key, 5_000);
+                consecutiveServerErrors++;
+                console.warn(`[LLM] ${providerName} server busy/timeout on key #${keyIndex} (${err.response?.status || err.code || err.message}). Short 5s cooldown.`);
+
+                // If 2 keys in a row hit server-wide outages, don't stall the user across 21 keys!
+                if (consecutiveServerErrors >= 2 && pool.size > 2) {
+                    console.warn(`[LLM] Multiple ${providerName} keys encountered server-wide outage. Fast-failing to fallback provider.`);
+                    break;
+                }
             } else {
-                pool.cooldown(key, 20_000);
+                pool.cooldown(key, 15_000);
                 console.warn(`[LLM] ${providerName} error on key #${keyIndex}: ${err.message}. Trying next available key.`);
             }
         }
