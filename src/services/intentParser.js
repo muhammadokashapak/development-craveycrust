@@ -78,20 +78,36 @@ export function clearLastDiscussedItem(sessionKey) {
 export function isDeliveryAreaInquiry(text) {
     if (!text || typeof text !== 'string') return false;
     const lower = text.toLowerCase().trim();
-    return /\b(?:delivery|deliver)\b.*?\b(?:range|area|areas|zone|zones|radius|charges|fee)\b/i.test(lower) ||
-           /\b(?:range|area|areas|zone|zones|radius)\b.*?\b(?:delivery|deliver)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s*(?:areas?|ranges?|zones?)?\s*(?:mein|me|mai|pe|par)?\s*(?:kese|kaise|kaisy|kyun|kya|kia|kons[ey]|list)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|krty|karty|chali|possible|available|allowed|allow|hai|he|hy|h|hain|hen|\?)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s+(?:hoti|krte|karte|krty|karty|available|possible|allowed|allow)\s*(?:hai|he|hy|h|hain|hen|\?)?/i.test(lower) ||
-           /\b(?:kya|kia|ye|yeh|is)\s+.*?\b(?:delivery|deliver)\s*(?:area|areas|range|zone|allowed|karein|karte|krte|krty|hoti)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s*(?:area|areas|range|zone)\s*(?:me|mein|mai)?\s*(?:hai|he|hy|h|hain|hen|\?)/i.test(lower) ||
-           /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?delivery\b/i.test(lower) ||
-           /\b(?:area|areas|range)\s*(?:mein|me|mai|pe|par)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
+
+    // Check delivery verbs and nouns with typos (delivery, dilover, dilvery, deliver, dlvry, etc.)
+    const delivRegex = /\b(?:deliv(?:ery|er|ry|r)|dilov(?:er|ery)|dilv(?:ery|er|ry)|dlvry)\b/i;
+    // Check location/area/radius words
+    const locRegex = /\b(?:range|areas?|zones?|radius|locations?|coverage|charges|fee)\b/i;
+
+    // Direct general inquiry phrases
+    if (/\b(?:kin|kon|konse|konsi|kons[ey]|kis\s*kis|which)\s+(?:locations?|areas?|jagha?|places?)\b/i.test(lower)) {
+        return true;
+    }
+    if (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan\s*(?:pe)?|kidhar\s*(?:pe)?)\s+.*?(?:deliver|deliv|dilov|dilv|service|services|dy\s*s[hk]+ty|de\s*sakty|de\s*sakte)\b/i.test(lower)) {
+        return true;
+    }
+    if (/\b(?:delivery|dilover|dilvery|deliver)\s+(?:areas?|locations?|list|coverage|range)\b/i.test(lower)) {
+        return true;
+    }
+
+    return (delivRegex.test(lower) && locRegex.test(lower)) ||
+           /\b(?:delivery|deliver|dilover|dilvery)\s*(?:areas?|ranges?|zones?|locations?)?\s*(?:mein|me|mai|pe|par|pr)?\s*(?:kese|kaise|kaisy|kyun|kya|kia|kons[ey]|list)?\s*(?:aati|aata|ata|ati|hoti|hota|krte|karte|krty|karty|chali|possible|available|allowed|allow|hai|he|hy|h|hain|hen|\?)\b/i.test(lower) ||
+           /\b(?:delivery|deliver|dilover|dilvery)\s+(?:hoti|krte|karte|krty|karty|available|possible|allowed|allow|dy\s*s[hk]+ty|de\s*sakte)\s*(?:hai|he|hy|h|hain|hen|\?)?/i.test(lower) ||
+           /\b(?:kya|kia|ye|yeh|is|kay\s*ap|kya\s*ap)\s+.*?\b(?:delivery|deliver|dilover|dilvery)\s*(?:area|areas|range|zone|locations?|allowed|karein|karte|krte|krty|hoti|dy\s*s[hk]+ty)\b/i.test(lower) ||
+           /\b(?:delivery|deliver|dilover|dilvery)\s*(?:area|areas|range|zone|locations?)\s*(?:me|mein|mai|pe|par|pr)?\s*(?:hai|he|hy|h|hain|hen|\?)/i.test(lower) ||
+           /\b(?:yahan|idhar|is\s*jagah)\s+(?:bhi\s+)?(?:delivery|deliver|dilover)\b/i.test(lower) ||
+           /\b(?:area|areas|range|locations?)\s*(?:mein|me|mai|pe|par|pr)\s*(?:kese|kaise|kyun)?\s*(?:aati|aata|ata|ati|hoti|hota)\b/i.test(lower) ||
            /\b(?:area\s*of\s*radius|delivery\s*radius|radius)\b/i.test(lower) ||
-           (/\b(?:deliver|delivery)\b/i.test(lower) && /\b(?:allowed|allow|ho\s*sakti|kar\s*sakte|kar\s*skte|karoge|karogy|karty|karte|krte|krty|available|possible|charges|fee)\b/i.test(lower)) ||
-           (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan|kidhar|kon\s*kon\s*se\s*areas?|which\s*areas?|kis\s*kis\s*area)\b.*?\b(?:deliver|delivery)\b/i.test(lower)) ||
+           (delivRegex.test(lower) && /\b(?:allowed|allow|ho\s*sakti|kar\s*sakte|kar\s*skte|karoge|karogy|karty|karte|krte|krty|dy\s*s[hk]+ty|available|possible|charges|fee)\b/i.test(lower)) ||
+           (/\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan|kidhar|kon\s*kon\s*se\s*(?:areas?|locations?)|which\s*(?:areas?|locations?)|kis\s*kis\s*(?:area|location))\b.*?(?:deliver|delivery|dilover|dilvery|deal)/i.test(lower)) ||
            /\b(?:delivery\s*areas?|coverage\s*areas?|approved\s*areas?)\b/i.test(lower) ||
-           /\b(?:kahan|kidhar)\s*(?:kahan|kidhar)?\s*(?:pe\s*)?(?:delivery|deliver)\s*(?:krte|karte|karty|krty|hoti|hogi|hoga)\b/i.test(lower) ||
-           /\b(?:delivery|deliver)\s+(?:kahan|kidhar|kis\s*taraf|kdr)\s*(?:hoti|krte|karte|krty|karty|hogi|hoga|hai|he|hy|h)?\b/i.test(lower);
+           /\b(?:kahan|kidhar)\s*(?:kahan|kidhar)?\s*(?:pe\s*)?(?:delivery|deliver|dilover)\s*(?:krte|karte|karty|krty|hoti|hogi|hoga|dy\s*s[hk]+ty)\b/i.test(lower) ||
+           /\b(?:delivery|deliver|dilover)\s+(?:kahan|kidhar|kis\s*taraf|kdr)\s*(?:hoti|krte|karte|krty|karty|hogi|hoga|hai|he|hy|h)?\b/i.test(lower);
 }
 
 export function formatAddressTitle(addr) {
@@ -2496,7 +2512,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // NOTE: 'aur', 'kuch', 'pizza', 'burger' removed from cart-modification list above because they appear in confirmation phrases
     //       like 'nahi aur kch nahi' — hasCartModification must only fire on true add/modify signals.
     const isOrderFinalConfirmation = !hasCartModification && !hasNegation &&
-        /^(?:(?:jee?|ji|g)\s+)?(?:haan|han|hn|yes|yep|theek\s*hai?|thk\s*hai?|ok|okay|bilkul|zaroor|zarur|done)?(?:\s*(?:order|book)?\s*(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|book|final|done|bhej\s*do|theek\s*hai|ok|yes|haan|han|jee|ji|bilkul))(?:\s+(?:book|co?n?f[iy]?r[mn]+|kar\s*do|kr\s*do|kardo|krdo|karo|kro|kar\s*du|kr\s*du|karein|kar\s*dein|kr\s*dein|hai|h|please|bhai|do))*$/i.test(lower.trim()) && wordCount <= 6;
+        /^(?:(?:jee?|ji|g|haan?|han|hn|yes|yep|theek\s*hai?|thk\s*hai?|ok|okay|bilkul|zaroor|zarur|done)\s*)?(?:order\s*)?(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|book|final(?:ize|ise)?|done|bhej\s*do|theek\s*hai|ok|yes|haan|han|jee|ji|bilkul|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu)?(?:\s+(?:book|co?n?f[iy]?r[mn]+|final(?:ize|ise)?|karo|kro|(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|karein|hai|h|please|bhai|do))*$/i.test(lower.trim()) &&
+        /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|book|bhej\s*do|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|done|theek\s*hai)\b/i.test(lower.trim()) &&
+        wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
             const { getSessionOrderDetails, clearSessionOrderDetails } = await import('./sessionService.js');
@@ -2608,6 +2626,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (isCancel) {
                 clearPendingDealFlavour(userSessionId);
                 return {
+                    handled: true,
+                    routeName: 'deal_flavour_cancel',
                     reply: 'Deal flavour selection cancel kar di gayi. Aap koi doosri deal ya menu item select kar sakte hain.',
                 };
             }
@@ -2668,6 +2688,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         firstFlavour: firstFlv,
                     });
                     return {
+                        handled: true,
+                        routeName: 'deal_single_flavour_confirm_prompt',
                         reply: formatSingleFlavourConfirmationPrompt(firstFlv, pizzaInfo),
                     };
                 }
@@ -2703,6 +2725,51 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     cache,
                     introMessage: `Zabardast! *${dealName}* (*${flavourNotes}*) cart mein add kar di gayi hai! 🎉\n• ${qty}x ${dealName} (${flavourNotes}) — Rs. ${dealPrice}`,
                 });
+            }
+        }
+    }
+
+    // ── Check Fast Follow-up: Variant selection for pending discussed item (e.g. "regular", "can", "1.5 liter", "large") ──
+    const lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId) : null;
+    if (lastItemEntry && lastItemEntry.item && (lastItemEntry.item.variants || []).length > 0) {
+        const itemVariants = lastItemEntry.item.variants;
+        const { matchVariant } = await import('./cartService.js');
+        const matchedVariant = matchVariant(itemVariants, lower);
+        if (matchedVariant) {
+            try {
+                const { getActiveCart, addToCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const cleanItemName = lastItemEntry.item.name;
+                const digitQtyMatch = lower.match(/\b(\d+)\b/);
+                const qty = digitQtyMatch ? parseInt(digitQtyMatch[1], 10) : 1;
+
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    menuItemId: lastItemEntry.item.id,
+                    variantId: matchedVariant.id,
+                    quantity: qty,
+                });
+
+                clearLastDiscussedItem(userSessionId);
+
+                const itemPrice = Number(matchedVariant.price || lastItemEntry.item.base_price || 0) * qty;
+                const { getSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart: cartNow,
+                    cache,
+                    introMessage: `Zabardast! *${cleanItemName}* (${matchedVariant.name}) cart mein add kar diya gaya hai! 🎉\n• ${qty}x ${cleanItemName} (${matchedVariant.name}) — Rs. ${itemPrice}`,
+                });
+            } catch (err) {
+                console.error('[FAST_ROUTE] Error adding last discussed item variant:', err.message);
             }
         }
     }
@@ -3127,13 +3194,39 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const restId = cache?.restId || (await (await import('./restaurantService.js')).getDefaultRestaurantId());
             const configuredRadius = cache?.maxDeliveryRadiusKm || 10;
 
-            const isGeneralInquiry = /\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan\s*(?:pe\s*)?delivery|delivery\s*(?:kahan|kidhar)|kis\s*kis\s*area|kon\s*kon\s*se\s*areas?|which\s*areas?|delivery\s*areas?|coverage\s*areas?|approved\s*areas?|areas?\s*(?:kia|kya|list)|areas?\s*batao|areas?\s*bhejo)\b/i.test(lower);
+            const isGeneralInquiry = /\b(?:kahan\s*kahan|kidhar\s*kidhar|kahan\s*(?:pe\s*)?(?:delivery|deliver|dilover)|(?:delivery|deliver|dilover)\s*(?:kahan|kidhar)|kis\s*kis\s*(?:area|location)|kon\s*kon\s*se\s*(?:areas?|locations?)|which\s*(?:areas?|locations?)|kin\s*locations?|delivery\s*areas?|coverage\s*areas?|approved\s*areas?|(?:areas?|locations?)\s*(?:kia|kya|list|kons[ey])|(?:areas?|locations?)\s*batao|(?:areas?|locations?)\s*bhejo)\b/i.test(lower) ||
+                (/\b(?:kin|kon|konse|konsi|kons[ey]|kis\s*kis|which)\s+(?:locations?|areas?|places?)\b/i.test(lower));
 
             if (isGeneralInquiry) {
+                // Check if user combined an item order with their delivery inquiry (e.g. "Main pari pari pizza order krna chahta hon, party size mein. App kin locations py dilover krty hain")
+                const orderPart = raw.replace(/\b(?:app|aap)?\s*(?:kin|kon|konse|kons[ey]|kis\s*kis|which|kahan|kidhar)\s+.*$/i, '').trim();
+                let addedItemMsg = '';
+                if (orderPart && userSessionId && /\b(?:order|chahiye|mangwana|daal\s*do|add)\b/i.test(orderPart)) {
+                    try {
+                        const { resolveMenuItemOrDeal } = await import('./menuService.js');
+                        const resolved = await resolveMenuItemOrDeal(orderPart, restId);
+                        if (resolved?.type === 'ITEM' && resolved.item) {
+                            const { addToCart } = await import('./cartService.js');
+                            await addToCart({
+                                sessionKey: userSessionId,
+                                restaurantId: restId,
+                                chatId,
+                                verifiedPhone: whatsappPhone,
+                                menuItemId: resolved.item.id,
+                                variantId: resolved.matchedVariant?.id || null,
+                                quantity: 1,
+                            });
+                            const variantStr = resolved.matchedVariant ? ` (${resolved.matchedVariant.name})` : '';
+                            addedItemMsg = `Zabardast! *${resolved.item.name}*${variantStr} cart mein add kar diya gaya hai! 🍕\n\n`;
+                        }
+                    } catch (_) {}
+                }
+
                 return {
                     handled: true,
                     routeName: 'delivery_areas_list',
-                    reply: `Hamari delivery restaurant se *${configuredRadius} KM* circular radius ke andar in tamam approved areas mein dastiyab hai: 🚚\n\n` +
+                    reply: (addedItemMsg || '') +
+                           `Hamari delivery restaurant se *${configuredRadius} KM* circular radius ke andar in tamam approved areas mein dastiyab hai: 🚚\n\n` +
                            `• *Ghauri Town* (All Phases & VIP Block)\n` +
                            `• *Khana Pull* & Sanam Chowk\n` +
                            `• *Tarlai* & Taramari\n` +
@@ -4367,7 +4460,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── 4. Live Menu / Card Images (Strict 3-Tier Image & Text Rules) ──
     const isCardInquiry = /\b(?:card|cards|flyer|flyers|pamphlet|brochure)\b/i.test(lower);
     const isItemDetailOrPriceInquiry = /\b(?:price|pricing|pese|paise|kitne|katny|kitnay|pcs?|pieces?|slice|slices)\b/i.test(lower);
-const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal')) || isCardInquiry;
+    const isSpecificCategoryAsk = /\b(pizzas?|burgers?|wings?|fries|drinks?|beverages?|rolls?)\b/i.test(lower);
+    const isMenuKeyword = (FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lower) && !lower.includes('deal')) || isCardInquiry) && !isSpecificCategoryAsk;
 
     if (isMenuKeyword && wordCount <= 15 && !hasCartOrOrderAction && !isItemDetailOrPriceInquiry) {
         try {
@@ -4414,7 +4508,8 @@ const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lo
             const isExplicitMenuAsk = FAST_MENU_REGEX.test(lower) || /\b(menu|menue|meny|mainu|card|flyer|list)\b/i.test(lower);
             const menuAlreadySent = userSessionId ? hasMenuBeenSent(userSessionId, cleanPhone) : false;
             const hasShowOrSendMenuWord = /\b(dikhao|dekhao|dikhayein|dikhana|bhejo|bhajo|bhej\s*do|send|share|card|cards|flyer|flyers|photos?|pics?|images?)\b/i.test(lower);
-            const isSpecificMenuFilter = !hasShowOrSendMenuWord && /\b(koi|konsa|konse|best|recommend|pizza|burger|fries|drink)\b/i.test(lower);
+            const isSpecificCategoryAsk = /\b(pizzas?|burgers?|wings?|fries|drinks?|beverages?|rolls?)\b/i.test(lower);
+            const isSpecificMenuFilter = isSpecificCategoryAsk || (!hasShowOrSendMenuWord && /\b(koi|konsa|konse|best|recommend)\b/i.test(lower));
 
             if (targetMenuImages.length > 0 && (isExplicitMenuAsk || !menuAlreadySent) && !isSpecificMenuFilter) {
                 if (userSessionId) markMenuSent(userSessionId, cleanPhone);
@@ -4471,7 +4566,7 @@ const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lo
             if (num >= 1 && num <= allCats.length) {
                 targetCat = await getCategoryWithItems(allCats[num - 1].id, restId);
             }
-        } else if (wordCount <= 8 && !hasCartOrOrderAction && !FAST_GREETING_REGEX.test(lower)) {
+        } else if (wordCount <= 16 && !hasCartOrOrderAction && !FAST_GREETING_REGEX.test(lower)) {
             // Guard: Do not interrupt active cart checkout with category views unless explicit category request
             let isActivelyCheckingOut = false;
             if (userSessionId) {
@@ -4498,7 +4593,10 @@ const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lo
                     const strippedSingular = stripped.replace(/s$/, '');
 
                     // Handle general "pizza" inquiry: Cravey Crust has Classic Pizzas and Premium Pizzas
-                    if (stripped === 'pizza' || strippedSingular === 'pizza') {
+                    const isPizzaInquiry = stripped === 'pizza' || strippedSingular === 'pizza' ||
+                        (/\b(?:pi[z]+as?)\b/i.test(lower) && /\b(?:size|sizes|siza|rate|rates|price|prices|list|flavor|flavours|flavors|options|menu|share|dikhao|bhejo|batao)\b/i.test(lower) && !hasCartOrOrderAction);
+
+                    if (isPizzaInquiry) {
                         const classicCat = allCats.find(c => /classic\s*pi[z]+as?/i.test(c.name));
                         const premiumCat = allCats.find(c => /premium\s*pi[z]+as?/i.test(c.name));
                         const [fullClassic, fullPremium] = await Promise.all([

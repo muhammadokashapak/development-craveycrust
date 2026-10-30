@@ -432,19 +432,19 @@ export async function getRememberedCustomerDetails(key, altKey) {
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
             if (prisma) {
-                const cleanPhone = (altKey || key || '').replace(/\D/g, '');
+                const isLid = (k) => typeof k === 'string' && k.includes('@lid');
+                const rawPhone = (!isLid(altKey) ? altKey : '') || (!isLid(key) ? key : '');
+                const cleanPhone = (rawPhone || '').replace(/\D/g, '');
                 const orConds = [];
                 if (key) {
                     orConds.push({ source_session_id: key });
                     orConds.push({ source_chat_id: key });
                 }
-                if (cleanPhone) {
+                if (cleanPhone && cleanPhone.length >= 10 && cleanPhone.length <= 15) {
                     orConds.push({ phone: cleanPhone });
                     orConds.push({ whatsapp_phone: cleanPhone });
-                    if (cleanPhone.length >= 9) {
-                        const last9 = cleanPhone.slice(-9);
-                        orConds.push({ phone: { contains: last9 } });
-                    }
+                    const last9 = cleanPhone.slice(-9);
+                    orConds.push({ phone: { contains: last9 } });
                 }
                 if (orConds.length > 0) {
                     const lastOrder = await prisma.order.findFirst({

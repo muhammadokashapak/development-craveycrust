@@ -249,6 +249,8 @@ function findAreaByText(areas, text) {
         }
     } else if (!found && (cleanLower.includes('vip') || cleanLower.includes('vvip'))) {
         found = areas.find(a => a.slug === 'ghauri-vip');
+    } else if (!found && (cleanLower.includes('xortlogix') || cleanLower.includes('xort logix') || cleanLower.includes('xort'))) {
+        found = areas.find(a => a.slug === 'ghauri-vip' || a.slug === 'ghauri-town-all-phase');
     }
 
     if (!found) {
@@ -593,11 +595,11 @@ export async function checkDeliveryAvailability(params) {
             };
         } else {
             if (areaName || address) {
-                const outOfDeliveryMsg = await getOutOfDeliveryMessage(restaurantId, null, maxRadiusKm);
+                const unknownLocationMsg = `Hamare system mein is exact address ya office/building ko locate nahi kiya ja saka. 📍\n\nBaraye meherbani apna mukammal address (jaise *Ghauri Town Phase 5, Street ya landmark*) ya seedha *WhatsApp location pin* share karein taake hum delivery confirm kar sakein!`;
                 return {
                     available: false,
                     code: 'DELIVERY_NOT_AVAILABLE',
-                    message: outOfDeliveryMsg,
+                    message: unknownLocationMsg,
                     maxRadiusKm,
                 };
             }

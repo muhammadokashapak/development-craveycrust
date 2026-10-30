@@ -58,7 +58,7 @@ export function detectConfirmIntent(text) {
     if (NEGATIONS.test(t)) return false;
 
     // Check: confirmation words (including common misspellings like 'comfirm', 'konfirm')
-    const CONFIRM = /\b(co?n?f[iy]?r[mn]+|comfirm|konfirm|haan|han|ji|jee|yes|ok|okay|theek|bilkul|done|zaroor|zarur|kardo|kar do|bhej do|book kar do|book kr do|order kar do|order kr do|order kardo|order kr du|kr du|kar du|krdo)\b/i;
+    const CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek|thk|bilkul|done|zaroor|zarur)(?:\s+(?:kr|kar)\s*d[aoeiu]+n?|\s+bhai)?|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
     return CONFIRM.test(t);
 }
 
@@ -1393,7 +1393,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             (Array.isArray(fastResult.imageUrls) && fastResult.imageUrls.length > 0)
         );
 
-        if (fastResult.handled && hasFastContent) {
+        if ((fastResult.handled || fastResult.reply) && hasFastContent) {
             const cleanFastReply = fastResult.reply ? sanitizeOutput(fastResult.reply) : '';
 
             // Log zero tokens used (Hissa 2)

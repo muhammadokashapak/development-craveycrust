@@ -440,6 +440,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isHotWings = /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(strippedQ));
     const isOvenBakedWings = /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(strippedQ));
     const isBehariRoll = /\b(?:behari|bihari|behri)\s*roll\b/i.test(cleanQ) || (strippedQ && /\b(?:behari|bihari|behri)\s*roll\b/i.test(strippedQ));
+    const isPeriPeri = /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(cleanQ) || (strippedQ && /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(strippedQ));
     const isDrink = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
 
     let aliasTargetItem = null;
@@ -457,6 +458,8 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         aliasTargetItem = allItems.find(i => i.slug === 'oven-baked-wings' || /oven\s*baked/i.test(i.name));
     } else if (isBehariRoll) {
         aliasTargetItem = allItems.find(i => i.slug === 'behari-roll' || /behari\s*roll/i.test(i.name));
+    } else if (isPeriPeri && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'peri-peri' || /peri\s*peri/i.test(i.name));
     } else if (isDrink && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name));
     }
