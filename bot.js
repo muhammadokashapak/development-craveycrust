@@ -1626,7 +1626,7 @@ async function handleMessage(sock, msg, session) {
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
             let customerName = msg.pushName || identity?.name || null;
-            const liveDetails = getSessionOrderDetails(session?.id || jid, customerPhone);
+            const liveDetails = getSessionOrderDetails(jid, customerPhone);
             if (liveDetails?.name) {
                 customerName = liveDetails.name;
             }
@@ -1741,7 +1741,7 @@ async function handleMessage(sock, msg, session) {
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
             let customerName = msg.pushName || identity?.name || null;
-            const liveDetailsOrder = getSessionOrderDetails(session?.id || jid, customerPhone);
+            const liveDetailsOrder = getSessionOrderDetails(jid, customerPhone);
             if (liveDetailsOrder?.name) {
                 customerName = liveDetailsOrder.name;
             }

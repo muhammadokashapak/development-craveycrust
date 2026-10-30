@@ -49,30 +49,34 @@ export function clearAllFastRouteCaches() {
     console.log('[FAST_ROUTE] All fast route memory caches cleared.');
 }
 
-export function setLastDiscussedItem(sessionKey, item, variant = null) {
-    if (!sessionKey || !item) return;
-    _lastDiscussedItemBySession.set(sessionKey, {
+export function setLastDiscussedItem(sessionKey, item, variant = null, altKey = null) {
+    if ((!sessionKey && !altKey) || !item) return;
+    const entry = {
         item,
         variant,
         timestamp: Date.now(),
-    });
+    };
+    if (sessionKey) _lastDiscussedItemBySession.set(sessionKey, entry);
+    if (altKey) _lastDiscussedItemBySession.set(altKey, entry);
 }
 
-export function getLastDiscussedItem(sessionKey) {
-    if (!sessionKey || !_lastDiscussedItemBySession.has(sessionKey)) return null;
-    const entry = _lastDiscussedItemBySession.get(sessionKey);
+export function getLastDiscussedItem(sessionKey, altKey = null) {
+    if (!sessionKey && !altKey) return null;
+    let entry = sessionKey ? _lastDiscussedItemBySession.get(sessionKey) : null;
+    if (!entry && altKey) entry = _lastDiscussedItemBySession.get(altKey);
+    if (!entry) return null;
     // Expire after 5 minutes
     if (Date.now() - entry.timestamp > 5 * 60 * 1000) {
-        _lastDiscussedItemBySession.delete(sessionKey);
+        if (sessionKey) _lastDiscussedItemBySession.delete(sessionKey);
+        if (altKey) _lastDiscussedItemBySession.delete(altKey);
         return null;
     }
     return entry;
 }
 
-export function clearLastDiscussedItem(sessionKey) {
-    if (sessionKey) {
-        _lastDiscussedItemBySession.delete(sessionKey);
-    }
+export function clearLastDiscussedItem(sessionKey, altKey = null) {
+    if (sessionKey) _lastDiscussedItemBySession.delete(sessionKey);
+    if (altKey) _lastDiscussedItemBySession.delete(altKey);
 }
 
 export function isDeliveryAreaInquiry(text) {
@@ -529,13 +533,13 @@ export async function getNextCheckoutStepResponse({
         try {
             const { getRememberedCustomerDetails } = await import('./sessionService.js');
             const remembered = await getRememberedCustomerDetails(null, rawCleanPhone);
-            if (remembered?.name && !details.name) {
+            if (remembered?.name && !details.name && !details.nameExplicit) {
                 details.name = remembered.name;
             }
             if (remembered?.address && !details.address && !details.location) {
                 details.address = remembered.address;
                 details.savedAddress = remembered.address;
-                details.savedPhone = remembered.phone || rawCleanPhone;
+                details.savedPhone = rawCleanPhone; // Strictly lock to current WhatsApp phone
             }
         } catch (_) {}
     }
@@ -1595,15 +1599,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 curr.savedProfileChecked = true;
                 const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
                 if (remembered) {
-                    if (remembered.name && !curr.name) {
+                    if (remembered.name && !curr.name && !curr.nameExplicit) {
                         curr.name = remembered.name;
                     }
                     if (remembered.address && !curr.address && !curr.location) {
                         curr.savedAddress = remembered.address;
-                        curr.savedPhone = remembered.phone || cleanPhone;
+                        curr.savedPhone = cleanPhone; // Strictly lock to current WhatsApp phone
                     }
                     if (!curr.phone) {
-                        curr.phone = remembered.phone || cleanPhone;
+                        curr.phone = cleanPhone; // Strictly lock to current WhatsApp phone
                     }
                 }
             }
@@ -2735,8 +2739,28 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Customer asks for Fries without size (Zero Tokens) ──
+    const isFriesWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do)?[\s.!?]*$/i.test(lower.trim()) ||
+                               (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower));
+    if (isFriesWithoutSize && !hasLeadingOrderQuantity && userSessionId) {
+        const friesItem = {
+            id: 'item-1',
+            name: 'Fries',
+            variants: [
+                { id: 'v-1-1', name: 'Regular', price: 220 },
+                { id: 'v-1-2', name: 'Large', price: 320 }
+            ]
+        };
+        setLastDiscussedItem(userSessionId, friesItem, null, cleanPhone);
+        return {
+            handled: true,
+            routeName: 'fries_size_prompt',
+            reply: 'Zaroor! Fries ka kaunsa size add karun — *Regular* (Rs. 220) ya *Large* (Rs. 320)? 🍟',
+        };
+    }
+
     // ── Check Fast Follow-up: Variant selection for pending discussed item (e.g. "regular", "can", "1.5 liter", "large") ──
-    const lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId) : null;
+    const lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId, cleanPhone) : null;
     if (lastItemEntry && lastItemEntry.item && (lastItemEntry.item.variants || []).length > 0) {
         const itemVariants = lastItemEntry.item.variants;
         const { matchVariant } = await import('./cartService.js');
@@ -3363,6 +3387,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 if (extracted.name) {
                     if (!currDetails.name) {
                         updatePayload.name = extracted.name;
+                        updatePayload.nameExplicit = true;
                     } else if (extracted.nameExplicit) {
                         const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(raw);
                         if (isExplicitRename && extracted.name.toLowerCase() !== currDetails.name.toLowerCase()) {
@@ -3515,7 +3540,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // An already established name cannot be overwritten by random bare words!
                 if (!details.name) {
                     const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                    updateSessionOrderDetails(userSessionId, { name: customerName }, cleanPhone);
+                    updateSessionOrderDetails(userSessionId, { name: customerName, nameExplicit: true }, cleanPhone);
                     const updated = getSessionOrderDetails(userSessionId, cleanPhone);
 
                     try {

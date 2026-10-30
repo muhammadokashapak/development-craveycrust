@@ -435,16 +435,17 @@ export async function getRememberedCustomerDetails(key, altKey) {
                 const isLid = (k) => typeof k === 'string' && k.includes('@lid');
                 const rawPhone = (!isLid(altKey) ? altKey : '') || (!isLid(key) ? key : '');
                 const cleanPhone = (rawPhone || '').replace(/\D/g, '');
+                const isWaJid = (k) => typeof k === 'string' && (k.endsWith('@s.whatsapp.net') || k.endsWith('@lid'));
                 const orConds = [];
-                if (key) {
-                    orConds.push({ source_session_id: key });
-                    orConds.push({ source_chat_id: key });
-                }
+                // STRICT CUSTOMER IDENTIFIER: Only match by specific customer phone or explicit user JID!
+                // NEVER search by generic internal server source_session_id!
                 if (cleanPhone && cleanPhone.length >= 10 && cleanPhone.length <= 15) {
                     orConds.push({ phone: cleanPhone });
                     orConds.push({ whatsapp_phone: cleanPhone });
                     const last9 = cleanPhone.slice(-9);
                     orConds.push({ phone: { contains: last9 } });
+                } else if (key && isWaJid(key)) {
+                    orConds.push({ source_chat_id: key });
                 }
                 if (orConds.length > 0) {
                     const lastOrder = await prisma.order.findFirst({

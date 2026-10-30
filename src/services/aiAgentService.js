@@ -1230,6 +1230,11 @@ export function verifyOutput(aiText, optsOrToolResults) {
                     const expected = isSubtotalMention ? verifiedSubtotal : verifiedTotal;
                     if (claimedNum !== expected && claimedNum !== verifiedSubtotal && claimedNum !== verifiedTotal) {
                         console.warn(`[GATEKEEPER] BLOCKED mismatched total claim: Rs. ${claimedNum} vs verified: Subtotal Rs. ${verifiedSubtotal}, Total Rs. ${verifiedTotal}`);
+                        if (/\b(?:order\s+summary|customer\s+name|delivery\s+address|subtotal|final\s*bill)\b/i.test(raw)) {
+                            let fixed = raw.replace(/(?:subtotal)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Subtotal: Rs. ${verifiedSubtotal}`);
+                            fixed = fixed.replace(/(?:total|grand\s*total|final\s*bill|bill|kul\s*rakam)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Total: Rs. ${verifiedTotal}`);
+                            return fixed;
+                        }
                         return `Backend verified calculation ke mutabiq aap ka Subtotal Rs. ${verifiedSubtotal} aur Total Bill Rs. ${verifiedTotal} hai.`;
                     }
                 }
@@ -1648,18 +1653,21 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const { getRememberedCustomerDetails } = await import('./sessionService.js');
     const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
 
-    // If session has no name, address, or phone, pre-fill them directly from database profile!
-    if (!sessionDetails.name && rememberedDetails?.name) {
+    // Pre-fill returning customer details ONLY if not already explicitly provided in this session
+    // Explicit customer input (e.g. Aslam) MUST NEVER be overwritten by past profile!
+    if (!sessionDetails.name && !sessionDetails.nameExplicit && rememberedDetails?.name) {
         sessionDetails.name = rememberedDetails.name;
     }
     if (!sessionDetails.address && rememberedDetails?.address) {
         sessionDetails.address = rememberedDetails.address;
         sessionDetails.savedAddress = rememberedDetails.address;
     }
-    if (!sessionDetails.phone && (rememberedDetails?.phone || whatsappPhone)) {
-        sessionDetails.phone = rememberedDetails?.phone || (whatsappPhone || '').replace(/\D/g, '');
-        sessionDetails.savedPhone = rememberedDetails?.phone || (whatsappPhone || '').replace(/\D/g, '');
-        sessionDetails.phoneConfirmed = true;
+    // ORDER CONTACT PHONE: Always default strictly to sender's WhatsApp phone number (whatsappPhone).
+    // NEVER substitute a different phone number from another session/profile, and NEVER auto-confirm without user confirmation!
+    const cleanCurrentWhatsApp = (whatsappPhone || '').replace(/\D/g, '');
+    if (!sessionDetails.phone) {
+        sessionDetails.phone = cleanCurrentWhatsApp;
+        sessionDetails.savedPhone = cleanCurrentWhatsApp;
     }
 
     if (activeLocation) {
@@ -1672,8 +1680,10 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const updatePayload = {};
 
     if (extracted.name) {
-        if (!sessionDetails.name) {
+        if (!sessionDetails.name || !sessionDetails.nameExplicit) {
             updatePayload.name = extracted.name;
+            updatePayload.nameExplicit = true;
+            sessionDetails.nameExplicit = true;
         } else if (extracted.nameExplicit) {
             const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(effectiveText);
             if (isExplicitRename && extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase()) {
@@ -1936,20 +1946,50 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         }
     } catch (_) {}
 
-    // Multi-item safeguard: ensure no requested items were dropped by AI tool calls
+    // Universal Cart Mutation Safeguard: ensure NO requested items or pending variations are dropped
     try {
+        // A. Check if customer is responding with a variant choice for a pending discussed item (e.g. "Regular", "Large", "1.5 liter")
+        const { getLastDiscussedItem, clearLastDiscussedItem } = await import('./intentParser.js');
+        const lastEntry = getLastDiscussedItem(sessionKey, whatsappPhone);
+        if (lastEntry && lastEntry.item && (lastEntry.item.variants || []).length > 0) {
+            const { matchVariant } = await import('./cartService.js');
+            const matchedVariant = matchVariant(lastEntry.item.variants, effectiveText);
+            if (matchedVariant) {
+                console.log(`[AGENT] Auto-Rescue: Resolving pending variant "${matchedVariant.name}" for "${lastEntry.item.name}"`);
+                const { addItemToCart } = await import('./cartService.js');
+                await addItemToCart({
+                    sessionKey,
+                    restaurantId: restId,
+                    chatId: jid,
+                    verifiedPhone: whatsappPhone,
+                    menuItemId: lastEntry.item.id,
+                    variantId: matchedVariant.id,
+                    quantity: 1,
+                });
+                clearLastDiscussedItem(sessionKey, whatsappPhone);
+                freshCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
+                const { calculateCartTotals } = await import('./cartService.js');
+                freshPricing = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId: jid }).catch(() => null);
+            }
+        }
+
+        // B. Check if message requests any food items (single or multiple) not yet added to cart
         const { extractRequestedItems, executeBatchAddToCart } = await import('./addonExtractionService.js');
         const extracted = extractRequestedItems(effectiveText, freshCart);
-        if (extracted.hasMultiple && extracted.items.length > 1) {
+        if (extracted && extracted.items && extracted.items.length > 0) {
             const missing = extracted.items.filter(req => {
-                return !freshCart.items.some(ci => {
-                    if (req.menuItemId && ci.menu_item_id === req.menuItemId) return true;
-                    if (req.variantId && ci.menu_variant_id === req.variantId) return true;
+                const alreadyInCart = freshCart?.items?.some(ci => {
+                    if (req.menuItemId && ci.menu_item_id === req.menuItemId) {
+                        if (req.variantId) return ci.menu_variant_id === req.variantId;
+                        return true;
+                    }
+                    if (req.dealId && ci.deal_id === req.dealId) return true;
                     return false;
                 });
+                return !alreadyInCart;
             });
             if (missing.length > 0) {
-                console.log(`[AGENT] Multi-item safeguard adding ${missing.length} missing requested item(s):`, missing.map(m => m.canonicalName));
+                console.log(`[AGENT] Universal Safeguard adding ${missing.length} missing requested item(s):`, missing.map(m => m.canonicalName));
                 await executeBatchAddToCart({
                     sessionKey,
                     restaurantId: restId,
@@ -1963,7 +2003,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             }
         }
     } catch (err) {
-        console.error('[AGENT] Multi-item safeguard error:', err.message);
+        console.error('[AGENT] Universal safeguard error:', err.message);
     }
 
     // ── 7. Post-Verification & Cleanup (Hissa 7) ──
