@@ -225,12 +225,15 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
         const status = nativeErr.response?.status;
         const errCode = nativeErr.code;
 
-        // If 429 / 404 / 503 / timeout on current model, attempt graceful fallback across modern Gemini flash tiers
+        // If 429 / 404 / 503 / timeout on current model, attempt forward-only graceful fallback across verified Gemini tiers
         if (status === 429 || status === 404 || status === 503 || errCode === 'ECONNABORTED') {
-            const fallbackChain = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'];
-            const nextModel = fallbackChain.find(m => m !== model);
-            if (nextModel) {
-                console.warn(`[LLM] Model ${model} gave ${status || errCode} — auto-recovering with ${nextModel}`);
+            const fallbackChain = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
+            const currentIdx = fallbackChain.indexOf(model);
+            const nextModel = (currentIdx >= 0 && currentIdx < fallbackChain.length - 1)
+                ? fallbackChain[currentIdx + 1]
+                : (currentIdx === -1 ? fallbackChain[0] : null);
+            if (nextModel && nextModel !== model) {
+                console.warn(`[LLM] Model ${model} gave ${status || errCode} — auto-recovering forward with ${nextModel}`);
                 return callGemini({ apiKey, model: nextModel, messages, temperature, maxTokens });
             }
         }
