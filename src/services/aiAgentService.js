@@ -87,6 +87,7 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 17. send_alternate_confirmation(phone: string) — Send notification to alternate phone.
 18. request_human_handover(reason?: string) — Mute bot for 120 minutes and notify manager.
 19. update_order_details(orderNumber?: string, customerName?: string, deliveryAddress?: string, phone?: string, paymentMethod?: string) — Update details (customer name, delivery address, phone, payment method) for an active placed order (PENDING/CONFIRMED/PREPARING).
+20. add_multiple_to_cart(items: Array<{ itemName: string, size?: string, quantity?: number, notes?: string }>) — Add multiple items or deals to cart in one atomic batch. Use this whenever customer requests more than one item in a single message.
 
 TOOL CALL FORMAT:
 {"tool": "tool_name", "args": {"param": "value"}}
@@ -623,6 +624,39 @@ async function executeTool(toolName, args, context) {
                 return { success: true, cartItemId: added.id, quantity: added.quantity };
             }
 
+            // 20. add_multiple_to_cart
+            case 'add_multiple_to_cart': {
+                const { executeBatchAddToCart, extractRequestedItems } = await import('./addonExtractionService.js');
+                let itemsToAdd = args.items || [];
+                if (!Array.isArray(itemsToAdd) || itemsToAdd.length === 0) {
+                    if (args.rawText) {
+                        const ext = extractRequestedItems(args.rawText);
+                        itemsToAdd = ext.items;
+                    }
+                }
+                const batchRes = await executeBatchAddToCart({
+                    sessionKey,
+                    restaurantId: restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    items: itemsToAdd,
+                });
+                try {
+                    clearLastDiscussedDeal(sessionKey);
+                    clearLastDiscussedItem(sessionKey);
+                    clearPendingDealFlavour(sessionKey);
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                } catch (_) {}
+                return {
+                    success: batchRes.success,
+                    addedCount: (batchRes.added || []).length,
+                    items: (batchRes.added || []).map(i => `${i.quantity || 1}x ${i.canonicalName || i.itemName}`),
+                    totals: batchRes.totals,
+                    message: `${(batchRes.added || []).length} items cart mein add kar diye gaye hain!`
+                };
+            }
+
             // 10. update_cart_item
             case 'update_cart_item': {
                 const updated = await updateCartItem({
@@ -780,14 +814,27 @@ async function executeTool(toolName, args, context) {
 
                 // ── Strict Validation 4c: Mandatory Order Summary Review ──
                 // The customer MUST have been shown the complete final Order Summary card before the order is booked!
+                const currentCartVer = cart.version || 1;
                 if (!savedDetails.summaryShown) {
                     try {
                         const { updateSessionOrderDetails } = await import('./sessionService.js');
-                        updateSessionOrderDetails(sessionKey, { summaryShown: true }, cleanPhoneDigitsForDetails);
+                        updateSessionOrderDetails(sessionKey, { summaryShown: true, summaryCartVersion: currentCartVer }, cleanPhoneDigitsForDetails);
                     } catch (_) {}
                     return {
                         error: 'SUMMARY_REVIEW_REQUIRED',
                         message: `Order confirm karne se pehle customer ko mukammal Order Summary dikhana laazmi hai! Abhi order place mat karein. Pehle customer ko yeh details dikhayein:\n\n📋 *ORDER SUMMARY*\n• Customer: ${trimmedName}\n• Contact Phone: ${cleanPhoneDigits}\n• Delivery Address: ${finalAddress}\n• Payment: ${chosenPaymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAur aakhri baar poochein: "Kya aap in tamam details ke sath order confirm karte hain? (Order book karne ke liye 'Confirm' ya 'Haan' likhein)"`
+                    };
+                }
+
+                // ── Strict Validation 4c-2: Stale Cart Rejection (Part 19 Test 6) ──
+                if (savedDetails.summaryCartVersion && savedDetails.summaryCartVersion !== currentCartVer) {
+                    try {
+                        const { updateSessionOrderDetails } = await import('./sessionService.js');
+                        updateSessionOrderDetails(sessionKey, { summaryShown: true, summaryCartVersion: currentCartVer }, cleanPhoneDigitsForDetails);
+                    } catch (_) {}
+                    return {
+                        error: 'STALE_CART_SUMMARY',
+                        message: `Cart items tabdeel ho chuki hain (purani summary ab valid nahi hai). Baraye meherbani nayi Order Summary review karein:\n\n📋 *UPDATED ORDER SUMMARY*\n• Customer: ${trimmedName}\n• Contact Phone: ${cleanPhoneDigits}\n• Delivery Address: ${finalAddress}\n• Payment: ${chosenPaymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nKya aap is nayi summary ke sath order confirm karte hain?`
                     };
                 }
 
@@ -1090,11 +1137,14 @@ export function sanitizeOutput(text) {
 const BACKEND_ERROR_MESSAGES = {
     CONTACT_NUMBER_REQUIRED:  'Aapka contact number zaroori hai. Baraye meherbani apna 11-digit phone number bata dein (maslan 03001234567).',
     CONTACT_NUMBER_INVALID:   'Phone number valid nahi lagta. Sahi 11-digit Pakistani number dein.',
+    PHONE_CONFIRMATION_REQUIRED: 'Order process karne se pehle contact phone number confirm karwana LAZMI hai. Baraye meherbani customer se phone number confirm karwayein.',
     CUSTOMER_NAME_REQUIRED:   'Order complete karne ke liye baraye meherbani apna Naam bata dein.',
     DELIVERY_ADDRESS_REQUIRED:'Delivery ke liye mukammal address zaroori hai. Apna ghar ya office ka mukammal pata ya WhatsApp location pin share karein.',
     DELIVERY_ADDRESS_INVALID: 'Aap ne restaurant ka branch address diya hai. Baraye meherbani apna ghar ya delivery point ka mukammal address ya WhatsApp location pin share karein.',
     CART_EMPTY:               'Aapka cart is waqt khali hai. Pehle koi item ya deal select karein, phir checkout karein.',
     ORDER_CREATION_FAILED:    'Aapka order place nahi ho saka. Baraye meherbani dobara "confirm" likhein taake retry ho sake, ya "agent" likhein hamara team member madad karega.',
+    STALE_CART_SUMMARY:       'Cart items tabdeel ho chuki hain (purani summary ab valid nahi hai). Baraye meherbani nayi Order Summary review karein.',
+    LOCATION_OUT_OF_RANGE:    'Yeh location hamari 5 KM delivery range se bahar hai. Lekin aap hamare outlet se Takeaway / Self-Pickup karwa sakte hain!',
 };
 
 export function verifyOutput(aiText, optsOrToolResults) {
@@ -1134,7 +1184,7 @@ export function verifyOutput(aiText, optsOrToolResults) {
     }
 
     // 2. Detect false Cart Addition (claims item/deal add ho gaya when tool failed or requires variant)
-    const claimsItemAdded = /\b(?:cart\s+mein\s+(?:kamyabi\s+se\s+|successfully\s+)?(?:add|shamil|daal)\s+(?:kar\s+d[iy][a-z]*|ho\s+g[a-z]*|diye|gaye)|item\s+add\s+ho\s+g[a-z]*|deal\s+cart\s+mein\s+add|add\s+kar\s+di\s+hai)\b/i.test(raw);
+    const claimsItemAdded = /\b(?:cart\s+mein\s+(?:kamyabi\s+se\s+|successfully\s+)?(?:add|shamil|daal)\s+(?:kar\s+)?(?:d[iy][a-z]*|ho\s+g[a-z]*|diye|gaye)|item\s+add\s+ho\s+g[a-z]*|deal\s+cart\s+mein\s+add|add\s+kar\s+di\s+hai)\b/i.test(raw);
     const requiresVariantResult = (toolResults || []).find(r => r?.requiresVariant);
     if (claimsItemAdded && requiresVariantResult) {
         console.warn('[GATEKEEPER] BLOCKED false item addition claim when variant is required');
@@ -1163,6 +1213,28 @@ export function verifyOutput(aiText, optsOrToolResults) {
     if (claimsSummary && isCartActuallyEmpty && !hasRealOrderInTools) {
         console.warn('[GATEKEEPER] BLOCKED hallucinated order summary when backend cart is empty');
         return 'Aapka cart is waqt khali hai. Pehle koi item ya deal select karein, phir checkout karein.';
+    }
+
+    // 3a. Exact Total & Subtotal Lock (Test 5: Reject Rs. 1599 when cart subtotal is Rs. 1819)
+    if (pricing && (pricing.total != null || pricing.subtotal != null)) {
+        const verifiedTotal = Number(pricing.total ?? pricing.subtotal ?? 0);
+        const verifiedSubtotal = Number(pricing.subtotal ?? pricing.total ?? 0);
+
+        if (verifiedSubtotal > 0 || verifiedTotal > 0) {
+            const totalPattern = /(?:total|subtotal|grand\s*total|final\s*bill|bill|kul\s*rakam)[\s*:]+(?:rs\.?|pkr)?\s*([0-9,]+)/gi;
+            let match;
+            while ((match = totalPattern.exec(raw)) !== null) {
+                const claimedNum = parseInt(match[1].replace(/,/g, ''), 10);
+                if (!isNaN(claimedNum) && claimedNum > 0) {
+                    const isSubtotalMention = /subtotal/i.test(match[0]);
+                    const expected = isSubtotalMention ? verifiedSubtotal : verifiedTotal;
+                    if (claimedNum !== expected && claimedNum !== verifiedSubtotal && claimedNum !== verifiedTotal) {
+                        console.warn(`[GATEKEEPER] BLOCKED mismatched total claim: Rs. ${claimedNum} vs verified: Subtotal Rs. ${verifiedSubtotal}, Total Rs. ${verifiedTotal}`);
+                        return `Backend verified calculation ke mutabiq aap ka Subtotal Rs. ${verifiedSubtotal} aur Total Bill Rs. ${verifiedTotal} hai.`;
+                    }
+                }
+            }
+        }
     }
 
     // 4. Delivery Fee Verification
@@ -1853,8 +1925,55 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     // Run Agent Loop
     const { text: aiRawText, imageUrl: aiImageUrl, imageUrls: aiImageUrls, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
 
+    // Refresh activeCart & calculate fresh pricing after tools run
+    let freshCart = activeCart;
+    let freshPricing = null;
+    try {
+        freshCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
+        if (freshCart?.items && freshCart.items.length > 0) {
+            const { calculateCartTotals } = await import('./cartService.js');
+            freshPricing = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId: jid }).catch(() => null);
+        }
+    } catch (_) {}
+
+    // Multi-item safeguard: ensure no requested items were dropped by AI tool calls
+    try {
+        const { extractRequestedItems, executeBatchAddToCart } = await import('./addonExtractionService.js');
+        const extracted = extractRequestedItems(effectiveText, freshCart);
+        if (extracted.hasMultiple && extracted.items.length > 1) {
+            const missing = extracted.items.filter(req => {
+                return !freshCart.items.some(ci => {
+                    if (req.menuItemId && ci.menu_item_id === req.menuItemId) return true;
+                    if (req.variantId && ci.menu_variant_id === req.variantId) return true;
+                    return false;
+                });
+            });
+            if (missing.length > 0) {
+                console.log(`[AGENT] Multi-item safeguard adding ${missing.length} missing requested item(s):`, missing.map(m => m.canonicalName));
+                await executeBatchAddToCart({
+                    sessionKey,
+                    restaurantId: restId,
+                    chatId: jid,
+                    verifiedPhone: whatsappPhone,
+                    items: missing,
+                });
+                freshCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
+                const { calculateCartTotals } = await import('./cartService.js');
+                freshPricing = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId: jid }).catch(() => null);
+            }
+        }
+    } catch (err) {
+        console.error('[AGENT] Multi-item safeguard error:', err.message);
+    }
+
     // ── 7. Post-Verification & Cleanup (Hissa 7) ──
-    const verificationOverride = verifyOutput(aiRawText || '', { toolResults, context, activeCart, cache });
+    const verificationOverride = verifyOutput(aiRawText || '', { 
+        toolResults, 
+        context, 
+        activeCart: freshCart, 
+        cache, 
+        pricing: freshPricing 
+    });
     const candidateText = verificationOverride || aiRawText || '';
     const cleanFinalReply = sanitizeOutput(candidateText);
 

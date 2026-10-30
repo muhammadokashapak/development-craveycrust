@@ -5,6 +5,45 @@ import { calculatePricing } from './pricingService.js';
 import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 
 const _inMemoryCarts = new Map();
+const _cartVersions = new Map();
+const _sessionLocks = new Map();
+
+/**
+ * Executes a cart operation sequentially per session to prevent race conditions & duplicate additions
+ */
+export async function withCartLock(sessionKey, fn) {
+    const key = String(sessionKey || 'default');
+    const prevLock = _sessionLocks.get(key) || Promise.resolve();
+    let release;
+    const currentLock = new Promise(resolve => { release = resolve; });
+    _sessionLocks.set(key, prevLock.then(() => currentLock));
+    try {
+        await prevLock;
+        return await fn();
+    } finally {
+        release();
+        if (_sessionLocks.get(key) === currentLock) {
+            _sessionLocks.delete(key);
+        }
+    }
+}
+
+/**
+ * Returns current authoritative cart version for optimistic locking
+ */
+export function getCartVersion(sessionKey) {
+    return _cartVersions.get(String(sessionKey)) || 1;
+}
+
+/**
+ * Increments cart version on every modification
+ */
+export function incrementCartVersion(sessionKey) {
+    const key = String(sessionKey);
+    const nextVer = (_cartVersions.get(key) || 1) + 1;
+    _cartVersions.set(key, nextVer);
+    return nextVer;
+}
 
 /**
  * Get or create the active cart for a session
@@ -41,6 +80,9 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
             };
             _inMemoryCarts.set(sessionKey, cart);
         }
+        cart.version = _cartVersions.get(String(sessionKey)) || 1;
+        _cartVersions.set(String(sessionKey), cart.version);
+        _cartVersions.set(String(cart.id), cart.version);
         return cart;
     }
 
@@ -442,6 +484,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
             existingItem.quantity += validated.quantity;
             if (notes !== undefined) existingItem.notes = notes;
             cart.updated_at = new Date();
+            cart.version = incrementCartVersion(sessionKey);
             await touchSession(sessionKey);
             return cart;
         }
@@ -461,6 +504,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         };
         cart.items.push(newItem);
         cart.updated_at = new Date();
+        cart.version = incrementCartVersion(sessionKey);
         await touchSession(sessionKey);
         return cart;
     }
@@ -731,8 +775,48 @@ export async function calculateCartTotals({ sessionKey, restaurantId, promoCode,
         deliverySelected: hasDeliveryInfo,
         deliveryArea: pricing.deliveryArea,
         total: pricing.total,
+        cartVersion: cart.version || getCartVersion(sessionKey) || 1,
     };
 }
 
 export { addItemToCart as addToCart };
 
+
+/**
+ * Atomically executes batch add to cart for multiple items sequentially under session lock.
+ */
+export async function batchAddToCart({ sessionKey, restaurantId, chatId, verifiedPhone, items = [] }) {
+    return withCartLock(sessionKey, async () => {
+        const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
+        const added = [];
+        const failed = [];
+        for (const it of items) {
+            try {
+                await addItemToCart({
+                    sessionKey,
+                    restaurantId: restId,
+                    chatId,
+                    verifiedPhone,
+                    menuItemId: it.menuItemId,
+                    variantId: it.variantId,
+                    dealId: it.dealId,
+                    quantity: it.quantity || 1,
+                    notes: it.notes || null,
+                });
+                added.push(it);
+            } catch (err) {
+                failed.push({ item: it, error: err.message });
+            }
+        }
+        const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+        const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId });
+        return {
+            success: added.length > 0 && failed.length === 0,
+            added,
+            failed,
+            cart,
+            totals,
+            cartVersion: cart.version || getCartVersion(sessionKey),
+        };
+    });
+}
