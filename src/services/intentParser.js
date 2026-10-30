@@ -1179,6 +1179,26 @@ export class DeterministicIntentProvider {
             }
         }
 
+        // Add item Pattern A2: Standalone food item name without quantity (e.g. "zinger burger chaiye", "chicken burger", "zinger burger", "loaded fries", "hot wings")
+        const hasSpecificFoodItem = /\b(zinger|ziggy|zegy|zeggy|chicken\s*burger|crispy\s*burger|hot\s*wings|oven\s*baked|loaded\s*fries|behari\s*roll|chicken\s*extreme|chicken\s*tikka|chicken\s*fajita|chicken\s*supreme|cheese\s*lover|peri\s*peri|crown\s*crust|stuffed\s*crust)\b/i.test(lower);
+        const isNotPriceOrInquiry = !/\b(price|rate|kitnay|kitne|kya\s*hai|detail|details|shamil|menu|deals?|categories)\b/i.test(lower);
+        if (hasSpecificFoodItem && isNotPriceOrInquiry) {
+            const cleanedItem = lower
+                .replace(/^(?:g|ji|jee|haan?|han|hn|aur|bhi|ek|aik)\s+/i, '')
+                .replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do)|dedo|de\s*do)[\s.!?]*$/i, '')
+                .trim();
+            if (cleanedItem.length >= 3 && !/^(?:menu|deals?)$/i.test(cleanedItem)) {
+                return {
+                    intent: 'ADD_ITEM',
+                    entities: {
+                        quantity: 1,
+                        itemQuery: cleanedItem,
+                    },
+                    confidence: 0.92,
+                };
+            }
+        }
+
         // Add item Pattern B: "zinger x2", "deal 1 x2"
         const suffixQtyMatch = lower.match(/^([a-zA-Z0-9\s-]+?)\s*(?:x|\*|\bx\b)\s*(\d+)$/);
         if (suffixQtyMatch && suffixQtyMatch[1].trim().length > 1) {
@@ -1220,8 +1240,10 @@ export class DeterministicIntentProvider {
 
         // Add item Pattern E: "burger deal 3 kr da", "burger deal 3 kardo", "deal 2 kr do", "burger deal 3"
         const orderSuffixMatch = lower.match(/^(.+?)\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|pack\s*karo|pack\s*krdo)$/i);
-        if (orderSuffixMatch && !/^(?:deals?|all\s+deals|menu)$/i.test(orderSuffixMatch[1].trim())) {
-            const inner = orderSuffixMatch[1].trim();
+        const isAffirmativeOrConfirmWord = orderSuffixMatch && /^(?:yahi|yehi|wahi|same|isi|theek|thk|done|ok|haan?|han|hn|g|ji|jee|yes|order|confirm|cancel)$/i.test(orderSuffixMatch[1].trim());
+        if (orderSuffixMatch && !/^(?:deals?|all\s+deals|menu)$/i.test(orderSuffixMatch[1].trim()) && !isAffirmativeOrConfirmWord) {
+            let inner = orderSuffixMatch[1].trim();
+            inner = inner.replace(/^(?:g|ji|jee|haan?|han|hn|aur|bhi)\s+/i, '').trim();
             const qtyMatch = inner.match(/^(\d+)\s+(?:x\s+)?(.+)$/);
             return {
                 intent: 'ADD_ITEM',
@@ -1446,10 +1468,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s+(?:hot\s*wings|wings?|loaded\s*fries|fries|zinger|ziggy|zegy|zeggy|burger|pizza|roll|pasta|nuggets?|box|platter)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(?:small|medium|large|party|reg|regular)?\s*[a-z]+/i.test(lower);
 
+    const hasFoodItemName = /\b(zinger|ziggy|zegy|zeggy|chicken\s*burger|crispy\s*burger|hot\s*wings|oven\s*baked|loaded\s*fries|behari\s*roll|chicken\s*extreme|chicken\s*tikka|chicken\s*fajita|chicken\s*supreme|cheese\s*lover|peri\s*peri|crown\s*crust|stuffed\s*crust|alfredo|pasta|nuggets?)\b/i.test(lower);
+
     const hasCartOrOrderAction = hasLeadingOrderQuantity ||
+        hasFoodItemName ||
         /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
-        /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
-        /^(?:add|order)\s+(?:\d+|aik|ek|do|teen|char|paanch)/i.test(lower) ||
+        /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|dedo|de\s*do|order\s*karo|order\s*krdo|order\s*dein|order\s*dain)\b/i.test(lower) ||
+        /^(?:add|order)\s+(?:\d+|aik|ek|do|teen|char|paanch|[a-z]+)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower);
 
     // ── 1. Handover / Complaint / Real Person Request ──
@@ -4459,8 +4484,8 @@ const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lo
 
                     // 3. Reverse word match: e.g. text contains category name as whole word
                     // SAKHT GUARD: Do NOT trigger category card if customer is specifying a quantity or ordering food!
-                    const hasOrderSignals = hasCartOrOrderAction || (typeof hasLeadingOrderQuantity !== 'undefined' && hasLeadingOrderQuantity) || /\b(?:chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add|order|kar\s*do|kr\s*do|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower);
-                    if (!targetCat && !hasOrderSignals) {
+                    const hasOrderSignals = hasCartOrOrderAction || (typeof hasLeadingOrderQuantity !== 'undefined' && hasLeadingOrderQuantity) || hasFoodItemName || /\b(?:chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|daal\s*do|add|order|kar\s*do|kr\s*do|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|dedo|de\s*do)\b/i.test(lower);
+                    if (!targetCat && !hasOrderSignals && !hasFoodItemName) {
                         const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         for (const c of allCats) {
                             const cName = c.name.toLowerCase();

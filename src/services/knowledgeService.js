@@ -107,7 +107,11 @@ export async function searchKnowledge({ restaurantId, query, limit = 3, threshol
 
     const prisma = getDbClient();
     if (!prisma) {
-        throw new Error('Database client unavailable');
+        return {
+            success: true,
+            data: { query: cleanQuery, results: [] },
+            matches: [],
+        };
     }
 
     const safeLimit = Math.max(1, Math.min(20, parseInt(limit, 10) || 3));
