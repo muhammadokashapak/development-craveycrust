@@ -25,6 +25,7 @@ export const VALID_STATUS_TRANSITIONS = {
 export const CANCELLABLE_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING'];
 
 const _inMemoryOrders = new Map();
+const _inMemoryProcessedKeys = new Map();
 
 export function getLatestInMemoryOrder({ sessionKey, phone, chatId } = {}) {
     const clean = phone ? String(phone).replace(/\D/g, '') : null;
@@ -71,6 +72,13 @@ export async function createOrder(params) {
     }
 
     if (!prisma) {
+        if (idempotencyKey && _inMemoryProcessedKeys.has(idempotencyKey)) {
+            return {
+                status: 'ORDER_EXISTS',
+                isDuplicate: true,
+                order: _inMemoryProcessedKeys.get(idempotencyKey),
+            };
+        }
         const cart = await getActiveCart({ sessionKey, restaurantId: restId });
         if (!cart.items || cart.items.length === 0) {
             const err = new Error('Cannot create order from an empty cart');
@@ -185,6 +193,9 @@ export async function createOrder(params) {
 
         _inMemoryOrders.set(orderNumber, fullOrder);
         _inMemoryOrders.set(orderId, fullOrder);
+        if (idempotencyKey) {
+            _inMemoryProcessedKeys.set(idempotencyKey, fullOrder);
+        }
 
         const { clearCart } = await import('./cartService.js');
         await clearCart({ sessionKey });

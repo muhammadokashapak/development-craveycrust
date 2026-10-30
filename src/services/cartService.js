@@ -261,12 +261,13 @@ export function matchVariant(variants, query) {
 export async function validateCartItemInput({ restaurantId, menuItemId, variantId, dealId, quantity }) {
     const prisma = getDbClient();
     const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
-    const qty = parseInt(quantity, 10);
-    if (isNaN(qty) || qty < 1) {
-        const err = new Error('Quantity must be an integer greater than 0');
+    const num = Number(quantity);
+    if (isNaN(num) || !Number.isInteger(num) || num < 1 || num > 50) {
+        const err = new Error('Quantity must be an integer between 1 and 50');
         err.code = 'INVALID_QUANTITY';
         throw err;
     }
+    const qty = num;
 
     if (!menuItemId && !dealId) {
         const err = new Error('Either menuItemId or dealId must be provided');
@@ -604,7 +605,13 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
             throw err;
         }
         if (quantity !== undefined) {
-            const qty = parseInt(quantity, 10);
+            const num = Number(quantity);
+            if (isNaN(num) || !Number.isInteger(num) || num < 0 || num > 50) {
+                const err = new Error('Quantity must be an integer between 0 and 50');
+                err.code = 'INVALID_QUANTITY';
+                throw err;
+            }
+            const qty = num;
             if (qty <= 0) {
                 cart.items.splice(itemIdx, 1);
             } else {
@@ -631,7 +638,13 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
     }
 
     if (quantity !== undefined) {
-        const qty = parseInt(quantity, 10);
+        const num = Number(quantity);
+        if (isNaN(num) || !Number.isInteger(num) || num < 0 || num > 50) {
+            const err = new Error('Quantity must be an integer between 0 and 50');
+            err.code = 'INVALID_QUANTITY';
+            throw err;
+        }
+        const qty = num;
         if (qty <= 0) {
             await prisma.cartItem.delete({ where: { id: cartItemId } });
             await touchSession(sessionKey);
@@ -662,6 +675,12 @@ export async function removeCartItem({ sessionKey, cartItemId }) {
     const prisma = getDbClient();
     if (!prisma) {
         const cart = await getActiveCart({ sessionKey });
+        const exists = cart.items.some(i => i.id === cartItemId);
+        if (!exists) {
+            const err = new Error('Cart item not found');
+            err.code = 'CART_ITEM_NOT_FOUND';
+            throw err;
+        }
         cart.items = cart.items.filter(i => i.id !== cartItemId);
         cart.updated_at = new Date();
         await touchSession(sessionKey);
