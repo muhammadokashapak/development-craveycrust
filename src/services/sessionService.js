@@ -43,6 +43,11 @@ export async function getOrCreateSession({ restaurantId, chatId, sessionKey, ver
 
     if (!prisma) {
         let session = _inMemorySessions.get(key);
+        if (session && session.expires_at < now) {
+            _inMemorySessions.delete(key);
+            _sessionOrderDetails.delete(key);
+            session = null;
+        }
         if (!session) {
             session = {
                 id: `sess_${key}`,

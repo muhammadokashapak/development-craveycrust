@@ -62,9 +62,10 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
         let cart = _inMemoryCarts.get(sessionKey);
         if (cart) {
             const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
-            if (cartAgeMs > 30 * 60 * 1000) {
+            if (cartAgeMs > 15 * 60 * 1000) {
                 cart.status = 'EXPIRED';
                 cart.items = [];
+                _inMemoryCarts.delete(sessionKey);
                 cart = null;
             }
         }
@@ -124,8 +125,8 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
 
     if (cart) {
         const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
-        // If an abandoned cart has been idle for more than 30 minutes, expire it so old items don't leak into new orders
-        if (cartAgeMs > 30 * 60 * 1000) {
+        // If an abandoned cart has been idle for more than 15 minutes, expire it so old items don't leak into new orders
+        if (cartAgeMs > 15 * 60 * 1000) {
             await prisma.cart.update({
                 where: { id: cart.id },
                 data: { status: 'EXPIRED' },
