@@ -121,10 +121,13 @@ export function extractQuantityAndQuery(input) {
         return { quantity: 1, query: raw.trim() };
     }
 
-    // Leading quantity: "2 Chicken Extreme", "1 Pizza", "2 P5 Crispy Zinger"
+    // Leading quantity: "2 Chicken Extreme", "1 Pizza", "2 P5 Crispy Zinger", "5 hot wings kr dain"
     const leadingMatch = raw.match(/^(\d+)\s*(?:x\s+)?(.+)$/i);
     if (leadingMatch && leadingMatch[2].trim().length > 1) {
-        return { quantity: parseInt(leadingMatch[1], 10), query: leadingMatch[2].trim() };
+        const cleanedQ = leadingMatch[2]
+            .replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '')
+            .trim();
+        return { quantity: parseInt(leadingMatch[1], 10), query: cleanedQ || leadingMatch[2].trim() };
     }
 
     // Trailing quantity: "Chicken Extreme 2", "Chicken Extreme x2"
@@ -193,7 +196,7 @@ export function formatCategoryResponse(category, globalDiscount = null, dealsCon
     if (isDeals) {
         catMsg += `\nOrder karne ke liye kisi bhi deal ka naam bata dein!`;
     } else {
-        catMsg += `\nOrder karne ke liye likhein: quantity item_name (e.g. 2 ${category.menu_items?.[0]?.name || 'item'}).`;
+        catMsg += `\nOrder karne ke liye item ka naam aur quantity bata dein (jaise *2 ${category.menu_items?.[0]?.name || 'item'}* ya *5 ${category.menu_items?.[0]?.name || 'item'}*).`;
     }
     return catMsg;
 }

@@ -652,7 +652,7 @@ export async function resolveBusinessAnswer({
                 catMsg += `${item.name}: ${priceStr}\n`;
             });
         }
-        catMsg += `\nOrder karne ke liye likhein: quantity item_name (e.g. 2 ${matchedCategory.menu_items?.[0]?.name || 'item'}).`;
+        catMsg += `\nOrder karne ke liye item ka naam aur quantity bata dein (jaise *2 ${matchedCategory.menu_items?.[0]?.name || 'item'}*).`;
 
         logger.info(
             { query: cleanQuery, source: 'MENU', type: 'CATEGORY', category: matchedCategory.name },

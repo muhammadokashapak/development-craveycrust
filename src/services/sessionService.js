@@ -271,8 +271,20 @@ export function updateSessionOrderDetails(sessionKey, patch, altKey) {
 }
 
 export function clearSessionOrderDetails(sessionKey, altKey) {
-    if (sessionKey) _sessionOrderDetails.delete(sessionKey);
-    if (altKey) _sessionOrderDetails.delete(altKey);
+    if (sessionKey) {
+        const curr = _sessionOrderDetails.get(sessionKey);
+        if (curr?.name && (curr?.address || curr?.savedAddress)) {
+            rememberCustomerDetails(sessionKey, curr, altKey);
+        }
+        _sessionOrderDetails.delete(sessionKey);
+    }
+    if (altKey) {
+        const curr = _sessionOrderDetails.get(altKey);
+        if (curr?.name && (curr?.address || curr?.savedAddress)) {
+            rememberCustomerDetails(altKey, curr, sessionKey);
+        }
+        _sessionOrderDetails.delete(altKey);
+    }
     clearMenuSentTracking(sessionKey, altKey);
 }
 
@@ -452,6 +464,27 @@ export async function getRememberedCustomerDetails(key, altKey) {
                             timestamp: Date.now()
                         };
                         rememberCustomerDetails(key, details, altKey);
+                    } else if (cleanPhone) {
+                        const cust = await prisma.customer.findFirst({
+                            where: {
+                                OR: [
+                                    { phone: cleanPhone },
+                                    { whatsapp_phone: cleanPhone },
+                                    ...(cleanPhone.length >= 9 ? [{ phone: { contains: cleanPhone.slice(-9) } }, { whatsapp_phone: { contains: cleanPhone.slice(-9) } }] : [])
+                                ]
+                            }
+                        });
+                        if (cust && cust.name) {
+                            details = {
+                                name: cust.name,
+                                phone: cust.phone || cleanPhone,
+                                whatsappPhone: cust.whatsapp_phone || cleanPhone,
+                                address: null,
+                                paymentMethod: 'COD',
+                                timestamp: Date.now()
+                            };
+                            rememberCustomerDetails(key, details, altKey);
+                        }
                     }
                 }
             }

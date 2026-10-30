@@ -324,8 +324,20 @@ async function executeTool(toolName, args, context) {
                 let rawVariant = args.variantId || args.variantName || args.size || args.variant || null;
                 let variantId  = args.variantId;
                 let dealId     = args.dealId;
-                const quantity = parseInt(args.quantity || 1, 10);
+                let quantity   = parseInt(args.quantity || 1, 10);
                 let notes      = args.notes || undefined;
+
+                // Quantity Auto-Rescue: If quantity is 1 or missing, but user text had explicit quantity (e.g. "5 hot wings", "2 loaded fries", "6 zinger burger")
+                if ((!args.quantity || quantity === 1) && text) {
+                    const explicitQtyMatch = text.match(/\b(\d+)\s*(?:x\s+)?(?:pcs?|pieces?|portion|orders?|boxes?)?\s*(?:hot\s*wings|wings|fries|loaded\s*fries|pizza|burger|deal|zinger|roll|chicken|piece)/i) ||
+                                             text.match(/^(\d+)\s+/);
+                    if (explicitQtyMatch) {
+                        const parsedQ = parseInt(explicitQtyMatch[1], 10);
+                        if (parsedQ > 1 && parsedQ <= 50) {
+                            quantity = parsedQ;
+                        }
+                    }
+                }
 
                 // If dealId directly passed without notes, verify if it's a pizza deal requiring flavour
                 if (dealId && !notes) {
@@ -1335,6 +1347,19 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 
     // ── 5b. Update Session Order Details from incoming message ──
     const sessionDetails = getSessionOrderDetails(sessionKey, whatsappPhone);
+    const { getRememberedCustomerDetails } = await import('./sessionService.js');
+    const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
+
+    // If session has no name, but database has customer's remembered profile, pre-fill it!
+    if (!sessionDetails.name && rememberedDetails?.name) {
+        sessionDetails.name = rememberedDetails.name;
+    }
+    if (!sessionDetails.address && rememberedDetails?.address) {
+        sessionDetails.savedAddress = rememberedDetails.address;
+    }
+    if (!sessionDetails.phone && (rememberedDetails?.phone || whatsappPhone)) {
+        sessionDetails.savedPhone = rememberedDetails.phone || whatsappPhone;
+    }
 
     if (activeLocation) {
         updateSessionOrderDetails(sessionKey, {

@@ -233,7 +233,7 @@ export function cleanExtractedAddress(text) {
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
 // Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|behari|bihari|tikka|fajita|supreme|tandoori|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar)\b/i;
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|khan|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|behari|bihari|tikka|fajita|supreme|tandoori|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|good|great|nice|fine|best|cool|super|bad|poor|awesome|perfect|wonderful|excellent|welldone|well|wese|waise|chalo|chal|yar|yaar|sahih|acha|achha|accha|shukriya|thanks|thank|thx|ty|plz|pls|please)\b/i;
 
 /**
  * Check if candidate string contains any food item, flavor, topping or size.
@@ -373,7 +373,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const isMenuOrQueryWord = /\b(?:menu|manu|manue|menue|meny|mainu|mainue|mny|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
     const nameExplicit = Boolean(nameUpdateMatch || nameBefore || nameAfter);
     if (!nameCandidate && !knownDetails.name && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord && !isQuestionOrInquiry) {
-        const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro)[\s.!?]*$/i.test(raw.trim());
+        const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|good|great|nice|fine|best|cool|super|bad|awesome|perfect|well|wese|waise|chalo|yar|yaar|acha|achha|accha|done|thanks|thank|thx|shukriya|ok|okay)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
             let direct = raw.trim().replace(/^(?:same|wahi|yahi|yehi|isi)\s+/i, '').trim();
             direct = direct.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
@@ -504,6 +504,24 @@ export async function getNextCheckoutStepResponse({
 }) {
     const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
     const displayPhone = formatPakistaniPhone(details.phone || rawCleanPhone);
+
+    // RETURNING CUSTOMER PROFILE PRE-FILL:
+    // If details.name or details.address is missing, check if customer has a remembered profile in DB
+    if (!details.savedProfileChecked) {
+        details.savedProfileChecked = true;
+        try {
+            const { getRememberedCustomerDetails } = await import('./sessionService.js');
+            const remembered = await getRememberedCustomerDetails(null, rawCleanPhone);
+            if (remembered?.name && !details.name) {
+                details.name = remembered.name;
+            }
+            if (remembered?.address && !details.address && !details.location) {
+                details.savedAddress = remembered.address;
+                details.savedPhone = remembered.phone || rawCleanPhone;
+            }
+        } catch (_) {}
+    }
+
     const customerName = details.name ? details.name.trim() : '';
 
     // STEP 1: Customer Name
@@ -530,6 +548,16 @@ export async function getNextCheckoutStepResponse({
 
     // STEP 3: Delivery Address or Location Pin
     if (!details.address && !details.location) {
+        if (details.savedAddress && !details.savedAddressPrompted) {
+            details.savedAddressPrompted = true;
+            return {
+                handled: true,
+                routeName: 'step_confirm_saved_address',
+                step: 'ADDRESS',
+                reply: (introMessage ? `${introMessage}\n\n` : '') +
+                    `Aap ka saved Delivery Address: *${formatAddressTitle(details.savedAddress)}* aur Contact Phone: *${formatPakistaniPhone(details.savedPhone || displayPhone)}* hamare paas maujood hai. 😊\n\nKya isi address par order proceed karein ya aap koi tabdeeli (update) karna chahte hain?`,
+            };
+        }
         return {
             handled: true,
             routeName: 'step_address_needed',
@@ -1338,8 +1366,8 @@ const FAST_CHITCHAT_REGEX = /\b(?:k[ae]se\s*(?:h[oi]|ho|hain|hen|h|hy)|kaise\s*(
 const FAST_THANKS_REGEX = /^(thanks|thank you|shukriya|shukria|jazakallah|jazak allah)[\s!?.]*$/i;
 const FAST_OFF_TOPIC_REGEX = /\b(cricket|psl|imran|nawaz|politics|siyasat|mausam|weather|joke|lateefa|shayari|movie|film|coding|python|javascript)\b/i;
 
-const FAST_MENU_REGEX = /^(?:(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|manu|manue|menue|meny|mainu|mainue|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kia\s*kia)\s*(?:milta|hai|h|hy|available\s*hai)|(?:apke|aapke)\s*pas\s*(?:kya\s*kya|kia\s*kia|kya|kia)\s*(?:milta|hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?)[\s.!?]*$/i;
-const FAST_MENU_CONTAINS = /\b(menu|manu|manue|menue|meny|mainu|mainue|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
+const FAST_MENU_REGEX = /^(?:(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|plz|please|show|send|bhejo|bhajo|dikhao|dekhao|apna|apka|aapka)\s+)*(?:menu|manu|manue|menue|mainu|catalog|catlog|card|cards|flyer|flyers|pamphlet)(?:\s*(?:dikhao|dijhao|dikaho|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|do|plz|please|na))*(?:\s*(?:na|plz|please))?|rate\s*list|food\s*list|items?\s*list|list\s*(?:dikhao|bhejo|dekhao)|(?:kya\s*kya|kia\s*kia)\s*(?:milta|hai|h|hy|available\s*hai)|(?:apke|aapke)\s*pas\s*(?:kya\s*kya|kia\s*kia|kya|kia)\s*(?:milta|hai|h|hy)|(?:menu\s*)?(?:card|cards|flyer|flyers|pamphlet)\s*(?:bhajo|bhejo|dikhao|dekhao|send|do)*(?:\s*(?:na|plz|please))?)[\s.!?]*$/i;
+const FAST_MENU_CONTAINS = /\b(menu|manu|manue|menue|mainu|catalog|catlog|rate\s*list|food\s*list|items?\s*list|menu\s*card|rate\s*card|card\s*bhajo|card\s*bhejo|menu\s*dikhao|menu\s*dekhao|menu\s*bhejo|menu\s*send)\b/i;
 
 const FAST_DEALS_REGEX = /^(?:(?:acha|achha|theek|thk|sahi|ok|okay|aur|to|phir|ab|mjhy|mjhe|mujhe|mujy|humain|humein|bhai|yaar|yar|show|send|bhejo|bhajo|dikhao|dekhao|btao|batao|share|karo|kro|dein|plz|please)\s+)*(?:all\s+|sari\s+|saari\s+|tamam\s+|latest\s+|new\s+|best\s+)?(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|offers?|packages?|combos?|deal\s*list|deals?\s*list)(?:\s*(?:dikhao|dekhao|dikhayein|bhejo|bhajo|bhej\s*do|send|btao|batao|share|list|card|cards|flyer|flyers|images?|pics?|pictures?|photos?|dein|do|karo|kro|chahiye|hain|hen|h|hy|milenge|available\s*hain?|bhi\s*hain?|options|plz|please|yar|bhai|na))*[\s.!?]*$/i;
 const FAST_DEALS_CONTAINS = /\b(?:deals?|burger\s*deals?|pi[z]+a\s*deals?|deal\s*offers?|deal\s*list|deals?\s*list|deal\s*card|deals?\s*card|deal\s*flyer|deals?\s*flyer|deals?\s*dikhao|deals?\s*bhejo|deal\s*bhejo|deal\s*chahiye|deals?\s*chahiye)\b/i;
@@ -1379,7 +1407,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const wordCount = words.length;
 
     // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
-    const hasCartOrOrderAction = /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
+    const hasLeadingOrderQuantity = /^\d+\s*(?:x\s+)?(?:small|medium|large|party(?:\s*size)?|reg|regular)?\s*(?:pizza|burger|deal|zinger|roll|wings?|hot\s*wings|fries|loaded\s*fries|nuggets?|pasta|shawarma|wrap|box|platter|calzone|chicken|piece|pcs?)/i.test(lower) ||
+        /^\d+\s+(?:hot\s*wings|wings?|loaded\s*fries|fries|zinger|burger|pizza|roll|pasta|nuggets?|box|platter)/i.test(lower) ||
+        /^\d+\s*(?:x\s+)?(?:small|medium|large|party|reg|regular)?\s*[a-z]+/i.test(lower);
+
+    const hasCartOrOrderAction = hasLeadingOrderQuantity ||
+        /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
         /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower) ||
         /^(?:add|order)\s+\d+/i.test(lower) ||
         /^\d+\s*(?:x\s+)?(?:pizza|burger|deal|zinger|roll)/i.test(lower);
@@ -4272,7 +4305,9 @@ const isMenuKeyword = FAST_MENU_REGEX.test(lower) || (FAST_MENU_CONTAINS.test(lo
                     }
 
                     // 3. Reverse word match: e.g. text contains category name as whole word
-                    if (!targetCat) {
+                    // SAKHT GUARD: Do NOT trigger category card if customer is specifying a quantity or ordering food!
+                    const hasOrderSignals = hasCartOrOrderAction || (typeof hasLeadingOrderQuantity !== 'undefined' && hasLeadingOrderQuantity) || /\b(?:chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add|order|kar\s*do|kr\s*do|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower);
+                    if (!targetCat && !hasOrderSignals) {
                         const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         for (const c of allCats) {
                             const cName = c.name.toLowerCase();
