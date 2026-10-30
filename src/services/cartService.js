@@ -449,7 +449,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         const newItem = {
             id: `ci_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             cart_id: cart.id,
-            menu_item_id: menuItemId || null,
+            menu_item_id: validated.type === "item" ? (validated.item?.id || menuItemId) : null,
             menu_variant_id: finalVariantId,
             deal_id: dealId || null,
             quantity: validated.quantity,

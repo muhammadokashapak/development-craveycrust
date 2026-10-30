@@ -302,6 +302,11 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
     const cleanQ = rawItemQ;
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
+    // Directive: Unsupported cuisines (e.g. biryani, pulao, karahi, sushi, pasta) fail-closed as NOT_FOUND
+    const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|pasta|daal|roti|naan|saag)\b/i;
+    if (UNSUPPORTED_CUISINES.test(cleanQ)) {
+        return { match: null, status: 'NOT_FOUND', message: 'Cravey Crust sirf pizzas, burgers, fries aur drinks offer karta hai.' };
+    }
 
     // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small")
     if (extractedSize && !strippedQ) {
@@ -345,6 +350,17 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     });
     if (exactDeal) {
         return buildDealResult(exactDeal);
+    }
+
+    // 2b. Match "4 zeggy burgr wali deal", "4 zegy burger deal", "4 burger wali deal", "4 burgers deal"
+    const rawToCheck = (query || '').toLowerCase();
+    const fourBurgerMatch = /\b(?:4|char|chaar)\s*(?:x\s+)?(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?(?:deal|meal)?\b/i.test(rawToCheck) ||
+        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?deal\s*(?:#|no\.?\s*)?4\b/i.test(rawToCheck);
+    if (fourBurgerMatch) {
+        const deal4 = activeDeals.find(d => /\bdeal\s*#?4\b/i.test(d.name) || /4\s*x?\s*(?:zegy|burger)/i.test(d.description || ''));
+        if (deal4) {
+            return buildDealResult(deal4);
+        }
     }
 
     // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "zinger deal 4", "pizza deal 2")
@@ -436,6 +452,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isZiggy = /\b(?:ziggy|zeggy|zigy|zigi|zegy)\b/i.test(cleanQ) || (strippedQ && /\b(?:ziggy|zeggy|zigy|zigi|zegy)\b/i.test(strippedQ));
     const isZinger = /\b(?:zinger|zingr|zingrr|zingar)\b/i.test(cleanQ) || (strippedQ && /\b(?:zinger|zingr|zingrr|zingar)\b/i.test(strippedQ));
     const isChickenBurger = /\b(?:chicken\s*burger|chkn\s*burger)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*burger|chkn\s*burger)\b/i.test(strippedQ));
+    const isRegularFries = /\b(?:regular\s*fries|reg\s*fries)\b/i.test(cleanQ) || (strippedQ && /\b(?:regular\s*fries|reg\s*fries)\b/i.test(strippedQ));
     const isLoadedFries = /\b(?:loaded\s*fries|frenzy\s*fries\s*loaded|load\s*fries)\b/i.test(cleanQ) || (strippedQ && /\b(?:loaded\s*fries|frenzy\s*fries\s*loaded|load\s*fries)\b/i.test(strippedQ));
     const isHotWings = /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:hot\s*wings?|crispy\s*wings?|spicy\s*wings?)\b/i.test(strippedQ));
     const isOvenBakedWings = /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(strippedQ));
@@ -444,7 +461,9 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isDrink = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
 
     let aliasTargetItem = null;
-    if (isZiggy && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    if (isRegularFries) {
+        aliasTargetItem = allItems.find(i => i.slug === 'fries' || i.name.toLowerCase() === 'fries');
+    } else if (isZiggy && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'zegy-burger' || /zegy\s*burger/i.test(i.name));
     } else if (isZinger && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'zinger-burger' || /zinger\s*burger/i.test(i.name));

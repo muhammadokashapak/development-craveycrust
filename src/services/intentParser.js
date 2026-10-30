@@ -1729,6 +1729,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     }).catch(() => {});
                 } catch (_) {}
 
+                // Source of Truth: Purge unconfirmed draft cart items so old items never leak into new orders
+                try {
+                    await clearCart({ sessionKey: userSessionId });
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                } catch (_) {}
+
                 return {
                     handled: true,
                     routeName: 'fast_order_cancellation_admin_referral',
@@ -5028,16 +5034,50 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                 } catch (_) {}
             }
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const details = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
+
+            // Directive: Sequential step advancement on affirmative responses (Han, Ji, Theek hai)
+            if (details?.name && !details.phoneConfirmed) {
+                updateSessionOrderDetails(userSessionId, { phoneConfirmed: true }, whatsappPhone);
+                const displayPhone = whatsappPhone.startsWith('92') ? '0' + whatsappPhone.slice(2) : whatsappPhone;
+                return {
+                    handled: true,
+                    routeName: 'fast_phone_confirmed',
+                    reply: `Shukriya *${details.name}*! Rabtay ke liye number (*${displayPhone}*) confirm ho gaya hai. 📞\n\nAb delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein! 📍`,
+                };
+            }
+
+            if (details?.name && details.phoneConfirmed && !details.address && !details.location) {
+                return {
+                    handled: true,
+                    routeName: 'awaiting_address_prompt',
+                    reply: `Ji *${details.name}*! Delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍`,
+                };
+            }
+
+            if (details?.name && details.phoneConfirmed && (details.address || details.location) && !details.paymentMethod) {
+                return {
+                    handled: true,
+                    routeName: 'awaiting_payment_prompt',
+                    reply: `Ji *${details.name}*! Payment method kaunsa pasand karenge — Cash on Delivery (COD) ya EasyPaisa? 💵`,
+                };
+            }
+
             if (cart?.items && cart.items.length > 0) {
-                const { getSessionOrderDetails } = await import('./sessionService.js');
-                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                const details = getSessionOrderDetails(userSessionId, cleanPhone);
                 return await getNextCheckoutStepResponse({
                     details,
                     whatsappPhone,
                     cart,
                     cache,
                 });
+            } else if (details?.name) {
+                return {
+                    handled: true,
+                    routeName: 'details_saved_need_items',
+                    reply: `Ji *${details.name}*! Aap ki details note hain. Order book karne ke liye pehle koi item ya deal select karein (menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein)!`,
+                };
             } else {
                 return {
                     handled: true,

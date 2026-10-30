@@ -1,3 +1,4 @@
+import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║   AI Agent Service — src/services/aiAgentService.js          ║
@@ -1064,6 +1065,10 @@ export function sanitizeOutput(text) {
         return 'Zaroor! Soft Drink ka kaunsa size add karun — Regular (Rs. 110), Can (Rs. 130), 1 Liter (Rs. 200), ya 1.5 Liter (Rs. 240)?';
     }
 
+    // 0d. Scrub fabricated technical apologies / excuses (e.g. "Choti si technical rukawat ki wajah se...")
+    clean = clean.replace(/(?:maazrat|maafi)[^.!?\n]*[.!?:-]?\s*(?:choti\s+si\s+)?(?:technical|takneeki|system)[^.!?\n]*[.!?:-]?\s*/gi, '');
+    clean = clean.replace(/(?:choti\s+si\s+)?(?:technical|takneeki|system)[^.!?\n]*[.!?:-]?\s*/gi, '');
+
     // 1. Remove all internal IDs (menuItemId, variantId, dealId, cartItemId, id)
     clean = clean.replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '');
     // 2. Remove all asterisks
@@ -1092,24 +1097,139 @@ const BACKEND_ERROR_MESSAGES = {
     ORDER_CREATION_FAILED:    'Aapka order place nahi ho saka. Baraye meherbani dobara "confirm" likhein taake retry ho sake, ya "agent" likhein hamara team member madad karega.',
 };
 
-function verifyOutput(aiText, toolResults) {
-    // 1. Detect false order confirmation (claims confirm/place ho gaya without genuine CC-XXXXXX order number)
-    const claimsOrderPlaced = /\b(?:order\s+(?:kamyabi\s+se\s+)?(?:place|book|confirm)\s+ho\s+gaya|order\s+confirm\s+ho\s+chuka|order\s+has\s+been\s+placed)\b/i.test(aiText);
-    const hasOrderNumberInText = /CC-[0-9A-Z]{4,}/i.test(aiText);
-    const hasRealOrderInTools = toolResults.some(r => r?.orderNumber && /CC-[0-9A-Z]{4,}/i.test(r.orderNumber));
+export function verifyOutput(aiText, optsOrToolResults) {
+    let toolResults = [];
+    let context = {};
+    let activeCart = null;
+    let cache = {};
+    let pricing = null;
 
-    if (claimsOrderPlaced && !hasOrderNumberInText && !hasRealOrderInTools) {
-        return 'Aapka order place nahi ho saka. Baraye meherbani dobara "confirm" likhein taake retry ho sake, ya "agent" likhein hamara team member madad karega.';
+    if (Array.isArray(optsOrToolResults)) {
+        toolResults = optsOrToolResults;
+    } else if (optsOrToolResults && typeof optsOrToolResults === 'object') {
+        toolResults = optsOrToolResults.toolResults || [];
+        context = optsOrToolResults.context || {};
+        activeCart = optsOrToolResults.activeCart || null;
+        cache = optsOrToolResults.cache || {};
+        pricing = optsOrToolResults.pricing || null;
     }
 
-    // 2. Detect backend error codes in tool results and surface them in Roman Urdu
-    for (const result of toolResults) {
+    const raw = String(aiText || '').trim();
+    if (!raw) return null;
+
+    // 0. Detect backend error codes in tool results and surface them as verified ground truth
+    for (const result of (toolResults || [])) {
         if (result?.error && BACKEND_ERROR_MESSAGES[result.error]) {
             return BACKEND_ERROR_MESSAGES[result.error];
         }
     }
 
-    return null; // Output is valid
+    // 1. Detect false order confirmation (claims confirm/place ho gaya without genuine CC-XXXXXX order number)
+    const claimsOrderPlaced = /\b(?:order\s+(?:kamyabi\s+se\s+|successfully\s+)?(?:place|book|confirm)\s+ho\s+gaya|order\s+confirm\s+ho\s+chuka|order\s+has\s+been\s+placed)\b/i.test(raw);
+    const hasRealOrderInTools = (toolResults || []).some(r => r?.orderNumber && (r.success === true || r.order_number));
+
+    if (claimsOrderPlaced && !hasRealOrderInTools) {
+        console.warn('[GATEKEEPER] BLOCKED unverified order confirmation claim in AI output');
+        return 'Aapka order place nahi ho saka. Baraye meherbani pehle items check karein aur dobara "confirm" likhein, ya hamari management se rabta karein.';
+    }
+
+    // 2. Detect false Cart Addition (claims item/deal add ho gaya when tool failed or requires variant)
+    const claimsItemAdded = /\b(?:cart\s+mein\s+(?:kamyabi\s+se\s+|successfully\s+)?(?:add|shamil|daal)\s+(?:kar\s+d[iy][a-z]*|ho\s+g[a-z]*|diye|gaye)|item\s+add\s+ho\s+g[a-z]*|deal\s+cart\s+mein\s+add|add\s+kar\s+di\s+hai)\b/i.test(raw);
+    const requiresVariantResult = (toolResults || []).find(r => r?.requiresVariant);
+    if (claimsItemAdded && requiresVariantResult) {
+        console.warn('[GATEKEEPER] BLOCKED false item addition claim when variant is required');
+        const itemName = requiresVariantResult.itemName || 'Item';
+        const variantList = (requiresVariantResult.variants || []).map(v => `${v.name} (Rs. ${v.price || v.originalPrice})`).join(', ');
+        return `Zaroor! ${itemName} ke yeh sizes dastiyab hain:\n${variantList}\n\nAap in mein se kaunsa size pasand karenge?`;
+    }
+
+    const failedAddResult = (toolResults || []).find(r => r?.error && (r.query || r.itemName || r.message));
+    if (claimsItemAdded && failedAddResult) {
+        console.warn('[GATEKEEPER] BLOCKED false item addition claim on failed tool execution');
+        return failedAddResult.message || `Maazrat! Yeh item menu mein nahi mila. Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein.`;
+    }
+
+    if (claimsItemAdded) {
+        const hasSuccessfulAdd = (toolResults || []).some(r => r?.success === true && (r?.cart || r?.cartItemId || r?.item || r?.deal || r?.itemName));
+        if (!hasSuccessfulAdd && (!activeCart?.items || activeCart.items.length === 0)) {
+            console.warn('[GATEKEEPER] BLOCKED false item addition claim with empty cart');
+            return 'Aap ka cart is waqt khali hai. Pehle koi item ya deal select karein taake cart mein add ho sake!';
+        }
+    }
+
+    // 3. Detect Cart Empty contradiction with Order Summary
+    const claimsSummary = /\b(?:order\s+summary|final\s+bill|aap\s+ke\s+order\s+ki\s+mukammal\s+summary)\b/i.test(raw);
+    const isCartActuallyEmpty = !activeCart || !activeCart.items || activeCart.items.length === 0;
+    if (claimsSummary && isCartActuallyEmpty && !hasRealOrderInTools) {
+        console.warn('[GATEKEEPER] BLOCKED hallucinated order summary when backend cart is empty');
+        return 'Aapka cart is waqt khali hai. Pehle koi item ya deal select karein, phir checkout karein.';
+    }
+
+    // 4. Delivery Fee Verification
+    const claimsFreeDelivery = /\b(?:delivery\s+(?:bilkul\s+)?(?:free|muft)\s+hai|free\s+delivery\s+hai|free\s+delivery\s+milegi)\b/i.test(raw);
+    if (claimsFreeDelivery && pricing && Number(pricing.deliveryFee) > 0) {
+        console.warn(`[GATEKEEPER] BLOCKED false free delivery claim when deliveryFee = Rs. ${pricing.deliveryFee}`);
+        return `Maazrat, aap ki location ke liye delivery charges Rs. ${pricing.deliveryFee} hain.`;
+    }
+
+    // 5. Off-Topic AI Hallucination Redirection
+    const isLeakedOffTopic = /\b(?:chatgpt|openai|language\s*model|artificial\s*intelligence|deepseek|muse\s*ai|python\s*code|machine\s*learning)\b/i.test(raw);
+    if (isLeakedOffTopic) {
+        console.warn('[GATEKEEPER] BLOCKED off-topic AI hallucination in output');
+        return 'Main Cravey Crust ka AI assistant hoon aur sirf khane ke orders mein madad karta hoon. Bataiye Cravey Crust se aaj kya mangwana pasand karenge?';
+    }
+
+    // 6. Claim-level Price Verification against live backend data
+    const priceMatches = raw.match(/(?:Rs\.?|RS\.?|PKR)\s*([0-9,]+)/gi) || [];
+    if (priceMatches.length > 0) {
+        const verifiedNumbers = new Set();
+        (cache.rawCategories || []).forEach(c => {
+            (c.menu_items || []).forEach(it => {
+                if (it.base_price) verifiedNumbers.add(Number(it.base_price));
+                (it.variants || []).forEach(v => {
+                    if (v.price) verifiedNumbers.add(Number(v.price));
+                });
+            });
+        });
+        (cache.rawDeals || []).forEach(d => {
+            if (d.deal_price) verifiedNumbers.add(Number(d.deal_price));
+        });
+        if (activeCart?.items) {
+            activeCart.items.forEach(ci => {
+                if (ci.price) verifiedNumbers.add(Number(ci.price));
+                if (ci.menu_variant?.price) verifiedNumbers.add(Number(ci.menu_variant.price));
+                if (ci.deal?.deal_price) verifiedNumbers.add(Number(ci.deal.deal_price));
+            });
+        }
+        if (pricing) {
+            if (pricing.subtotal) verifiedNumbers.add(Number(pricing.subtotal));
+            if (pricing.total) verifiedNumbers.add(Number(pricing.total));
+            if (pricing.deliveryFee) verifiedNumbers.add(Number(pricing.deliveryFee));
+            if (pricing.discountTotal) verifiedNumbers.add(Number(pricing.discountTotal));
+        }
+        FALLBACK_MENU_ITEMS.forEach(it => {
+            if (it.base_price) verifiedNumbers.add(Number(it.base_price));
+            (it.variants || []).forEach(v => {
+                if (v.price) verifiedNumbers.add(Number(v.price));
+            });
+        });
+        FALLBACK_DEALS.forEach(d => {
+            if (d.deal_price) verifiedNumbers.add(Number(d.deal_price));
+        });
+
+        for (const m of priceMatches) {
+            const numStr = m.replace(/[^0-9]/g, '');
+            const val = parseInt(numStr, 10);
+            if (val >= 50 && val <= 10000 && !verifiedNumbers.has(val)) {
+                console.warn(`[GATEKEEPER] Flagged unverified price claim in AI output: Rs. ${val}`);
+                if (raw.includes(`Rs. ${val}`) && raw.length < 150) {
+                    return 'Maazrat, is information ki abhi confirmation available nahi hai. Main aapko team se confirm karwa deta hun.';
+                }
+            }
+        }
+    }
+
+    return null; // Output is valid & verified
 }
 
 // ─── Main AI Agent Loop (Tool Calling + Exact Token Tracking) ─────────────
@@ -1734,7 +1854,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const { text: aiRawText, imageUrl: aiImageUrl, imageUrls: aiImageUrls, toolResults, calledToolNames, tokenUsage, providerInfo } = await runAgentLoop(messages, context);
 
     // ── 7. Post-Verification & Cleanup (Hissa 7) ──
-    const verificationOverride = verifyOutput(aiRawText || '', toolResults);
+    const verificationOverride = verifyOutput(aiRawText || '', { toolResults, context, activeCart, cache });
     const candidateText = verificationOverride || aiRawText || '';
     const cleanFinalReply = sanitizeOutput(candidateText);
 
