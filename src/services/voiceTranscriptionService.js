@@ -77,8 +77,8 @@ async function transcribeWithGemini(audioBuffer, mimeType) {
 
     const cleanMime = normalizeAudioMimeType(mimeType);
     const base64Audio = audioBuffer.toString('base64');
-    const preferredModel = env.GEMINI_MODEL || 'gemini-1.5-flash';
-    const candidateModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash-latest'];
+    const preferredModel = env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const candidateModels = [preferredModel, 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
     // Deduplicate candidate models
     const uniqueModels = [...new Set(candidateModels)];

@@ -141,10 +141,14 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
             } catch (_) {}
         }
 
-        // If 429 / 404 on current model, attempt fallback to gemini-2.5-flash
-        if (model !== 'gemini-2.5-flash' && (nativeErr.response?.status === 429 || nativeErr.response?.status === 404)) {
-            console.warn(`[LLM] Model ${model} gave ${nativeErr.response?.status} — auto-recovering with gemini-2.5-flash`);
-            return callGemini({ apiKey, model: 'gemini-2.5-flash', messages, temperature, maxTokens });
+        // If 429 / 404 on current model, attempt graceful fallback across modern Gemini flash tiers
+        if (nativeErr.response?.status === 429 || nativeErr.response?.status === 404) {
+            const fallbackChain = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'];
+            const nextModel = fallbackChain.find(m => m !== model);
+            if (nextModel) {
+                console.warn(`[LLM] Model ${model} gave ${nativeErr.response?.status} — auto-recovering with ${nextModel}`);
+                return callGemini({ apiKey, model: nextModel, messages, temperature, maxTokens });
+            }
         }
 
         // Fallback to OpenAI-compatible endpoint if native endpoint fails
