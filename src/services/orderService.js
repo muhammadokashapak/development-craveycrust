@@ -26,6 +26,21 @@ export const CANCELLABLE_STATUSES = ['PENDING', 'CONFIRMED', 'PREPARING'];
 
 const _inMemoryOrders = new Map();
 
+export function getLatestInMemoryOrder({ sessionKey, phone, chatId } = {}) {
+    const clean = phone ? String(phone).replace(/\D/g, '') : null;
+    const last9 = clean && clean.length >= 9 ? clean.slice(-9) : null;
+    const orders = Array.from(_inMemoryOrders.values());
+    for (let i = orders.length - 1; i >= 0; i--) {
+        const o = orders[i];
+        if (!o || (!o.orderNumber && !o.order_number)) continue;
+        const oPhone = (o.phone || o.whatsapp_phone || o.whatsappPhone || '').replace(/\D/g, '');
+        if (clean && (oPhone === clean || (last9 && oPhone.endsWith(last9)))) return o;
+        if (sessionKey && (o.source_session_id === sessionKey || o.source_chat_id === sessionKey || o.sessionKey === sessionKey)) return o;
+        if (chatId && (o.source_chat_id === chatId || o.chatId === chatId)) return o;
+    }
+    return null;
+}
+
 /**
  * Create a new order with atomic Prisma transaction and idempotency protection
  */
@@ -103,8 +118,16 @@ export async function createOrder(params) {
         const fullOrder = {
             id: orderId,
             orderNumber,
+            order_number: orderNumber,
             restaurantId: restId,
             customerName: cleanName,
+            customer_name: cleanName,
+            whatsapp_phone: confirmationPhone || cleanPhone,
+            delivery_address: delivery?.address || 'Standard Delivery',
+            source_session_id: sessionKey,
+            source_chat_id: sessionKey,
+            total: pricing.total,
+            order_status: 'CONFIRMED',
             phone: cleanPhone,
             whatsappPhone: confirmationPhone || cleanPhone,
             delivery: {
@@ -790,6 +813,7 @@ export async function cancelOrder({ restaurantId, orderNumber, reason = 'Custome
         const res = await updateOrderStatus({
             restaurantId,
             orderNumber,
+            order_number: orderNumber,
             newStatus: 'CANCELLED',
             changedByType,
             reason,
@@ -800,6 +824,7 @@ export async function cancelOrder({ restaurantId, orderNumber, reason = 'Custome
             success: true,
             status: 'ORDER_CANCELLED',
             orderNumber,
+            order_number: orderNumber,
             message: `Order #${orderNumber} has been cancelled successfully.`,
             order: res,
         };
@@ -808,6 +833,7 @@ export async function cancelOrder({ restaurantId, orderNumber, reason = 'Custome
             success: false,
             status: 'CANCEL_FAILED',
             orderNumber,
+            order_number: orderNumber,
             message: err.message,
             error: err.code || 'CANCEL_ERROR',
         };

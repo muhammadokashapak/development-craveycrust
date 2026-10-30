@@ -1543,11 +1543,70 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    const isCancellationIntent =
+    // Unified customer target order lookup helper for fast routes (Prisma DB + in-memory fallback)
+    async function lookupCustomerTargetOrder(textInput = lower) {
+        const cache = await getCatalogCache();
+        const { getDbClient } = await import('../db/client.js');
+        const prisma = getDbClient();
+        let targetOrder = null;
+        const orderMatch = textInput.match(/(?:#?CC-?(\d{1,6})|\border\s*#?\s*(\d{1,6})\b)/i);
+        const orderNum = orderMatch ? (orderMatch[1] ? 'CC-' + orderMatch[1].padStart(6, '0') : orderMatch[0].replace('#', '').toUpperCase()) : null;
+
+        if (orderNum && prisma) {
+            targetOrder = await prisma.order.findFirst({
+                where: { restaurant_id: cache.restId, order_number: orderNum },
+                include: { order_items: true, customer: true },
+            }).catch(() => null);
+        }
+        if (!targetOrder && prisma) {
+            const orConditions = [];
+            if (userSessionId) {
+                orConditions.push({ source_session_id: userSessionId });
+                orConditions.push({ source_chat_id: userSessionId });
+            }
+            if (chatId && chatId !== userSessionId) orConditions.push({ source_chat_id: chatId });
+            if (cleanPhone) {
+                orConditions.push({ phone: cleanPhone });
+                orConditions.push({ whatsapp_phone: cleanPhone });
+                if (cleanPhone.length >= 9) {
+                    const last9 = cleanPhone.slice(-9);
+                    orConditions.push({ phone: { contains: last9 } });
+                    orConditions.push({ whatsapp_phone: { contains: last9 } });
+                }
+            }
+            if (orConditions.length > 0) {
+                targetOrder = await prisma.order.findFirst({
+                    where: { restaurant_id: cache.restId, OR: orConditions },
+                    orderBy: { created_at: 'desc' },
+                    include: { order_items: true, customer: true },
+                }).catch(() => null);
+            }
+        }
+        if (!targetOrder) {
+            try {
+                const { getLatestInMemoryOrder, getOrderByNumber } = await import('./orderService.js');
+                if (orderNum) {
+                    targetOrder = await getOrderByNumber({ orderNumber: orderNum });
+                }
+                if (!targetOrder && typeof getLatestInMemoryOrder === 'function') {
+                    targetOrder = getLatestInMemoryOrder({ sessionKey: userSessionId, phone: cleanPhone, chatId });
+                }
+            } catch (_) {}
+        }
+        return targetOrder;
+    }
+
+    // Check if customer is claiming that the order is already cancelled / done
+    const isClaimingCancelled = /\b(?:(?:chalo\s+)?(?:theek\s+hai\s+)?(?:mera\s+)?order\s+)?cancel\s+(?:ho\s*g[a-z]*|hog[a-z]*|kr\s*diya|kar\s*diya|samjh[a-z]*|maan\s*lo|hai\s+ab|tha)\b/i.test(lower) ||
+        /^(?:chalo\s+)?(?:theek\s+hai\s+)?cancel\s+ho\s*g[a-z]*[\s!.?]*$/i.test(lower.trim()) ||
+        /\b(?:cancel\s+to\s+ho\s*g[a-z]*|cancel\s+to\s+kr\s*diya)\b/i.test(lower);
+
+    const isCancellationIntent = !isClaimingCancelled && (
         /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
         /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
         /\b(?:cart\s*(?:clear|khali)|clear\s*cart)\b/i.test(lower) ||
-        /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim());
+        /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim())
+    );
 
     const isPolicyQuestion = /\b(?:policy|rule|timing|kya\s*hai|how\s*to)\b/i.test(lower) && !/\b(?:kr\s*du|kar\s*do|kardo|karo|bhai|yaar|plz|please)\b/i.test(lower);
     const isCancellationNegation = /\b(?:n[a-z]*|never|mat|dont|don't)\s*(?:bola|kaha|bola\s*tha|kaha\s*tha|chaha|karna|krna|chahta|chahti)\b/i.test(lower) ||
@@ -1556,7 +1615,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         /\b(?:kyun|kyu|why)\s+(?:cancel|cancle)\b/i.test(lower) ||
         /\b(?:kis\s*ne|kisne)\s+(?:cancel|cancle)\b/i.test(lower);
 
-    if (isCancellationIntent && !isPolicyQuestion && !isCancellationNegation && userSessionId) {
+    if (isCancellationIntent && !isPolicyQuestion && !isCancellationNegation && !isClaimingCancelled && userSessionId) {
         try {
             const { getActiveCart, clearCart } = await import('./cartService.js');
             const { clearSessionOrderDetails } = await import('./sessionService.js');
@@ -1566,43 +1625,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
 
-            let targetOrder = null;
-            const orderMatch = lower.match(/#?CC-\d{6}/i);
-
-            if (orderMatch && prisma) {
-                const orderNum = orderMatch[0].replace('#', '').toUpperCase();
-                targetOrder = await prisma.order.findFirst({
-                    where: { restaurant_id: cache.restId, order_number: orderNum },
-                });
-            }
-
-            // If no explicit order number, look up the latest order placed by this customer/chat
-            if (!targetOrder && prisma) {
-                const orConditions = [];
-                if (userSessionId) {
-                    orConditions.push({ source_session_id: userSessionId });
-                    orConditions.push({ source_chat_id: userSessionId });
-                }
-                if (chatId && chatId !== userSessionId) orConditions.push({ source_chat_id: chatId });
-                if (cleanPhone) {
-                    orConditions.push({ phone: cleanPhone });
-                    orConditions.push({ whatsapp_phone: cleanPhone });
-                    if (cleanPhone.length >= 9) {
-                        const last9 = cleanPhone.slice(-9);
-                        orConditions.push({ phone: { contains: last9 } });
-                        orConditions.push({ whatsapp_phone: { contains: last9 } });
-                    }
-                }
-                if (orConditions.length > 0) {
-                    targetOrder = await prisma.order.findFirst({
-                        where: {
-                            restaurant_id: cache.restId,
-                            OR: orConditions,
-                        },
-                        orderBy: { created_at: 'desc' },
-                    });
-                }
-            }
+            let targetOrder = await lookupCustomerTargetOrder(lower);
 
             if (targetOrder) {
                 const custName = targetOrder.customer_name ? `Ji ${targetOrder.customer_name}!` : 'Ji!';
@@ -1669,19 +1692,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
     // ── Check Fast Route: Customer Claims Placed Order is Cancelled (Strict DB Ground Truth) ──
-    const isClaimingCancelled = /\b(?:(?:chalo\s+)?(?:theek\s+hai\s+)?(?:mera\s+)?order\s+)?cancel\s+(?:ho\s*g[a-z]*|hog[a-z]*|kr\s*diya|kar\s*diya|samjh[a-z]*|maan\s*lo|hai\s+ab|tha)\b/i.test(lower) ||
-        /^(?:chalo\s+)?(?:theek\s+hai\s+)?cancel\s+ho\s*g[a-z]*[\s!.?]*$/i.test(lower.trim()) ||
-        /\b(?:cancel\s+to\s+ho\s*g[a-z]*|cancel\s+to\s+kr\s*diya)\b/i.test(lower);
-
-    if (isClaimingCancelled && userSessionId) {
+        if (isClaimingCancelled && userSessionId) {
         try {
             const cache = await getCatalogCache();
+            const { getAdminContact } = await import('./restaurantService.js');
             const adminContact = await getAdminContact(cache.restId);
-            const { getDbClient } = await import('../db/client.js');
-            const prisma = getDbClient();
-            if (prisma) {
-                const targetOrder = await findCustomerTargetOrder();
-                if (targetOrder && !targetOrder.isRecentInactive && ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(targetOrder.order_status)) {
+            const targetOrder = await lookupCustomerTargetOrder(lower);
+            const status = targetOrder?.order_status || targetOrder?.orderStatus;
+            if (targetOrder && ['PENDING', 'CONFIRMED', 'PREPARING', 'READY', 'OUT_FOR_DELIVERY'].includes(status)) {
                     const ordNum = targetOrder.order_number;
                     const statusDesc = targetOrder.order_status === 'CONFIRMED' ? 'Bhatti / Kitchen mein confirm ho chuka hai' :
                                        targetOrder.order_status === 'PREPARING' ? 'Kitchen mein taiyar ho raha hai' :
@@ -1692,11 +1710,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     return {
                         handled: true,
                         routeName: 'fast_cancellation_unconfirmed_in_db',
-                        reply: `Aap ka order (*#${ordNum}*) abhi system mein *${targetOrder.order_status}* (${statusDesc}) hai. Store Admin ki taraf se yeh abhi mukammal tor par cancel nahi hua.\n\n⚠️ Jab tak Store Admin backend par ise cancel nahi karte, yeh order active rahega aur naya order place nahi ho sakta. Cancellation mukammal karwane ke liye baraye meherbani Store Admin se rabta karein:\n\n👤 *Store Admin / Manager:*\n📞 *Phone:* ${adminContact.displayPhone}\n💬 *WhatsApp Link:* ${waLink}`,
+                        reply: `Aap ka order (*#${ordNum}*) abhi system mein *${status}* (${statusDesc}) hai. Store Admin ki taraf se yeh abhi mukammal tor par cancel nahi hua.\n\n⚠️ Jab tak Store Admin backend par ise cancel nahi karte, yeh order active rahega aur naya order place nahi ho sakta. Cancellation mukammal karwane ke liye baraye meherbani Store Admin se rabta karein:\n\n👤 *Store Admin / Manager:*\n📞 *Phone:* ${adminContact.displayPhone}\n💬 *WhatsApp Link:* ${waLink}`,
                     };
                 }
-            }
-        } catch (_) {}
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing claimed cancellation:', err.message);
+        }
     }
 
 
@@ -1846,7 +1865,22 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         async function findCustomerTargetOrder(textInput = lower) {
             const { getDbClient } = await import('../db/client.js');
             const prisma = getDbClient();
-            if (!prisma) return null;
+            if (!prisma) {
+                try {
+                    const { getLatestInMemoryOrder, getOrderByNumber } = await import('./orderService.js');
+                    const explicitMatch = textInput.match(/(?:#?CC-?(\d{1,6})|\border\s*#?\s*(\d{1,6})\b)/i);
+                    if (explicitMatch) {
+                        const digits = explicitMatch[1] || explicitMatch[2];
+                        const padded = 'CC-' + digits.padStart(6, '0');
+                        const byPadded = await getOrderByNumber({ orderNumber: padded });
+                        if (byPadded) return byPadded;
+                    }
+                    if (typeof getLatestInMemoryOrder === 'function') {
+                        return getLatestInMemoryOrder({ sessionKey: userSessionId, phone: cleanPhone, chatId });
+                    }
+                } catch (_) {}
+                return null;
+            }
 
             // Check if order number explicitly specified: e.g. CC-000012, #CC-12, Order 12, #12
             const explicitMatch = textInput.match(/(?:#?CC-?(\d{1,6})|\border\s*#?\s*(\d{1,6})\b)/i);
