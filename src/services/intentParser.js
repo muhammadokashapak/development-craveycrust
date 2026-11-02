@@ -666,8 +666,10 @@ export async function getNextCheckoutStepResponse({
         quantity: i.quantity,
     }));
     const dealsForPricing = (cart?.items || []).filter(i => i.deal_id).map(i => ({
+        id: i.id,
         dealId: i.deal_id,
         quantity: i.quantity,
+        notes: i.notes,
     }));
 
     let deliveryFee = 0;
@@ -725,7 +727,7 @@ export async function getNextCheckoutStepResponse({
             }
         }
         for (const d of (pricing.breakdown.deals || [])) {
-            const raw = cart?.items?.find(ci => ci.deal_id === d.dealId);
+            const raw = cart?.items?.find(ci => (d.id && ci.id === d.id) || (ci.deal_id === d.dealId && (!d.notes || ci.notes === d.notes)));
             const notes = d.notes || raw?.notes;
             const fText = notes ? ` (${notes})` : '';
             orderLines.push(`• ${d.quantity}x ${d.name}${fText} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);
@@ -2662,8 +2664,226 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── Check Fast Follow-up: Flavour specification for pending Pizza Deal (Zero Tokens) ──
     const pendingFlavour = userSessionId ? getPendingDealFlavour(userSessionId) : null;
+
+    // ── Check Fast Route: Cart Item Removal / Quantity Reduction / Modification (Zero Tokens) ──
+    const hasRemovalWord = /\b(?:remove|remov|delete|delet|hata|hatao|hatado|hata\s*d[aoeiu]+n?|nikal|nikalo|nikaldo|nikal\s*d[aoeiu]+n?|minus|kam\s*(?:kr|kar|karo|kardo|krdo|karein)|chhor\s*do|rehne\s*do|rehn\s*do)\b/i.test(lower);
+    const isQtyCorrection = /\b(?:mny|maine|mene|me\s*ne)\s+(?:to\s+)?(?:sirf\s+)?(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|mangwayi\s*thi|order\s*ki\s*thi)\b/i.test(lower) ||
+        /\b(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|chahiye\s*thi)\b/i.test(lower) ||
+        /\b(?:sirf\s+(?:\d+|ak|aik|ek|ik|one)\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:chahiye|rakho|rakhein|kr\s*do|kar\s*do))\b/i.test(lower);
+    const isContextualRemoval = hasRemovalWord && /\b(?:wo|woh|ye|yeh|isko|isay|isey|usko|usay|usey|meri|mera)\b/i.test(lower);
+
+    if ((hasRemovalWord || isQtyCorrection) && userSessionId) {
+        try {
+            const { getActiveCart, removeCartItem, updateCartItem } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            if (cart?.items && cart.items.length > 0) {
+                const numMap = { '1': 1, 'ak': 1, 'aik': 1, 'ek': 1, 'ik': 1, 'one': 1, '2': 2, 'do': 2, 'doo': 2, 'two': 2, '3': 3, 'teen': 3, 'tin': 3, 'three': 3, '4': 4, 'char': 4, 'chaar': 4, 'four': 4, '5': 5, 'paanch': 5, 'panch': 5, 'five': 5 };
+
+                const dealMatch = lower.match(/\bdeal\s*#?\s*(\d+)\b/i) || lower.match(/\b(\d+)\s*deal\b/i);
+                const targetDealNum = dealMatch ? parseInt(dealMatch[1], 10) : null;
+
+                let targetItemQuery = null;
+                if (!targetDealNum) {
+                    const itemMatch = lower.match(/\b(burger|zinger|fries|pizza|wings?|roll|pasta|nuggets?)\b/i);
+                    if (itemMatch) targetItemQuery = itemMatch[1].toLowerCase();
+                }
+
+                let qtyToRemove = null;
+                const preMatch = lower.match(/\b(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?(?:deal\s*#?\s*\d+|burger|pizza|fries|drink|wings?|roll|item)/i);
+                if (preMatch) {
+                    qtyToRemove = numMap[preMatch[1].toLowerCase()] || parseInt(preMatch[1], 10) || null;
+                } else {
+                    const doPreMatch = lower.match(/(?<!\b(?:kr|kar|karo|hata|nikal|bhej|de|daal)\s+)\b(?:do|doo)\s*(?:x\s+)?(?:deal\s*#?\s*\d+|burger|pizza|fries|drink|wings?|roll|item)/i);
+                    if (doPreMatch) qtyToRemove = 2;
+                    else {
+                        const postMatch = lower.match(/\b(?:remove|hata|nikal|kam)\s*(?:kr\s*do|kardo)?\s*(\d+|ak|aik|ek|ik|one)\b/i);
+                        if (postMatch) qtyToRemove = numMap[postMatch[1].toLowerCase()] || parseInt(postMatch[1], 10) || null;
+                    }
+                }
+
+                let targetRemainingQty = null;
+                if (isQtyCorrection) {
+                    const corrMatch = lower.match(/\b(?:mny|maine|mene|me\s*ne)?\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s*)?(\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|chahiye\s*thi)\b/i);
+                    if (corrMatch) {
+                        targetRemainingQty = numMap[corrMatch[1].toLowerCase()] || 1;
+                    } else {
+                        targetRemainingQty = 1;
+                    }
+                }
+
+                let matchingItems = [];
+                if (targetDealNum) {
+                    matchingItems = cart.items.filter(i => {
+                        const dName = (i.deal?.name || '').toLowerCase();
+                        const dSlug = (i.deal?.slug || '').toLowerCase();
+                        const dId = (i.deal?.id || i.deal_id || '').toLowerCase();
+                        return dName.includes(`deal ${targetDealNum}`) || 
+                               dName.includes(`deal #${targetDealNum}`) || 
+                               dSlug.includes(`deal-${targetDealNum}`) || 
+                               dSlug.includes(`deal${targetDealNum}`) ||
+                               dId === `deal-${targetDealNum}` ||
+                               dId === `deal${targetDealNum}` ||
+                               dId.endsWith(`-${targetDealNum}`) ||
+                               dSlug.endsWith(`-${targetDealNum}`);
+                    });
+                    if (matchingItems.length === 0 && cache?.rawDeals) {
+                        const targetDeal = cache.rawDeals.find(d => {
+                            const name = (d.name || '').toLowerCase();
+                            const slug = (d.slug || '').toLowerCase();
+                            const id = (d.id || '').toLowerCase();
+                            return name.includes(`deal ${targetDealNum}`) || name.includes(`deal #${targetDealNum}`) || slug.includes(`deal-${targetDealNum}`) || id === `deal-${targetDealNum}`;
+                        });
+                        if (targetDeal) {
+                            matchingItems = cart.items.filter(i => (i.deal_id === targetDeal.id || i.deal?.id === targetDeal.id));
+                        }
+                    }
+                } else if (targetItemQuery) {
+                    matchingItems = cart.items.filter(i => {
+                        const n = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
+                        return n.includes(targetItemQuery);
+                    });
+                } else if (isContextualRemoval || hasRemovalWord) {
+                    const latestItem = cart.items[cart.items.length - 1];
+                    if (latestItem) matchingItems = [latestItem];
+                }
+
+                if (matchingItems.length > 0) {
+                    const itemName = matchingItems[0].deal ? matchingItems[0].deal.name : (matchingItems[0].menu_item?.name || 'Item');
+                    const totalMatchedQty = matchingItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
+
+                    let removedQtyText = '';
+
+                    if (targetRemainingQty !== null) {
+                        if (totalMatchedQty > targetRemainingQty) {
+                            let diff = totalMatchedQty - targetRemainingQty;
+                            removedQtyText = diff > 1 ? `${diff}x ` : '';
+                            for (let i = matchingItems.length - 1; i >= 0 && diff > 0; i--) {
+                                const row = matchingItems[i];
+                                if (row.quantity <= diff) {
+                                    await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
+                                    diff -= row.quantity;
+                                } else {
+                                    await updateCartItem({ sessionKey: userSessionId, cartItemId: row.id, quantity: row.quantity - diff });
+                                    diff = 0;
+                                }
+                            }
+                        }
+                    } else if (qtyToRemove && qtyToRemove < totalMatchedQty) {
+                        let toRemove = qtyToRemove;
+                        removedQtyText = toRemove > 1 ? `${toRemove}x ` : '';
+                        for (let i = matchingItems.length - 1; i >= 0 && toRemove > 0; i--) {
+                            const row = matchingItems[i];
+                            if (row.quantity <= toRemove) {
+                                await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
+                                toRemove -= row.quantity;
+                            } else {
+                                await updateCartItem({ sessionKey: userSessionId, cartItemId: row.id, quantity: row.quantity - toRemove });
+                                toRemove = 0;
+                            }
+                        }
+                    } else {
+                        removedQtyText = totalMatchedQty > 1 ? `${totalMatchedQty}x ` : '';
+                        for (const row of matchingItems) {
+                            await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
+                        }
+                    }
+
+                    clearPendingDealFlavour(userSessionId);
+                    _lastDiscussedDealBySession.delete(userSessionId);
+
+                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                    if (!cartNow.items || cartNow.items.length === 0) {
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_item_removal_empty',
+                            reply: `Theek hai Ji! Aapke order se *${removedQtyText}${itemName}* remove kar di gayi hai. ✅\n\nAap ka cart ab khali hai. Menu ya deals dekhne ke liye 'menu' ya 'deals' likhein.`,
+                        };
+                    }
+
+                    const lines = cartNow.items.map(i => {
+                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                        const fText = i.notes ? ` (${i.notes})` : '';
+                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+                        return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                    }).join('\n');
+                    const subtotalNow = cartNow.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+
+                    const removalIntro = `Theek hai Ji! Aapke order se *${removedQtyText}${itemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${subtotalNow.toLocaleString('en-PK')}`;
+
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart: cartNow,
+                        cache,
+                        introMessage: removalIntro,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing removal request:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Cart Item Flavour Update (Zero Tokens, e.g. "Pizza Tikka kena hi", "Pizza Tikka lena hai", "flavour tikka kardo") ──
+    const extractedFlavours = extractFlavoursFromText(lower);
+    const isFlavourChangeSignal = extractedFlavours.length > 0 &&
+        !hasRemovalWord &&
+        /\b(?:pizza|flavour|flavor|kena|lena|rakh|rakho|kardo|krdo|kr\s*do|kar\s*do|chahiye|mein|me|badal|change|update)\b/i.test(lower);
+
+    if (isFlavourChangeSignal && userSessionId && !pendingFlavour) {
+        try {
+            const { getActiveCart, updateCartItem } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            if (cart?.items && cart.items.length > 0) {
+                const targetRow = cart.items.find(i => {
+                    if (i.deal) {
+                        const pInfo = getDealPizzaInfo(i.deal);
+                        return pInfo.isPizzaDeal;
+                    }
+                    return (i.menu_item?.name || '').toLowerCase().includes('pizza');
+                });
+
+                if (targetRow) {
+                    const newNotes = formatFlavourNotes(extractedFlavours);
+                    await updateCartItem({
+                        sessionKey: userSessionId,
+                        cartItemId: targetRow.id,
+                        notes: newNotes,
+                    });
+
+                    clearPendingDealFlavour(userSessionId);
+                    _lastDiscussedDealBySession.delete(userSessionId);
+
+                    const targetName = targetRow.deal ? targetRow.deal.name : (targetRow.menu_item?.name || 'Pizza');
+                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+                    return await getNextCheckoutStepResponse({
+                        details,
+                        whatsappPhone,
+                        cart: cartNow,
+                        cache,
+                        introMessage: `Zabardast! *${targetName}* ka flavour update kar ke *${extractedFlavours.join(', ')}* kar diya gaya hai! 🍕`,
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing flavour update:', err.message);
+        }
+    }
+
+    // ── Check Fast Follow-up: Flavour specification for pending Pizza Deal (Zero Tokens) ──
     if (pendingFlavour) {
         const d = pendingFlavour.deal;
         const pizzaInfo = pendingFlavour.pizzaInfo || getDealPizzaInfo(d);
@@ -3351,8 +3571,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     quantity: i.quantity,
                 }));
                 const dealsForPricing = (cart.items || []).filter(i => i.deal_id).map(i => ({
+                    id: i.id,
                     dealId: i.deal_id,
                     quantity: i.quantity,
+                    notes: i.notes,
                 }));
                 const pricing = await calculatePricing({
                     restaurantId: cache.restId,
@@ -3373,7 +3595,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         }
                     }
                     for (const d of (pricing.breakdown.deals || [])) {
-                        const raw = cart?.items?.find(ci => ci.deal_id === d.dealId);
+                        const raw = cart?.items?.find(ci => (d.id && ci.id === d.id) || (ci.deal_id === d.dealId && (!d.notes || ci.notes === d.notes)));
                         const notes = d.notes || raw?.notes;
                         const fText = notes ? ` (${notes})` : '';
                         lines.push(`• ${d.quantity}x ${d.name}${fText} — Rs. ${d.lineTotal.toLocaleString('en-PK')}`);

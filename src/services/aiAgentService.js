@@ -471,6 +471,17 @@ async function executeTool(toolName, args, context) {
                     };
                 }
 
+                // Guard: If customer's message expresses an intention to remove, reduce, or cancel an item, do NOT add!
+                const customerMsg = (context?.effectiveText || '').toLowerCase();
+                const isRemovalIntent = /\b(?:remove|remov|delete|delet|hata|hatao|hatado|hata\s*d[aoeiu]+n?|nikal|nikalo|nikaldo|nikal\s*d[aoeiu]+n?|minus|kam\s*kr|chhor\s*do)\b/i.test(customerMsg) ||
+                    /\b(?:mny|maine|mene|me\s*ne)\s+(?:deal|item|[a-z]+).*(?:ak|aik|ek|ik|1)\s*(?:ki\s*thi|kahi\s*thi|chahiye\s*thi)\b/i.test(customerMsg);
+                if (isRemovalIntent) {
+                    return {
+                        error: 'INVALID_ACTION',
+                        message: 'Customer item ko remove ya quantity kam karne ka keh raha hai, add karne ka nahi! add_to_cart call mat karein. remove_cart_item ya update_cart_item use karein.'
+                    };
+                }
+
                 // If no menuItemId or dealId, check itemName or fallback to last discussed item in session
                 if (!menuItemId && !dealId) {
                     const lastEntry = getLastDiscussedItem(sessionKey);
@@ -674,11 +685,31 @@ async function executeTool(toolName, args, context) {
 
             // 10. update_cart_item
             case 'update_cart_item': {
+                let targetId = args.cartItemId;
+                const currentCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                if (currentCart?.items && currentCart.items.length > 0) {
+                    const searchStr = (args.itemName || args.cartItemId || args.dealName || '').toLowerCase().trim();
+                    const matchedItem = currentCart.items.find(i => 
+                        i.id === targetId ||
+                        (searchStr && i.menu_item?.name?.toLowerCase().includes(searchStr)) ||
+                        (searchStr && i.deal?.name?.toLowerCase().includes(searchStr)) ||
+                        (args.dealId && i.deal_id === args.dealId) ||
+                        (args.menuItemId && i.menu_item_id === args.menuItemId)
+                    );
+                    if (matchedItem) {
+                        targetId = matchedItem.id;
+                    } else if (!targetId) {
+                        targetId = currentCart.items[currentCart.items.length - 1].id;
+                    }
+                }
+                const targetQty = (args.quantity !== undefined && args.quantity !== null && String(args.quantity).trim() !== '' && !isNaN(Number(args.quantity)))
+                    ? parseInt(args.quantity, 10)
+                    : undefined;
                 const updated = await updateCartItem({
                     sessionKey,
                     restaurantId: restId,
-                    cartItemId: args.cartItemId,
-                    quantity: parseInt(args.quantity, 10),
+                    cartItemId: targetId,
+                    quantity: targetQty,
                     notes: args.notes,
                 });
                 try {

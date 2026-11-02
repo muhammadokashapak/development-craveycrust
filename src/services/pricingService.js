@@ -96,8 +96,10 @@ export async function calculatePricing(params) {
                 const lineTotal = unitPrice.times(qty);
                 subtotal = subtotal.plus(lineTotal);
                 resolvedDeals.push({
+                    id: dealReq.id || null,
                     dealId: deal.id,
                     name: deal.name,
+                    notes: dealReq.notes || null,
                     unitPrice: roundMoney(unitPrice),
                     unitPriceDecimal: unitPrice,
                     quantity: qty,
@@ -319,8 +321,10 @@ export async function calculatePricing(params) {
         subtotal = subtotal.plus(lineTotal);
 
         resolvedDeals.push({
+            id: dealReq.id || null,
             dealId: deal.id,
             name: deal.name,
+            notes: dealReq.notes || null,
             unitPrice: roundMoney(unitPrice),
             unitPriceDecimal: unitPrice,
             quantity,
