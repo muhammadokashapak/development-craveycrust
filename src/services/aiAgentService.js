@@ -58,9 +58,23 @@ export function detectConfirmIntent(text) {
     const NEGATIONS = /\b(nahi|nahin|na|no|mat|cancel|rok|ruko|galat|wrong|hatao|nhi)\b/i;
     if (NEGATIONS.test(t)) return false;
 
-    // Check: confirmation words (including common misspellings like 'comfirm', 'konfirm')
-    const CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek|thk|bilkul|done|zaroor|zarur)(?:\s+(?:kr|kar)\s*d[aoeiu]+n?|\s+bhai)?|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
-    return CONFIRM.test(t);
+    // Check: modification intent (cart update, item change, add extra) — these are NOT confirmations
+    // even if they contain "kr do" / "karo" (e.g. "deal change kr do", "fries add kr do", "item hatao")
+    const MODIFICATION_INTENT = /\b(?:add|change|badal|update|hatao?|nikal|remove|wapas|aur|extra|fries|drink|pepsi|coke|7up|deal|item|burger|pizza|wings|roll|naya|doosra)\b/i;
+    if (MODIFICATION_INTENT.test(t)) return false;
+
+    // Strong confirm keywords — must contain one of these to be treated as a real confirmation
+    // RULE: standalone "kr do" / "karo" without explicit confirm/book word is NOT enough
+    // because customer might say "deal change kr do" (not a confirmation!)
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
+    if (EXPLICIT_CONFIRM.test(t)) return true;
+
+    // Standalone "kr do" / "karo" (without explicit confirm/book context) — NOT a confirmation alone
+    // Weak affirmatives alone (ok, okay, theek hai, ji, g, haan, bilkul, done) — NOT confirmations
+    const WEAK_AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*hai)?|thk(?:\s*hai)?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
+    if (WEAK_AFFIRMATIVE.test(t)) return false;
+
+    return false;
 }
 
 
@@ -676,12 +690,30 @@ async function executeTool(toolName, args, context) {
 
             // 11. remove_cart_item
             case 'remove_cart_item': {
-                await removeCartItem({ sessionKey, restaurantId: restId, cartItemId: args.cartItemId });
+                let targetId = args.cartItemId;
+                // Auto-resolve item ID by item/deal name if internal ID was not provided
+                const currentCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                if (currentCart?.items && currentCart.items.length > 0) {
+                    const searchStr = (args.itemName || args.cartItemId || '').toLowerCase().trim();
+                    const matchedItem = currentCart.items.find(i => 
+                        i.id === targetId ||
+                        (searchStr && i.menu_item?.name?.toLowerCase().includes(searchStr)) ||
+                        (searchStr && i.deal?.name?.toLowerCase().includes(searchStr)) ||
+                        (args.dealId && i.deal_id === args.dealId) ||
+                        (args.menuItemId && i.menu_item_id === args.menuItemId)
+                    );
+                    if (matchedItem) {
+                        targetId = matchedItem.id;
+                    }
+                }
+                if (targetId) {
+                    await removeCartItem({ sessionKey, restaurantId: restId, cartItemId: targetId });
+                }
                 try {
                     const { updateSessionOrderDetails } = await import('./sessionService.js');
                     updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
                 } catch (_) {}
-                return { success: true, cartItemId: args.cartItemId };
+                return { success: true, cartItemId: targetId };
             }
 
             // 12. clear_cart
@@ -900,13 +932,20 @@ async function executeTool(toolName, args, context) {
             case 'cancel_order': {
                 let orderNum = (args.orderNumber || '').toUpperCase().trim();
                 const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
-                if (!orderNum && cart?.items && cart.items.length > 0) {
+                // SAKHT GUARD: Never wipe cart if user is just modifying, updating, or replacing items!
+                const isItemMod = /\b(?:badal|change|update|doosra|dusra|naya|balke|aur|karke|krke|instead|replace|hata|nikal|remove|daal|dal)\b/i.test(context.effectiveText || '');
+                if (!orderNum && cart?.items && cart.items.length > 0 && !isItemMod) {
                     await clearCartService({ sessionKey });
                     try {
                         const { clearSessionOrderDetails } = await import('./sessionService.js');
                         clearSessionOrderDetails(sessionKey, whatsappPhone);
                     } catch (_) {}
                     return { success: true, cartCleared: true, message: 'Aap ka draft cart khali kar diya gaya hai. Agar dobara kuch order karna ho to batayein! 😊' };
+                } else if (isItemMod) {
+                    return {
+                        error: 'NOT_A_FULL_CANCELLATION',
+                        message: 'Customer sirf cart ka item update ya replace karna chahta hai, pura order cancel nahi karna! Cart ko khali MAT karein. Sirf remove_cart_item ya add_to_cart use karein.'
+                    };
                 }
 
                 const prisma = getDbClient();

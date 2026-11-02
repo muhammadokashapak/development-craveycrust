@@ -1673,11 +1673,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         /^(?:chalo\s+)?(?:theek\s+hai\s+)?cancel\s+ho\s*g[a-z]*[\s!.?]*$/i.test(lower.trim()) ||
         /\b(?:cancel\s+to\s+ho\s*g[a-z]*|cancel\s+to\s+kr\s*diya)\b/i.test(lower);
 
+    // SAKHT GUARD: Check if customer is replacing, changing, or updating an item (NOT whole order cancel)
+    const isItemModificationOrReplacement = /\b(?:badal|change|tabdeel|update|doosra|dusra|naya|balke|aur|karke|krke|instead|replace|daal|dal|rakh|kardo|krdo|de\s*do|dedo|nikal|hata)\b/i.test(lower) ||
+        /\b(?:deal|burger|pizza|fries|drink|pepsi|7up|roll|wings|item)\b/i.test(lower);
+
+    // Only genuine full-order cancellations qualify — NEVER wipe cart on item updates or partial changes!
     const isCancellationIntent = !isClaimingCancelled && (
-        /\b(?:cancel|cancle|kansil)\b/i.test(lower) ||
-        /\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:kr|kar)\s*d[ou]|cancel\s*kar\s*dein|cancel\s*karo|cancel\s*krwana)\b/i.test(lower) ||
+        /^(?:(?:order\s*)?cancel|cancle|kansil)[\s!.?]*$/i.test(lower.trim()) ||
+        /\b(?:sab|sab\s*kuch|pura|poora|mukammal|tamam)\s*(?:kuch\s*)?(?:order\s*)?cancel\b/i.test(lower) ||
         /\b(?:cart\s*(?:clear|khali)|clear\s*cart)\b/i.test(lower) ||
-        /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim())
+        /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim()) ||
+        (/\b(?:rehne\s*do|rehn\s*do|chhor\s*do)\b/i.test(lower) && /\b(?:kuch\s*nahi|nahi\s*chahiye|nahi\s*lena)\b/i.test(lower)) ||
+        (/\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:my\s*)?order)\b/i.test(lower) && !isItemModificationOrReplacement)
     );
 
     const isPolicyQuestion = /\b(?:policy|rule|timing|kya\s*hai|how\s*to)\b/i.test(lower) && !/\b(?:kr\s*du|kar\s*do|kardo|karo|bhai|yaar|plz|please)\b/i.test(lower);
@@ -2524,7 +2531,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     //       like 'nahi aur kch nahi' — hasCartModification must only fire on true add/modify signals.
     const isOrderFinalConfirmation = !hasCartModification && !hasNegation &&
         /^(?:(?:jee?|ji|g|haan?|han|hn|yes|yep|theek\s*hai?|thk\s*hai?|ok|okay|bilkul|zaroor|zarur|done)\s*)?(?:order\s*)?(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|book|final(?:ize|ise)?|done|bhej\s*do|theek\s*hai|ok|yes|haan|han|jee|ji|bilkul|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu)?(?:\s+(?:book|co?n?f[iy]?r[mn]+|final(?:ize|ise)?|karo|kro|(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|karein|hai|h|please|bhai|do))*$/i.test(lower.trim()) &&
-        /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|book|bhej\s*do|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|done|theek\s*hai)\b/i.test(lower.trim()) &&
+        /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|book|bhej\s*do|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|done)\b/i.test(lower.trim()) &&
         wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
@@ -5056,10 +5063,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
             // Now try to fetch cart for a full response
             let cart = null;
+            let cache = null;
             try {
                 const { getActiveCart } = await import('./cartService.js');
-                const cache = await getCatalogCache();
-                cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                cache = await getCatalogCache();
+                cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache?.restId, chatId });
             } catch (_) {}
 
             if (cart?.items && cart.items.length > 0) {
