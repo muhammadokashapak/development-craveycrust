@@ -1826,7 +1826,27 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     try {
         const { getPendingOrderUpdate, setPendingOrderUpdate, clearPendingOrderUpdate } = await import('./sessionService.js');
         const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-        const activeOrderUpdate = getPendingOrderUpdate(userSessionId, cleanPhone);
+        let activeOrderUpdate = getPendingOrderUpdate(userSessionId, cleanPhone);
+
+        // ARCHITECTURAL GUARD: If customer has items in their active draft cart,
+        // placed order updates must NEVER hijack their active checkout!
+        // Staged order updates only apply if customer explicitly references order number or has NO active cart.
+        const { getActiveCart } = await import('./cartService.js');
+        const checkCache = await getCatalogCache();
+        let draftCart = null;
+        try {
+            draftCart = await getActiveCart({ sessionKey: userSessionId, restaurantId: checkCache?.restId, chatId });
+        } catch (_) {}
+        const hasDraftCartItems = Boolean(draftCart?.items && draftCart.items.length > 0);
+        const hasExplicitOrderNumberInMsg = /(?:#?CC-?\d{1,6}|\border\s*#?\s*\d{1,6}\b)/i.test(lower);
+
+        if (hasDraftCartItems && !hasExplicitOrderNumberInMsg) {
+            // Customer is actively ordering/checking out new food — clear any stale pending update
+            if (activeOrderUpdate) {
+                clearPendingOrderUpdate(userSessionId, cleanPhone);
+                activeOrderUpdate = null;
+            }
+        }
 
         function getPhoneVariations(phoneInput) {
             if (!phoneInput) return [];
@@ -2028,9 +2048,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return `${changesHeader}📋 *UPDATED ORDER SUMMARY*\n• Items: ${update.itemsSummary}\n• Total Bill: Rs. ${totalFormatted} (${payStr})\n• Customer Name: *${finalName}*\n• Contact Phone: *${finalPhone}*\n• Delivery Address: *${finalAddress}*\n• Payment Method: *${payStr}*\n\nKya aap tamam details check karke is order update ko confirm karte hain?\nUpdate karne ke liye *"Confirm"* ya *"Haan"* likhein. (Agar koi aur detail change karni hai to bata dein)`;
         }
 
-        // Sub-case 1: Customer confirms pending order update (e.g. "Nahi bss yehi confirm kr do", "Haan confirm kr do", "Confirm", "Theek hai", "Haan")
-        const isAffirmativeSequence = /^(?:(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?\s*)?(?:haan?|han|hn|ji|jee|yes|yep|yup|theek|thk|hai|hy|he|ok|okay|done|bilkul|sure|sahi|bhai|janab|sir|please|plz|\s+)+[\s.!?]*$/i.test(lower.trim());
-        const isConfirmOrUpdateWord = /\b(?:confirm|co?n?f[iy]?r[mn]+|update\s*(?:kr\s*do|kar\s*do|kardo|krdo)?|kar\s*do|kr\s*do|kardo|krdo|kar\s*du|kr\s*du)\b/i.test(lower) && !/\b(?:mat|cancel|rok|address|naam|name|phone|number|pata|gali)\b/i.test(lower) && !/^(?:nahi|na|no)\b/i.test(lower.replace(/^(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?/i, ''));
+        // Sub-case 1: Customer confirms pending order update (e.g. "Nahi bss yehi confirm kr do", "Haan confirm kr do", "Confirm")
+        const hasFoodSignalsInUpdate = /\b(?:fries|drink|pepsi|7up|coke|marinda|dew|pizza|burger|deal|roll|wings|sandwich|nuggets|flavour|flavor|sauce|extra|add|size|regular|large|medium|small|party)\b/i.test(lower);
+        const isAffirmativeSequence = !hasFoodSignalsInUpdate && /^(?:(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?\s*)?(?:haan?|han|hn|ji|jee|yes|yep|yup|theek|thk|hai|hy|he|ok|okay|done|bilkul|sure|sahi|bhai|janab|sir|please|plz|\s+)+[\s.!?]*$/i.test(lower.trim());
+        const isConfirmOrUpdateWord = !hasFoodSignalsInUpdate && /\b(?:confirm|co?n?f[iy]?r[mn]+|final(?:ize|ise)?|update\s*(?:kr\s*do|kar\s*do|kardo|krdo)?)\b/i.test(lower) && !/\b(?:mat|cancel|rok|address|naam|name|phone|number|pata|gali)\b/i.test(lower) && !/^(?:nahi|na|no)\b/i.test(lower.replace(/^(?:nahi\s+)?(?:bss?\s+)?(?:yehi|yahi|isi\s*ko)?/i, ''));
         const isUpdateConfirmKeyword = isAffirmativeSequence || isConfirmOrUpdateWord;
         if (activeOrderUpdate && isUpdateConfirmKeyword && activeOrderUpdate.pendingChanges && Object.keys(activeOrderUpdate.pendingChanges).length > 0) {
             const cache = await getCatalogCache();
@@ -2281,9 +2302,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
 
         const hasActiveCartItems = Boolean(cartForUpdateCheck?.items && cartForUpdateCheck.items.length > 0);
-        const isExplicitPreviousOrder = /\b(?:pichl[aeiy]+|puran[aeiy]+|last|previous|confirmed?)(?:\s+wal[aeiy]+)?\s*(?:order|oder)?\b/i.test(lower);
-        const hasOrderUpdatePhrase = /\b(?:order|oder)\s*(?:mein|me|mai|pe|par|per|ko)?(?:\s+(?:kuch|yeh|ye|cheez|bhi|koi))*\s*(?:update|change|badal|sahi|theek|add|daal|dal|aur|hata|remove)\b/i.test(lower) ||
-            /\b(?:update|change|badal|add)\s*(?:kr\s*do|kar\s*do|kardo|krdo|krna|karna|karein)?\s*(?:pichl[aeiy]+|puran[aeiy]+|last|previous)\s*(?:order|oder)?\b/i.test(lower);
+        const isQuestionAboutOrder = /\b(?:konsa|kaunsa|kya|kab|kahan|kidhar|kitna|tha\??|hai\??|batao|bataen|bataein|check|status|track)\b/i.test(lower);
+        const hasOrderWord = /\b(?:order|oder|#?CC-?\d+)\b/i.test(lower);
+        const hasUpdateVerb = /\b(?:update|change|badal|tabdeel|sahi|theek|durust)\b/i.test(lower);
+        // Customer explicitly requesting to update a previous/placed order:
+        const isExplicitPreviousOrderUpdate = hasOrderWord && hasUpdateVerb && !isQuestionAboutOrder && /\b(?:pichl[aeiy]+|puran[aeiy]+|last|previous|confirmed?)\b/i.test(lower);
+
+        const hasOrderUpdatePhrase = !isQuestionAboutOrder && (/\b(?:order|oder)\s*(?:mein|me|mai|pe|par|per|ko)?(?:\s+(?:kuch|yeh|ye|cheez|bhi|koi))*\s*(?:update|change|badal|sahi|theek|add|daal|dal|aur|hata|remove)\b/i.test(lower) ||
+            /\b(?:update|change|badal)\s*(?:kr\s*do|kar\s*do|kardo|krdo|krna|karna|karein)\s*(?:pichl[aeiy]+|puran[aeiy]+|last|previous)\s*(?:order|oder)\b/i.test(lower));
         const hasOrderNumberAndField = /(?:#?CC-?\d{1,6}|\border\s*#?\s*\d{1,6}\b)/i.test(lower) && /\b(?:ad(?:d)?re(?:e)?s(?:s)?|pata|location|naam|name|number|phone)\b/i.test(lower);
         const isGenericChangeIntent = hasOrderNumberAndField || hasOrderUpdatePhrase ||
             /\b(?:address\s*(?:change|badal|update|theek|sahi|galat|ghalat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|theek|sahi|galat|ghalat)|ad(?:d)?re(?:e)?s(?:s)?\s*(?:nahi|ni)\s*hai|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|ghalat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower) ||
@@ -2291,7 +2317,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             /\b(?:number|phone)\s*(?:bhi\s*)?(?:change|badal|update)\b/i.test(lower) ||
             /\b(?:order|oder)\s*(?:update|change|badal)\b/i.test(lower);
 
-        if ((isExplicitPreviousOrder || hasOrderUpdatePhrase || hasOrderNumberAndField || (!hasActiveCartItems && isGenericChangeIntent)) && userSessionId) {
+        // If customer has active draft items in cart, ONLY allow order update if order number is explicitly mentioned!
+        const canTriggerPlacedOrderUpdate = hasActiveCartItems
+            ? hasOrderNumberAndField
+            : (isExplicitPreviousOrderUpdate || hasOrderUpdatePhrase || hasOrderNumberAndField || isGenericChangeIntent);
+
+        if (canTriggerPlacedOrderUpdate && userSessionId) {
             const targetOrder = await findCustomerTargetOrder();
 
             if (targetOrder?.isRecentInactive) {
@@ -2413,6 +2444,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
 
                 const cache = await getCatalogCache();
+                const { getAdminContact } = await import('./restaurantService.js');
                 const adminContact = await getAdminContact(cache.restId);
                 const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent(`Assalam-o-Alaikum Admin, mera order #${newUpdate.orderNumber} update / change kar dein.`)}`;
 
