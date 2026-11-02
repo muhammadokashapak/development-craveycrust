@@ -303,6 +303,7 @@ async function callDeepSeek({ apiKey, model, baseUrl, messages, temperature, max
         messages,
         temperature,
         max_tokens: maxTokens,
+        thinking: { type: 'disabled' },
     }, {
         headers: {
             'Content-Type': 'application/json',
