@@ -193,7 +193,7 @@ async function getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsapp
 }
 
 // ─── Tool Executor (Direct Local Services) ─────────────────────────────────
-async function executeTool(toolName, args, context) {
+export async function executeTool(toolName, args, context) {
     const { sessionKey, chatId, whatsappPhone, restId, sock, locationData, effectiveText, text: rawText } = context || {};
     const text = effectiveText || rawText || '';
 
@@ -482,6 +482,33 @@ async function executeTool(toolName, args, context) {
                     };
                 }
 
+                // Guard: If customer is only updating flavour of an existing pizza deal in cart, do NOT add duplicate deal!
+                const flvs = extractFlavoursFromText(customerMsg);
+                const isFlvChange = flvs.length > 0 && /\b(?:pizza|flavour|flavor|kena|lena|rakh|rakho|kardo|krdo|kr\s*do|kar\s*do|chahiye|mein|me|badal|change|update)\b/i.test(customerMsg);
+                if (isFlvChange && sessionKey) {
+                    const currentCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                    const existingPizzaDeal = currentCart?.items?.find(i => {
+                        if (i.deal) return getDealPizzaInfo(i.deal).isPizzaDeal;
+                        return (i.menu_item?.name || '').toLowerCase().includes('pizza');
+                    });
+                    if (existingPizzaDeal) {
+                        const newNotes = formatFlavourNotes(flvs);
+                        await updateCartItem({
+                            sessionKey,
+                            restaurantId: restId,
+                            cartItemId: existingPizzaDeal.id,
+                            notes: newNotes,
+                        });
+                        return {
+                            success: true,
+                            flavourUpdated: true,
+                            dealName: existingPizzaDeal.deal?.name || 'Pizza Deal',
+                            notes: newNotes,
+                            message: `${existingPizzaDeal.deal?.name || 'Pizza Deal'} ka flavour update kar ke ${flvs.join(', ')} kar diya gaya hai.`
+                        };
+                    }
+                }
+
                 // If no menuItemId or dealId, check itemName or fallback to last discussed item in session
                 if (!menuItemId && !dealId) {
                     const lastEntry = getLastDiscussedItem(sessionKey);
@@ -705,18 +732,23 @@ async function executeTool(toolName, args, context) {
                 const targetQty = (args.quantity !== undefined && args.quantity !== null && String(args.quantity).trim() !== '' && !isNaN(Number(args.quantity)))
                     ? parseInt(args.quantity, 10)
                     : undefined;
-                const updated = await updateCartItem({
-                    sessionKey,
-                    restaurantId: restId,
-                    cartItemId: targetId,
-                    quantity: targetQty,
-                    notes: args.notes,
-                });
+                let updated = null;
+                try {
+                    updated = await updateCartItem({
+                        sessionKey,
+                        restaurantId: restId,
+                        cartItemId: targetId,
+                        quantity: targetQty,
+                        notes: args.notes,
+                    });
+                } catch (err) {
+                    return { success: false, error: err.code || 'UPDATE_FAILED', message: err.message };
+                }
                 try {
                     const { updateSessionOrderDetails } = await import('./sessionService.js');
                     updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
                 } catch (_) {}
-                return { success: true, cartItemId: updated.id, newQuantity: updated.quantity };
+                return { success: true, cartItemId: updated?.id || targetId, newQuantity: updated?.quantity ?? targetQty };
             }
 
             // 11. remove_cart_item
@@ -738,7 +770,13 @@ async function executeTool(toolName, args, context) {
                     }
                 }
                 if (targetId) {
-                    await removeCartItem({ sessionKey, restaurantId: restId, cartItemId: targetId });
+                    try {
+                        await removeCartItem({ sessionKey, restaurantId: restId, cartItemId: targetId });
+                    } catch (err) {
+                        return { success: false, error: err.code || 'REMOVE_FAILED', message: err.message };
+                    }
+                } else {
+                    return { success: false, error: 'CART_ITEM_NOT_FOUND', message: 'Cart item not found' };
                 }
                 try {
                     const { updateSessionOrderDetails } = await import('./sessionService.js');

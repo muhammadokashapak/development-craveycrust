@@ -508,13 +508,13 @@ export async function createOrder(params) {
                     quantity: item.quantity,
                     discount_amount: item.discountAmountDecimal || new Decimal(item.discountAmount || 0),
                     line_total: item.lineTotalDecimal,
-                    notes: rawCartItem?.notes || null,
+                    notes: item.notes || rawCartItem?.notes || null,
                 },
             });
         }
 
         for (const deal of pricing.breakdown.deals) {
-            const rawCartItem = cart.items.find(ci => ci.deal_id === deal.dealId);
+            const rawCartItem = cart.items.find(ci => (deal.id && ci.id === deal.id) || ci.deal_id === deal.dealId);
             await tx.orderItem.create({
                 data: {
                     order_id: createdOrder.id,
@@ -524,7 +524,7 @@ export async function createOrder(params) {
                     quantity: deal.quantity,
                     discount_amount: new Decimal(0),
                     line_total: deal.lineTotalDecimal,
-                    notes: rawCartItem?.notes || null,
+                    notes: deal.notes || rawCartItem?.notes || null,
                 },
             });
         }

@@ -622,6 +622,15 @@ Reply cart to view cart ya checkout to continue.`,
     }
 
     // 2b. Pending Deal Flavour Selection
+    const isRemovalOrChangeInWo = /\b(?:remove|delete|hata|hatao|hatado|hata\s*d[aoeiu]+n?|nikal|nikalo|nikaldo|nikal\s*d[aoeiu]+n?|minus|kam\s*kr|cancel|rehne\s*do|chhor\s*do)\b/i.test(cleanText) ||
+        /\b(?:mny|maine|mene|me\s*ne)\s+(?:deal|item|[a-z]+).*(?:ak|aik|ek|ik|1)\s*(?:ki\s*thi|kahi\s*thi|chahiye\s*thi)\b/i.test(cleanText) ||
+        /\b(?:order\s*repeat|mera\s*order|kitna\s*bill|bill\s*kitna|subtotal|cart)\b/i.test(cleanText);
+
+    if (isRemovalOrChangeInWo) {
+        draft.pendingDealFlavour = null;
+        clearPendingDealFlavour(convSession.session_key);
+    }
+
     const pendingFlavourDeal = draft.pendingDealFlavour || getPendingDealFlavour(convSession.session_key);
     if (pendingFlavourDeal) {
         const pDeal = pendingFlavourDeal.deal;
@@ -1037,23 +1046,47 @@ Direct order karne ke liye item likhein (e.g. 2 Burger ya 1 Pizza).`,
             return { text: 'Cart already empty hai.', intent };
         }
 
-        const target = cart.items.find(ci => {
-            const name = (ci.menu_item?.name || ci.deal?.name || '').toLowerCase();
-            return name.includes(query) || query.includes(name);
-        });
-
-        if (!target) {
+        let target = null;
+        if (entities.contextual || query === 'last_item') {
+            target = cart.items[cart.items.length - 1];
+        } else if (query) {
+            target = cart.items.find(ci => {
+                const name = (ci.menu_item?.name || ci.deal?.name || '').toLowerCase();
+                const dSlug = (ci.deal?.slug || '').toLowerCase();
+                const dId = (ci.deal?.id || ci.deal_id || '').toLowerCase();
+                return name.includes(query) || query.includes(name) || dSlug.includes(query) || dId.includes(query);
+            });
+        } else if (cart.items.length === 1) {
+            target = cart.items[0];
+        } else {
+            const list = cart.items.map(i => `• ${i.quantity}x ${i.deal ? i.deal.name : (i.menu_item?.name || 'Item')}`).join('\n');
             return {
-                text: `Item '${entities.itemQuery}' aap ke cart mein nahi mila.`,
+                text: `Aap kaunsa item remove karna chahenge? Aap ke cart mein yeh items hain:\n${list}\n\nBaraye meherbani batayein kaunsa item hatana hai?`,
                 intent,
             };
         }
 
-        await removeCartItem({ sessionKey: convSession.session_key, cartItemId: target.id });
-        const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
+        if (!target) {
+            return {
+                text: `Item '${entities.itemQuery || 'specified'}' aap ke cart mein pehle se maujood nahi hai.`,
+                intent,
+            };
+        }
 
+        const qtyToRemove = entities.quantity;
+        let itemName = target.menu_item?.name || target.deal?.name || 'Item';
+        if (qtyToRemove && qtyToRemove < target.quantity) {
+            await updateCartItem({ sessionKey: convSession.session_key, cartItemId: target.id, quantity: target.quantity - qtyToRemove });
+        } else {
+            await removeCartItem({ sessionKey: convSession.session_key, cartItemId: target.id });
+        }
+
+        draft.pendingDealFlavour = null;
+        clearPendingDealFlavour(convSession.session_key);
+
+        const cartTotals = await calculateCartTotals({ sessionKey: convSession.session_key });
         return {
-            text: `${target.menu_item?.name || target.deal?.name} cart se remove kar diya gaya.\nSubtotal: Rs.${cartTotals.subtotal}`,
+            text: `${itemName} cart se remove kar diya gaya. ✅\nSubtotal: Rs.${cartTotals.subtotal}`,
             intent,
         };
     }

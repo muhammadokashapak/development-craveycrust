@@ -1141,14 +1141,48 @@ export class DeterministicIntentProvider {
             };
         }
 
-        // Remove item: "remove zinger", "zinger hata do", "delete zinger"
-        const removeMatch = lower.match(/^(?:remove|delete|hata\s+do)\s+(.+)$/i) ||
-                            lower.match(/^(.+?)\s+(?:hata\s+do|remove|delete)$/i);
-        if (removeMatch) {
+        // Remove item: comprehensive conversational patterns
+        const hasRemovalVerb = /\b(?:remove|remov|delete|delet|hata|hatao|hatado|hata\s*d[aoeiu]+n?|nikal|nikalo|nikaldo|nikal\s*d[aoeiu]+n?|minus|kam\s*(?:kr|kar|karo|kardo|krdo|karein)|chhor\s*do|rehne\s*do)\b/i.test(lower);
+        const isQtyCorrection = /\b(?:mny|maine|mene|me\s*ne)\s+(?:to\s+)?(?:sirf\s+)?(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|mangwayi\s*thi|order\s*ki\s*thi)\b/i.test(lower) ||
+            /\b(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|chahiye\s*thi)\b/i.test(lower);
+
+        if (hasRemovalVerb || isQtyCorrection) {
+            const dealMatch = lower.match(/\bdeal\s*#?\s*(\d+)\b/i) || lower.match(/\b(\d+)\s*deal\b/i);
+            const targetDealNum = dealMatch ? parseInt(dealMatch[1], 10) : null;
+            let itemQuery = targetDealNum ? `deal ${targetDealNum}` : '';
+
+            if (!itemQuery) {
+                const itemMatch = lower.match(/\b(burger|zinger|fries|pizza|wings?|roll|pasta|nuggets?)\b/i);
+                if (itemMatch) itemQuery = itemMatch[1];
+            }
+
+            const isContextual = /\b(?:wo|woh|ye|yeh|isko|isay|isey|usko|usay|usey|meri|mera)\b/i.test(lower);
+
+            if (isQtyCorrection) {
+                const corrMatch = lower.match(/\b(?:mny|maine|mene|me\s*ne)?\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s*)?(\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|chahiye\s*thi)\b/i);
+                const targetQty = corrMatch ? (QTY_WORD_MAP[corrMatch[1].toLowerCase()] || 1) : 1;
+                return {
+                    intent: 'CHANGE_QUANTITY',
+                    entities: {
+                        itemQuery: itemQuery || 'last_item',
+                        quantity: targetQty,
+                        contextual: !itemQuery || isContextual,
+                    },
+                    confidence: 0.95,
+                };
+            }
+
+            const preMatch = lower.match(/\b(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?(?:deal\s*#?\s*\d+|burger|pizza|fries|drink|wings?|roll|item)/i);
+            const qty = preMatch ? (QTY_WORD_MAP[preMatch[1].toLowerCase()] || parseInt(preMatch[1], 10) || 1) : null;
+
             return {
                 intent: 'REMOVE_ITEM',
-                entities: { itemQuery: removeMatch[1].trim() },
-                confidence: 0.92,
+                entities: {
+                    itemQuery: itemQuery || (isContextual ? 'last_item' : ''),
+                    quantity: qty,
+                    contextual: !itemQuery || isContextual,
+                },
+                confidence: 0.95,
             };
         }
 
@@ -2673,6 +2707,45 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         /\b(?:sirf\s+(?:\d+|ak|aik|ek|ik|one)\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:chahiye|rakho|rakhein|kr\s*do|kar\s*do))\b/i.test(lower);
     const isContextualRemoval = hasRemovalWord && /\b(?:wo|woh|ye|yeh|isko|isay|isey|usko|usay|usey|meri|mera)\b/i.test(lower);
 
+    // ── Check Fast Route: Customer Frustration Handling (Zero Tokens) ──
+    const isFrustration = !hasRemovalWord && (
+        /^(?:(?:yar|yaar|ohe|oye|abey|abe)\s+)?(?:kya|kia)\s*(?:bakwas|bkwas|fazool|fuzool|third\s*class|pagal|dimagh\s*kharab)\s*(?:h|hai|hy|hega)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:kya\s*(?:bakwas|bkwas)|main\s*kya\s*keh\s*raha\s*h(?:u|oo)?n|ma\s*k(?:a|ya)\s*kah\s*rha\s*h(?:u|oo)?n)\b/i.test(lower.trim())
+    );
+
+    if (isFrustration && userSessionId) {
+        clearPendingDealFlavour(userSessionId);
+        _lastDiscussedDealBySession.delete(userSessionId);
+
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            if (cart?.items && cart.items.length > 0) {
+                const lines = cart.items.map(i => {
+                    const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                    const fText = i.notes ? ` (${i.notes})` : '';
+                    const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+                    return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                }).join('\n');
+                const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+
+                return {
+                    handled: true,
+                    routeName: 'customer_frustration_cart_display',
+                    reply: `Maazrat chahta hoon Ji, meri taraf se ghalti hui. 🙏\n\nAap ke cart mein is waqt yeh items hain:\n${lines}\n💰 *Subtotal:* Rs. ${subtotal.toLocaleString('en-PK')}\n\nBaraye meherbani batayein ke aap ko in mein se kya remove ya change karna hai taake main foran theek kar doon?`,
+                };
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'customer_frustration_empty_cart',
+                    reply: `Maazrat chahta hoon Ji, meri taraf se ghalti hui. 🙏 Main aap ki kya madad kar sakta hoon? Aap apna order bata dein ya support agent se rabte ke liye 'agent' likhein.`,
+                };
+            }
+        } catch (_) {}
+    }
+
     if ((hasRemovalWord || isQtyCorrection) && userSessionId) {
         try {
             const { getActiveCart, removeCartItem, updateCartItem } = await import('./cartService.js');
@@ -2745,9 +2818,26 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         const n = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
                         return n.includes(targetItemQuery);
                     });
-                } else if (isContextualRemoval || hasRemovalWord) {
+                } else if (isContextualRemoval || cart.items.length === 1) {
                     const latestItem = cart.items[cart.items.length - 1];
                     if (latestItem) matchingItems = [latestItem];
+                } else {
+                    // Ambiguous removal request: multiple items in cart and no specific item or contextual pronoun
+                    const itemsSummary = cart.items.map(i => `• ${i.quantity}x ${i.deal ? i.deal.name : (i.menu_item?.name || 'Item')}`).join('\n');
+                    return {
+                        handled: true,
+                        routeName: 'ambiguous_removal_clarification',
+                        reply: `Aap kaunsa item remove karna chahenge? Aap ke cart mein yeh items shamil hain:\n${itemsSummary}\n\nBaraye meherbani batayein ke aap ko kaunsa item hatana hai?`,
+                    };
+                }
+
+                if (matchingItems.length === 0) {
+                    const searchedName = targetDealNum ? `Deal ${targetDealNum}` : (targetItemQuery || 'Item');
+                    return {
+                        handled: true,
+                        routeName: 'item_not_in_cart_removal',
+                        reply: `Aap ke cart mein *${searchedName}* pehle se maujood nahi hai.`,
+                    };
                 }
 
                 if (matchingItems.length > 0) {
@@ -2844,13 +2934,32 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 
             if (cart?.items && cart.items.length > 0) {
-                const targetRow = cart.items.find(i => {
-                    if (i.deal) {
-                        const pInfo = getDealPizzaInfo(i.deal);
-                        return pInfo.isPizzaDeal;
-                    }
-                    return (i.menu_item?.name || '').toLowerCase().includes('pizza');
-                });
+                let targetRow = null;
+                const dealMatch = lower.match(/\bdeal\s*#?\s*(\d+)\b/i) || lower.match(/\b(\d+)\s*deal\b/i);
+                const targetDealNum = dealMatch ? parseInt(dealMatch[1], 10) : null;
+                if (targetDealNum) {
+                    targetRow = cart.items.find(i => {
+                        const dName = (i.deal?.name || '').toLowerCase();
+                        const dSlug = (i.deal?.slug || '').toLowerCase();
+                        const dId = (i.deal?.id || i.deal_id || '').toLowerCase();
+                        return dName.includes(`deal ${targetDealNum}`) || dSlug.includes(`deal-${targetDealNum}`) || dId === `deal-${targetDealNum}`;
+                    });
+                }
+
+                if (!targetRow) {
+                    targetRow = [...cart.items].reverse().find(i => {
+                        if (i.deal) {
+                            const pInfo = getDealPizzaInfo(i.deal);
+                            if (pInfo.isPizzaDeal) return true;
+                            if (i.notes && /flavour/i.test(i.notes)) return true;
+                            return (i.deal.name || '').toLowerCase().includes('pizza');
+                        }
+                        return (i.menu_item?.name || '').toLowerCase().includes('pizza') || (i.notes && /flavour/i.test(i.notes));
+                    });
+                }
+                if (!targetRow && cart.items.length === 1) {
+                    targetRow = cart.items[0];
+                }
 
                 if (targetRow) {
                     const newNotes = formatFlavourNotes(extractedFlavours);
