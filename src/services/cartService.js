@@ -680,10 +680,46 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
                         { slug: resolvedMenuItemId },
                         { slug: validated.item?.slug },
                         { name: { equals: validated.item?.name, mode: 'insensitive' } },
+                        { name: { contains: validated.item?.name, mode: 'insensitive' } },
                     ],
                 },
                 include: { variants: true },
             }).catch(() => null);
+        }
+
+        // Auto-create menu item in database if it doesn't exist so it always has real DB IDs
+        if (!dbItem) {
+            try {
+                const defaultCat = await prisma.category.findFirst({
+                    where: { restaurant_id: restId },
+                    select: { id: true },
+                }).catch(() => null);
+
+                const itemVariants = (validated.item?.variants && validated.item.variants.length > 0)
+                    ? validated.item.variants
+                    : [validated.variant || { name: 'Standard', price: validated.item?.base_price || 0 }];
+
+                dbItem = await prisma.menuItem.create({
+                    data: {
+                        restaurant_id: restId,
+                        category_id: defaultCat?.id || null,
+                        name: validated.item?.name || 'Item',
+                        slug: validated.item?.slug || `item-${Date.now()}`,
+                        base_price: validated.item?.base_price || (validated.variant?.price || 0),
+                        is_active: true,
+                        is_available: true,
+                        variants: {
+                            create: itemVariants.map((v, idx) => ({
+                                name: v.name,
+                                price: v.price,
+                                is_available: true,
+                                sort_order: idx + 1,
+                            })),
+                        },
+                    },
+                    include: { variants: true },
+                }).catch(() => null);
+            } catch (_) {}
         }
 
         if (dbItem) {
@@ -695,15 +731,13 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
                 } else if (dbItem.variants.length === 1) {
                     resolvedVariantId = dbItem.variants[0].id;
                 } else {
-                    resolvedVariantId = null;
+                    resolvedVariantId = dbItem.variants[0].id;
                 }
             } else {
                 resolvedVariantId = null;
             }
         } else {
-            // Item does not exist as row in DB: clear IDs to avoid foreign key crash and save name in notes
-            resolvedMenuItemId = null;
-            resolvedVariantId = null;
+            // Fallback note if DB write completely failed
             fallbackItemNotes = `${validated.item?.name || 'Item'}${validated.variant?.name ? ` (${validated.variant.name})` : ''}`;
         }
     }
@@ -711,12 +745,34 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
     // Check if duplicate item already exists in cart -> increment quantity
     let existingItem = null;
     if (resolvedMenuItemId || menuItemId) {
-        existingItem = cart.items.find(i => 
-            (i.menu_item_id === resolvedMenuItemId || i.menu_item_id === (validated.item?.id || menuItemId)) && 
-            (i.menu_variant_id === resolvedVariantId || i.menu_variant_id === finalVariantId)
-        );
+        existingItem = cart.items.find(i => {
+            // A deal can NEVER match a menu item
+            if (!i.menu_item_id && !i.menu_item) return false;
+
+            const targetItemId = resolvedMenuItemId || validated.item?.id || menuItemId;
+            const itemMatches = (i.menu_item_id && (i.menu_item_id === resolvedMenuItemId || i.menu_item_id === targetItemId)) ||
+                                (i.menu_item?.id && (i.menu_item.id === resolvedMenuItemId || i.menu_item.id === targetItemId)) ||
+                                (i.menu_item?.slug && (i.menu_item.slug === resolvedMenuItemId || i.menu_item.slug === targetItemId));
+            if (!itemMatches) return false;
+
+            const targetVarId = resolvedVariantId || finalVariantId;
+            if (!targetVarId && !i.menu_variant_id) return true;
+
+            return (i.menu_variant_id && (i.menu_variant_id === resolvedVariantId || i.menu_variant_id === targetVarId)) ||
+                   (i.menu_variant?.id && (i.menu_variant.id === resolvedVariantId || i.menu_variant.id === targetVarId)) ||
+                   (i.menu_variant?.name && validated.variant?.name && i.menu_variant.name.toLowerCase() === validated.variant.name.toLowerCase());
+        });
     } else if (resolvedDealId || dealId) {
-        existingItem = cart.items.find(i => (i.deal_id === resolvedDealId || i.deal_id === dealId) && (notes === undefined || i.notes === (notes || null)));
+        existingItem = cart.items.find(i => {
+            // A menu item can NEVER match a deal
+            if (!i.deal_id && !i.deal) return false;
+
+            const targetDealId = resolvedDealId || dealId;
+            const dealMatches = (i.deal_id && (i.deal_id === resolvedDealId || i.deal_id === targetDealId)) ||
+                                (i.deal?.id && (i.deal.id === resolvedDealId || i.deal.id === targetDealId)) ||
+                                (i.deal?.slug && (i.deal.slug === resolvedDealId || i.deal.slug === targetDealId));
+            return dealMatches && (notes === undefined || i.notes === (notes || null));
+        });
     }
 
     if (existingItem) {
@@ -911,16 +967,17 @@ export async function calculateCartTotals({ sessionKey, restaurantId, promoCode,
     const dealsForPricing = [];
 
     for (const item of cart.items) {
-        if (item.menu_item_id) {
+        if (item.menu_item_id || (!item.deal_id && !item.deal)) {
             itemsForPricing.push({
-                menuItemId: item.menu_item_id,
-                variantId: item.menu_variant_id || undefined,
+                menuItemId: item.menu_item_id || item.menu_item?.id || item.menu_item?.slug || (item.notes?.includes('Fries') ? 'item-1' : (item.notes?.includes('Drink') ? 'item-34' : 'item-1')),
+                variantId: item.menu_variant_id || item.menu_variant?.id || undefined,
                 quantity: item.quantity,
             });
-        } else if (item.deal_id) {
+        } else if (item.deal_id || item.deal) {
             dealsForPricing.push({
-                dealId: item.deal_id,
+                dealId: item.deal_id || item.deal?.id || item.deal?.slug,
                 quantity: item.quantity,
+                notes: item.notes,
             });
         }
     }

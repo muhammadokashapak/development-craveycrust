@@ -666,14 +666,31 @@ export async function executeTool(toolName, args, context) {
                     quantity,
                     notes,
                 });
+                let freshCartSummary = null;
                 try {
                     clearLastDiscussedDeal(sessionKey);
                     clearLastDiscussedItem(sessionKey);
                     clearPendingDealFlavour(sessionKey);
                     const { updateSessionOrderDetails } = await import('./sessionService.js');
                     updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                    const { calculateCartTotals } = await import('./cartService.js');
+                    const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId }).catch(() => null);
+                    if (totals) {
+                        freshCartSummary = {
+                            items: (totals.items || []).map(i => `${i.quantity}x ${i.name}${i.variantName ? ` (${i.variantName})` : ''} — Rs. ${i.lineTotal}`),
+                            deals: (totals.deals || []).map(d => `${d.quantity}x ${d.name}${d.notes ? ` (${d.notes})` : ''} — Rs. ${d.lineTotal}`),
+                            subtotal: totals.subtotal,
+                            total: totals.total,
+                        };
+                    }
                 } catch (_) {}
-                return { success: true, cartItemId: added.id, quantity: added.quantity };
+                return {
+                    success: true,
+                    cartItemId: added.id,
+                    quantity: added.quantity,
+                    cartSummary: freshCartSummary,
+                    message: freshCartSummary ? `Item cart mein add ho gaya! Updated Cart Subtotal: Rs. ${freshCartSummary.subtotal}, Total Bill: Rs. ${freshCartSummary.total}. Customer ko naya bill aur updated cart summary batayein.` : 'Item cart mein add ho gaya!'
+                };
             }
 
             // 20. add_multiple_to_cart

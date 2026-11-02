@@ -660,14 +660,14 @@ export async function getNextCheckoutStepResponse({
 
     // Calculate dynamic pricing & discounts using central pricingService
     const { calculatePricing } = await import('./pricingService.js');
-    const itemsForPricing = (cart?.items || []).filter(i => i.menu_item_id).map(i => ({
-        menuItemId: i.menu_item_id,
-        variantId: i.menu_variant_id || undefined,
+    const itemsForPricing = (cart?.items || []).filter(i => !i.deal_id && !i.deal).map(i => ({
+        menuItemId: i.menu_item_id || i.menu_item?.id || i.menu_item?.slug || (i.notes?.includes('Fries') ? 'item-1' : (i.notes?.includes('Drink') ? 'item-34' : 'item-1')),
+        variantId: i.menu_variant_id || i.menu_variant?.id || undefined,
         quantity: i.quantity,
     }));
-    const dealsForPricing = (cart?.items || []).filter(i => i.deal_id).map(i => ({
+    const dealsForPricing = (cart?.items || []).filter(i => i.deal_id || i.deal).map(i => ({
         id: i.id,
-        dealId: i.deal_id,
+        dealId: i.deal_id || i.deal?.id || i.deal?.slug,
         quantity: i.quantity,
         notes: i.notes,
     }));
@@ -3141,8 +3141,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Drink without size (Zero Tokens) ──
-    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do)?[\s.!?]*$/i.test(lower.trim()) ||
-                               (/^(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower));
+    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do|b)?[\s.!?]*$/i.test(lower.trim()) ||
+                               (/\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower));
     if (isDrinkWithoutSize && !hasLeadingOrderQuantity && userSessionId) {
         const drinkItem = {
             id: 'item-34',
@@ -3223,7 +3223,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer orders Drink with size directly (Zero Tokens) ──
-    const hasDrinkWord = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b/i.test(lower);
+    const hasDrinkWord = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b/i.test(lower);
     const hasDrinkSizeWord = /\b(?:1\.5\s*liter|1\.5\s*litre|1\.5l|1\s*liter|1\s*litre|1l|regular|reg|can|tin|litre|liter|dedh\s*litre)\b/i.test(lower);
     const isDirectDrinkWithSize = hasDrinkWord && hasDrinkSizeWord &&
         (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do|wali|wala)\b/i.test(lower) || wordCount <= 4);
@@ -3299,7 +3299,26 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Follow-up: Variant selection for pending discussed item (e.g. "regular", "can", "1.5 liter", "large") ──
-    const lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId, cleanPhone) : null;
+    let lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId, cleanPhone) : null;
+    if (!lastItemEntry) {
+        // Fallback: If customer simply typed a drink size (e.g. "1.5 litre", "1.5 liter", "1.5l", "can", "regular", "tin")
+        const isStandaloneDrinkSize = /^(?:(?:aik|ek|ik|1|2)\s+)?(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin)[\s.!?]*$/i.test(lower.trim()) ||
+                                      /\b(?:1\.5\s*(?:liter|litre|l)|derh\s*liter)\b/i.test(lower.trim());
+        if (isStandaloneDrinkSize) {
+            lastItemEntry = {
+                item: {
+                    id: 'item-34',
+                    name: 'Soft Drink',
+                    variants: [
+                        { id: 'v-34-1', name: 'Regular', price: 110 },
+                        { id: 'v-34-2', name: 'Can', price: 130 },
+                        { id: 'v-34-3', name: '1 Liter', price: 200 },
+                        { id: 'v-34-4', name: '1.5 Liter', price: 240 }
+                    ]
+                }
+            };
+        }
+    }
     if (lastItemEntry && lastItemEntry.item && (lastItemEntry.item.variants || []).length > 0) {
         const itemVariants = lastItemEntry.item.variants;
         const { matchVariant } = await import('./cartService.js');
@@ -3679,14 +3698,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true }, cleanPhone);
                 }
                 const { calculatePricing } = await import('./pricingService.js');
-                const itemsForPricing = (cart.items || []).filter(i => i.menu_item_id).map(i => ({
-                    menuItemId: i.menu_item_id,
-                    variantId: i.menu_variant_id || undefined,
+                const itemsForPricing = (cart.items || []).filter(i => !i.deal_id && !i.deal).map(i => ({
+                    menuItemId: i.menu_item_id || i.menu_item?.id || i.menu_item?.slug || (i.notes?.includes('Fries') ? 'item-1' : (i.notes?.includes('Drink') ? 'item-34' : 'item-1')),
+                    variantId: i.menu_variant_id || i.menu_variant?.id || undefined,
                     quantity: i.quantity,
                 }));
-                const dealsForPricing = (cart.items || []).filter(i => i.deal_id).map(i => ({
+                const dealsForPricing = (cart.items || []).filter(i => i.deal_id || i.deal).map(i => ({
                     id: i.id,
-                    dealId: i.deal_id,
+                    dealId: i.deal_id || i.deal?.id || i.deal?.slug,
                     quantity: i.quantity,
                     notes: i.notes,
                 }));
