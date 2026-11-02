@@ -193,12 +193,17 @@ async function callGemini({ apiKey, model, messages, temperature, maxTokens }) {
         contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
     }
 
-    // Build intelligent cascade list: requested model first, then ultra-reliable alternates
+    // Build intelligent cascade list: ultra-reliable low-latency models prioritized
     const candidateModels = [];
     const requested = model || env.GEMINI_MODEL || 'gemini-flash-lite-latest';
-    candidateModels.push(requested);
-    if (!candidateModels.includes('gemini-flash-lite-latest')) candidateModels.push('gemini-flash-lite-latest');
-    if (!candidateModels.includes('gemini-3.5-flash')) candidateModels.push('gemini-3.5-flash');
+    // Models known to suffer from Google 503 "high demand" overload are de-prioritized
+    if (requested === 'gemini-3.8-flash' || requested === 'gemini-flash-latest') {
+        candidateModels.push('gemini-flash-lite-latest');
+        candidateModels.push(requested);
+    } else {
+        candidateModels.push(requested);
+        if (!candidateModels.includes('gemini-flash-lite-latest')) candidateModels.push('gemini-flash-lite-latest');
+    }
 
     let lastError = null;
 
