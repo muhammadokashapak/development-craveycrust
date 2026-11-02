@@ -2599,7 +2599,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     //       like 'nahi aur kch nahi' — hasCartModification must only fire on true add/modify signals.
     const isOrderFinalConfirmation = !hasCartModification && !hasNegation &&
         /^(?:(?:jee?|ji|g|haan?|han|hn|yes|yep|theek\s*hai?|thk\s*hai?|ok|okay|bilkul|zaroor|zarur|done)\s*)?(?:order\s*)?(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|book|final(?:ize|ise)?|done|bhej\s*do|theek\s*hai|ok|yes|haan|han|jee|ji|bilkul|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu)?(?:\s+(?:book|co?n?f[iy]?r[mn]+|final(?:ize|ise)?|karo|kro|(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|karein|hai|h|please|bhai|do))*$/i.test(lower.trim()) &&
-        /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|book|bhej\s*do|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|done)\b/i.test(lower.trim()) &&
+        (/\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|book|bhej\s*do|(?:kr|kar)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|done)\b/i.test(lower.trim()) ||
+         /^(?:haan?|han|hn|jee?|ji|g|yes|theek(?:\s*hai)?|thk(?:\s*hai)?|ok|okay|bilkul)[\s.!?]*$/i.test(lower.trim())) &&
         wordCount <= 6;
     if (isOrderFinalConfirmation && userSessionId) {
         try {
@@ -5680,6 +5681,40 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     routeName: 'awaiting_payment_prompt',
                     reply: `Ji *${details.name}*! Payment method kaunsa pasand karenge — Cash on Delivery (COD) ya EasyPaisa? 💵`,
                 };
+            }
+
+            const finalAddressForConfirm = details?.address || details?.savedAddress || details?.location?.address;
+            const readyToConfirmOrder = Boolean(details?.name && (finalAddressForConfirm || details?.location) && (details?.paymentMethod || 'COD') && details?.phoneConfirmed);
+            if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation || details?.summaryShown || readyToConfirmOrder) && !details?.locationAwaitingConfirmation) {
+                const finalPayment = details.paymentMethod || 'COD';
+                const { createOrder } = await import('./orderService.js');
+                const res = await createOrder({
+                    restaurantId: cache.restId,
+                    sessionKey: userSessionId,
+                    customerName: details.name || 'Customer',
+                    phone: details.phone || cleanPhone,
+                    delivery: {
+                        address: finalAddressForConfirm || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
+                        latitude: details.location?.latitude ?? null,
+                        longitude: details.location?.longitude ?? null,
+                    },
+                    paymentMethod: finalPayment,
+                    sock,
+                });
+                const orderNum = res.order?.orderNumber || res.order?.order_number;
+                const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
+                if (orderNum) {
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    _lastDiscussedDealBySession.delete(userSessionId);
+                    const customerName = details.name ? details.name.trim() : 'Customer';
+                    const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
+                    return {
+                        handled: true,
+                        routeName: 'fast_order_confirm',
+                        reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\n📋 *Order Number:* ${orderNum}${discountMsg}\n💰 *Order Total:* Rs. ${total.toLocaleString('en-PK')}\n💵 *Payment:* ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki kitchen ko bhej diya gaya hai. Shukriya! 🍕✨`,
+                    };
+                }
             }
 
             if (cart?.items && cart.items.length > 0) {

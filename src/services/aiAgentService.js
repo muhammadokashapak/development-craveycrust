@@ -69,10 +69,9 @@ export function detectConfirmIntent(text) {
     const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
     if (EXPLICIT_CONFIRM.test(t)) return true;
 
-    // Standalone "kr do" / "karo" (without explicit confirm/book context) — NOT a confirmation alone
-    // Weak affirmatives alone (ok, okay, theek hai, ji, g, haan, bilkul, done) — NOT confirmations
-    const WEAK_AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*hai)?|thk(?:\s*hai)?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
-    if (WEAK_AFFIRMATIVE.test(t)) return false;
+    // Affirmatives when confirming: haan, han, ji, jee, g, theek hai, ok, yes
+    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*hai)?|thk(?:\s*hai)?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan)[\s!.?]*$/i;
+    if (AFFIRMATIVE.test(t)) return true;
 
     return false;
 }
