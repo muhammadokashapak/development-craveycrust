@@ -5088,6 +5088,28 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
+    // ── Check Fast Route: Customer Asks About Previous Payment Method ("last time konsa tha?") ──
+    const isPastPaymentInquiry = /\b(?:last\s*time|pichl[aeiy]+|puran[aeiy]+)\s*(?:baar|bar|time|martaba)?\s*(?:konsa|kaunsa|kya|kia|konsi)\s*(?:tha|thi|method|payment)?\b/i.test(lower) ||
+        /\b(?:pichla|last|previous)\s*(?:payment\s*(?:method)?|tareeqa)\s*(?:kya|kia|konsa|kaunsa)\b/i.test(lower);
+
+    if (isPastPaymentInquiry && userSessionId) {
+        try {
+            const { getRememberedCustomerDetails, getSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
+            const custName = currDetails.name ? `${currDetails.name} bhai! ` : 'Ji! ';
+            const lastPay = remembered?.paymentMethod || 'COD';
+            const payName = lastPay === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
+
+            return {
+                handled: true,
+                routeName: 'fast_past_payment_inquiry',
+                reply: `Pichli baar aap ka payment method *${payName}* tha ${custName}😊\n\nKya is baar bhi *${payName}* hi rakhna pasand karenge ya EasyPaisa / COD mein se koi doosra select karna hai? 💵`,
+            };
+        } catch (_) {}
+    }
+
     // ── 7. Cash on Delivery (COD) / Payment Selection vs FAQ ──
     const isPaymentMethodSelection = (
         /\b(?:cod|cash\s*on\s*delivery|cash|easypaisa|easy\s*paisa)\b/i.test(lower) &&
