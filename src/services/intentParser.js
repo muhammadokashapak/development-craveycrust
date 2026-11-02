@@ -3102,7 +3102,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         // ── Check Direct Deal Order (Zero Tokens, e.g. "pizza meal for 3 krdo", "zinger deal 4 kr do", "deal 1 kr do") ──
     const ACTION_SUFFIX_REGEX = /\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|pack\s*karo|pack\s*krdo|bhejo|bhej\s*do|order|laga\s*do)$/i;
     const PREFIX_STRIP_REGEX = /^(?:order|add|daal\s*do|bhej\s*do|mujhe|mjhy|humein|humey)\s+/i;
-    const isDealOrderCandidate = /\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i.test(lower);
+    // Recognizes: "deal 4", "zinger deal 4", "4 bandon ki deal", "4 bandon ki zinger deal", "burger meal for 4"
+    const isPersonDealOrder = /\b(?:(\d+|aik|ek|do|teen|char|chaar|paanch|panch)\s*(?:bandon|bando|logon|logo|person|persons|people)\s*(?:ki\s*)?(?:zinger\s*|burger\s*|pizza\s*)?deal)\b/i.test(lower);
+    const isDealOrderCandidate = isPersonDealOrder || /\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i.test(lower);
     const isDealInquiryCandidate = /\b(?:(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay|hy|hega)|detail|details|shamil|includes?|items?|batao|bataiye|dikhao|info)\b/i.test(lower);
 
     if (isDealOrderCandidate && !isDealInquiryCandidate && userSessionId) {
@@ -3112,6 +3114,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         if (qtyMatch) {
             dealQty = parseInt(qtyMatch[1], 10);
             cleanDealText = qtyMatch[2].trim();
+        }
+
+        // Normalize "4 bandon ki zinger deal" -> "deal 4"
+        const personMatch = lower.match(/\b(\d+|aik|ek|do|teen|char|chaar|paanch|panch)\s*(?:bandon|bando|logon|logo|person|persons|people)\s*(?:ki\s*)?(?:zinger\s*|burger\s*|pizza\s*)?deal\b/i);
+        if (personMatch) {
+            const pMap = { '1': '1', 'aik': '1', 'ek': '1', '2': '2', 'do': '2', '3': '3', 'teen': '3', '4': '4', 'char': '4', 'chaar': '4', '5': '5', 'paanch': '5', 'panch': '5' };
+            const pNum = pMap[personMatch[1].toLowerCase()] || '4';
+            cleanDealText = `deal ${pNum}`;
         }
 
         const dealMatch = cleanDealText.match(/^((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])(?:\s+(.+))?$/i);

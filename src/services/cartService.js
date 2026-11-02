@@ -319,7 +319,7 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
 
     // Validate Menu Item & Variant
     if (menuItemId) {
-        const item = await prisma.menuItem.findFirst({
+        let item = await prisma.menuItem.findFirst({
             where: {
                 id: menuItemId,
                 restaurant_id: restId,
@@ -329,6 +329,24 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
                 variants: true,
             },
         });
+
+        // Fallback: If not found by direct ID (e.g. fallback ID or slug passed), lookup by slug or name
+        if (!item) {
+            item = await prisma.menuItem.findFirst({
+                where: {
+                    restaurant_id: restId,
+                    OR: [
+                        { slug: menuItemId },
+                        { name: { equals: menuItemId, mode: 'insensitive' } },
+                        { name: { contains: String(menuItemId).replace(/^item-\d+/i, '').trim(), mode: 'insensitive' } },
+                    ],
+                },
+                include: {
+                    category: true,
+                    variants: true,
+                },
+            });
+        }
 
         if (!item) {
             const err = new Error(`Menu item not found: ${menuItemId}`);

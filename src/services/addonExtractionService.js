@@ -234,7 +234,9 @@ export function extractRequestedItems(text, activeCart = null) {
     }
 
     // 3. Detect Burger Mentions (e.g. Zinger, Zegy, etc.)
-    const burgerMatch = lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/i);
+    // SAKHT GUARD: Never treat a DEAL request (e.g. "zinger deal", "4 bandon ki zinger deal") as a standalone burger!
+    const isDealMention = /\b(?:deal|deals|meal|meals)\b/i.test(lower);
+    const burgerMatch = !isDealMention && lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/i);
     if (burgerMatch) {
         const qty = burgerMatch[1] ? (QTY_WORD_MAP[burgerMatch[1]] || parseInt(burgerMatch[1], 10) || 1) : 1;
         const isZegy = /ziggy|zegy|zeggy/i.test(burgerMatch[2]);

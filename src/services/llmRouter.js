@@ -398,6 +398,7 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
     let lastErr = null;
     const attempts = pool.size || 1;
     let consecutiveServerErrors = 0;
+    let consecutiveQuotaErrors = 0;
 
     for (let i = 0; i < attempts; i++) {
         const keyItem = pool.next();
@@ -463,7 +464,15 @@ async function tryProvider(providerName, pool, messages, temperature, maxTokens)
                 const cooldownMs = isDaily ? 3600_000 : 60_000;
                 pool.cooldown(key, cooldownMs);
                 console.warn(`[LLM] ${providerName} quota limit on key #${keyIndex} (${key.slice(0, 8)}...): ${err.message}. Auto-switching to next key with highest quota.`);
+                consecutiveQuotaErrors++;
                 consecutiveServerErrors = 0;
+
+                // When 3 keys in a row hit 429, they share the same Google Cloud Project quota!
+                // Fast-fail immediately to avoid stalling the user for 20 seconds cycling 21 doomed keys.
+                if (consecutiveQuotaErrors >= 3 && pool.size > 3) {
+                    console.warn(`[LLM] Multiple ${providerName} keys hit project-wide quota limit (429). Fast-failing to fallback provider.`);
+                    break;
+                }
             } else if (isServerError(err)) {
                 // Server outage / temporary overload (503/timeout): short 5s cooldown, do not burn key
                 pool.cooldown(key, 5_000);
