@@ -1324,27 +1324,49 @@ export function verifyOutput(aiText, optsOrToolResults) {
         return 'Aapka cart is waqt khali hai. Pehle koi item ya deal select karein, phir checkout karein.';
     }
 
-    // 3a. Exact Total & Subtotal Lock (Test 5: Reject Rs. 1599 when cart subtotal is Rs. 1819)
+    // 3a. Exact Total & Subtotal Lock
     if (pricing && (pricing.total != null || pricing.subtotal != null)) {
         const verifiedTotal = Number(pricing.total ?? pricing.subtotal ?? 0);
         const verifiedSubtotal = Number(pricing.subtotal ?? pricing.total ?? 0);
 
         if (verifiedSubtotal > 0 || verifiedTotal > 0) {
-            const totalPattern = /(?:total|subtotal|grand\s*total|final\s*bill|bill|kul\s*rakam)[\s*:]+(?:rs\.?|pkr)?\s*([0-9,]+)/gi;
+            const totalPattern = /(?:grand\s*total|final\s*bill|total\s*bill|kul\s*bill|kul\s*rakam|subtotal|total(?!\s*(?:items?|quantity|pizzas?|burgers?|pieces?|pcs?)))[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi;
             let match;
             while ((match = totalPattern.exec(raw)) !== null) {
                 const claimedNum = parseInt(match[1].replace(/,/g, ''), 10);
                 if (!isNaN(claimedNum) && claimedNum > 0) {
+                    // Check if this number is an item or line-item price in the active cart
+                    const isItemPrice = (activeCart?.items || []).some(ci => {
+                        const p = Number(ci.deal?.deal_price ?? ci.menu_variant?.price ?? ci.menu_item?.base_price ?? ci.price ?? 0);
+                        return p === claimedNum || (p * (ci.quantity || 1)) === claimedNum;
+                    });
+                    if (isItemPrice) {
+                        continue;
+                    }
+
                     const isSubtotalMention = /subtotal/i.test(match[0]);
                     const expected = isSubtotalMention ? verifiedSubtotal : verifiedTotal;
                     if (claimedNum !== expected && claimedNum !== verifiedSubtotal && claimedNum !== verifiedTotal) {
-                        console.warn(`[GATEKEEPER] BLOCKED mismatched total claim: Rs. ${claimedNum} vs verified: Subtotal Rs. ${verifiedSubtotal}, Total Rs. ${verifiedTotal}`);
-                        if (/\b(?:order\s+summary|customer\s+name|delivery\s+address|subtotal|final\s*bill)\b/i.test(raw)) {
-                            let fixed = raw.replace(/(?:subtotal)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Subtotal: Rs. ${verifiedSubtotal}`);
-                            fixed = fixed.replace(/(?:total|grand\s*total|final\s*bill|bill|kul\s*rakam)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Total: Rs. ${verifiedTotal}`);
+                        console.warn(`[GATEKEEPER] Corrected mismatched total claim: Rs. ${claimedNum} vs verified: Subtotal Rs. ${verifiedSubtotal}, Total Rs. ${verifiedTotal}`);
+
+                        let fixed = raw.replace(/(?:subtotal)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Subtotal: Rs. ${verifiedSubtotal}`);
+                        fixed = fixed.replace(/(?:grand\s*total|final\s*bill|total\s*bill|total|kul\s*rakam)[\s*:]+(?:rs\.?|pkr)?[\s*]*([0-9,]+)/gi, `Total: Rs. ${verifiedTotal}`);
+
+                        if (fixed && fixed.length >= 20 && (fixed.includes('cart') || fixed.includes('add') || fixed.includes('Zabardast') || fixed.includes('shamil') || fixed.includes('Naam') || fixed.includes('order'))) {
                             return fixed;
                         }
-                        return `Backend verified calculation ke mutabiq aap ka Subtotal Rs. ${verifiedSubtotal} aur Total Bill Rs. ${verifiedTotal} hai.`;
+
+                        if (activeCart?.items && activeCart.items.length > 0) {
+                            const lines = activeCart.items.map(i => {
+                                const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                                const fText = i.notes ? ` (${i.notes})` : '';
+                                const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+                                return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                            }).join('\n');
+                            return `Zabardast! Item aap ke cart mein add kar diya gaya hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n\n💰 *Subtotal:* Rs. ${verifiedSubtotal.toLocaleString('en-PK')}\n\nOrder book karne ke liye baraye meherbani apna *Naam* bata dein? 😊`;
+                        }
+
+                        return `Aap ke cart ka Subtotal Rs. ${verifiedSubtotal.toLocaleString('en-PK')} aur Total Rs. ${verifiedTotal.toLocaleString('en-PK')} hai.`;
                     }
                 }
             }

@@ -77,8 +77,26 @@ export function isPizzaDeal(dealOrName) {
     const name = typeof dealOrName === 'string' ? dealOrName : (dealOrName.name || dealOrName.slug || '');
     const lower = name.toLowerCase();
 
+    // If it explicitly is a Burger or Zinger deal and has no pizza in name:
+    if (/\b(?:zinger|burger)\b/i.test(lower) && !lower.includes('pizza')) {
+        if (typeof dealOrName === 'object') {
+            const itemsList = dealOrName.deal_items || dealOrName.items || [];
+            if (Array.isArray(itemsList) && itemsList.length > 0) {
+                const hasPizza = itemsList.some(di => {
+                    const itemName = (di.menu_item?.name || di.item_name || di.custom_name || di.name || '').toLowerCase();
+                    return itemName.includes('pizza');
+                });
+                if (!hasPizza) return false;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+
     // Direct name patterns: "Deal 1", "Deal 2", "Deal 3", "Pizza Meal For 1/2/3/4", "Pizza Deal"
-    if (/\b(?:pi[z]+a\s*(?:meal|deal)|deal\s*#?[1-3])\b/i.test(lower)) {
+    if (/\b(?:pi[z]+a\s*(?:meal|deal)|(?<!(?:zinger|burger)\s+)deal\s*#?[1-3])\b/i.test(lower)) {
         return true;
     }
     if (lower.includes('pizza') && (lower.includes('deal') || lower.includes('meal'))) {
