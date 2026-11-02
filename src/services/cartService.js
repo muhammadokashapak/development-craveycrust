@@ -661,10 +661,60 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         }
     }
 
+    let resolvedMenuItemId = validated?.type === 'item' ? (validated.item?.id || menuItemId) : null;
+    let resolvedVariantId = finalVariantId;
+    let fallbackItemNotes = null;
+
+    if (resolvedMenuItemId && prisma) {
+        // Resolve database record for menuItem to prevent foreign key errors
+        let dbItem = await prisma.menuItem.findUnique({
+            where: { id: resolvedMenuItemId },
+            include: { variants: true },
+        }).catch(() => null);
+
+        if (!dbItem) {
+            dbItem = await prisma.menuItem.findFirst({
+                where: {
+                    restaurant_id: restId,
+                    OR: [
+                        { slug: resolvedMenuItemId },
+                        { slug: validated.item?.slug },
+                        { name: { equals: validated.item?.name, mode: 'insensitive' } },
+                    ],
+                },
+                include: { variants: true },
+            }).catch(() => null);
+        }
+
+        if (dbItem) {
+            resolvedMenuItemId = dbItem.id;
+            if (dbItem.variants && dbItem.variants.length > 0) {
+                const matchedDbVar = matchVariant(dbItem.variants, validated.variant?.name || resolvedVariantId || validated.variant?.id);
+                if (matchedDbVar) {
+                    resolvedVariantId = matchedDbVar.id;
+                } else if (dbItem.variants.length === 1) {
+                    resolvedVariantId = dbItem.variants[0].id;
+                } else {
+                    resolvedVariantId = null;
+                }
+            } else {
+                resolvedVariantId = null;
+            }
+        } else {
+            // Item does not exist as row in DB: clear IDs to avoid foreign key crash and save name in notes
+            resolvedMenuItemId = null;
+            resolvedVariantId = null;
+            fallbackItemNotes = `${validated.item?.name || 'Item'}${validated.variant?.name ? ` (${validated.variant.name})` : ''}`;
+        }
+    }
+
     // Check if duplicate item already exists in cart -> increment quantity
     let existingItem = null;
-    if (menuItemId) {
-        existingItem = cart.items.find(i => i.menu_item_id === menuItemId && i.menu_variant_id === finalVariantId);
+    if (resolvedMenuItemId || menuItemId) {
+        existingItem = cart.items.find(i => 
+            (i.menu_item_id === resolvedMenuItemId || i.menu_item_id === (validated.item?.id || menuItemId)) && 
+            (i.menu_variant_id === resolvedVariantId || i.menu_variant_id === finalVariantId)
+        );
     } else if (resolvedDealId || dealId) {
         existingItem = cart.items.find(i => (i.deal_id === resolvedDealId || i.deal_id === dealId) && (notes === undefined || i.notes === (notes || null)));
     }
@@ -680,7 +730,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         await prisma.cartItem.update({
             where: { id: existingItem.id },
             data: {
-                quantity: existingItem.quantity + quantity,
+                quantity: existingItem.quantity + validated.quantity,
                 notes: notes !== undefined ? notes : existingItem.notes,
             },
         });
@@ -691,11 +741,11 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
     await prisma.cartItem.create({
         data: {
             cart_id: cart.id,
-            menu_item_id: menuItemId || null,
-            menu_variant_id: finalVariantId,
-            deal_id: resolvedDealId || null,
-            quantity: quantity,
-            notes: notes || fallbackDealNotes || null,
+            menu_item_id: resolvedMenuItemId,
+            menu_variant_id: resolvedVariantId,
+            deal_id: resolvedDealId,
+            quantity: validated.quantity,
+            notes: notes || fallbackDealNotes || fallbackItemNotes || null,
         },
     });
 

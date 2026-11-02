@@ -1339,7 +1339,8 @@ export function verifyOutput(aiText, optsOrToolResults) {
                         const p = Number(ci.deal?.deal_price ?? ci.menu_variant?.price ?? ci.menu_item?.base_price ?? ci.price ?? 0);
                         return p === claimedNum || (p * (ci.quantity || 1)) === claimedNum;
                     });
-                    if (isItemPrice) {
+                    // Only skip if there's genuinely only 1 item in cart; if multiple items are present, total cannot equal 1 single item price
+                    if (isItemPrice && (activeCart?.items || []).length <= 1) {
                         continue;
                     }
 
