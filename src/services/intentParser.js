@@ -571,32 +571,13 @@ export async function getNextCheckoutStepResponse({
 
     // STEP 3: Delivery Address or Location Pin
     if (!details.address && !details.location) {
-        if (details.savedAddress) {
-            if (!details.savedAddressPrompted) {
-                details.savedAddressPrompted = true;
-                return {
-                    handled: true,
-                    routeName: 'step_confirm_saved_address',
-                    step: 'ADDRESS',
-                    reply: (introMessage ? `${introMessage}\n\n` : '') +
-                        `Aap ka saved Delivery Address: *${formatAddressTitle(details.savedAddress)}* aur Contact Phone: *${formatPakistaniPhone(details.savedPhone || displayPhone)}* hamare paas maujood hai. 😊\n\nKya isi address par order proceed karein ya aap koi tabdeeli (update) karna chahte hain?`,
-                };
-            } else {
-                // If already prompted once or returning customer, lock in the saved address!
-                // NEVER EVER ask "Delivery kahan karni hai" when a saved address is present!
-                details.address = details.savedAddress;
-                details.savedAddressConfirmed = true;
-                details.locationConfirmed = true;
-            }
-        } else {
-            return {
-                handled: true,
-                routeName: 'step_address_needed',
-                step: 'ADDRESS',
-                reply: (introMessage ? `${introMessage}\n\n` : '') +
-                    `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
-            };
-        }
+        return {
+            handled: true,
+            routeName: 'step_address_needed',
+            step: 'ADDRESS',
+            reply: (introMessage ? `${introMessage}\n\n` : '') +
+                `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
+        };
     }
 
     // Validate delivery radius whenever address or location pin is provided
@@ -3693,10 +3674,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                if (isBillQuery && details?.paymentMethod && details?.extraItemsInquired) {
-                    details.extraItemsAnswered = true;
-                    updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true }, cleanPhone);
-                }
+                // Keep extra items status as is so customer goes through all steps properly
                 const { calculatePricing } = await import('./pricingService.js');
                 const itemsForPricing = (cart.items || []).filter(i => !i.deal_id && !i.deal).map(i => ({
                     menuItemId: i.menu_item_id || i.menu_item?.id || i.menu_item?.slug || (i.notes?.includes('Fries') ? 'item-1' : (i.notes?.includes('Drink') ? 'item-34' : 'item-1')),

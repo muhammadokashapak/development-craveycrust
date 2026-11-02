@@ -1944,9 +1944,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 1 (CUSTOMER NAME).
 - Customer ka cart active hai lekin Naam missing hai.
-- Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai (Maslan: "Order finalize karne ke liye baraye meherbani apna Naam bata dein? 😊").
-- SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!
-- Agar customer ka saved profile mojood hai, to unka naam aur delivery address direct use karein!`;
+- Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai: "Order finalize karne ke liye baraye meherbani pehle apna *Naam* bata dein? 😊".
+- SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
         } else if (!updatedDetails.phoneConfirmed) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 2 (CONTACT PHONE).
@@ -1954,39 +1953,36 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - Aap ko is turn mein LAZMI rabta phone number confirm karna hai: "Shukriya ${updatedDetails.name}! Rabtay ke liye rider ko yahi WhatsApp number (${displayPhone}) dein ya koi doosra contact number likhna hai? 📞".
 - SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Phone confirmation ke baghair order aage process BILKUL nahi karna!`;
         } else if (!updatedDetails.address && !activeLocation?.formattedAddress) {
-            if (updatedDetails.savedAddress) {
-                checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
-- CURRENT STEP: STEP 3 (SAVED DELIVERY ADDRESS CONFIRMATION).
-- Customer ka saved address mojood hai: "${updatedDetails.savedAddress}".
-- Customer se confirm karein: "Aap ka saved Delivery Address: *${updatedDetails.savedAddress}* hamare paas maujood hai. Kya isi address par order proceed karein ya koi tabdeeli karni hai?"
-- Agar customer "Haan", "G", "Yahi", ya "Nahi" (yani koi tabdeeli nahi) kahe, to foran isi saved address ko locked address maan kar Payment Method poochein!
-- SAKHT MANA: Dobara address mat poochein! Customer se naya address tab tak BILKUL MAT POOCHEIN jab tak customer khud tabdeeli ka na kahe!`;
-            } else {
-                checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 3 (DELIVERY ADDRESS).
-- Customer ka Naam aur Contact Phone dono mojood hain.
+- Customer ka Naam aur Contact Phone dono mil chuke hain.
 - Aap ko is turn mein SIRF Delivery Address ya Location Pin poochna hai: "Delivery kahan karni hai ${updatedDetails.name}? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍".
 - SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
-            }
         } else if (!updatedDetails.paymentMethod) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 4 (PAYMENT METHOD).
-- Customer ka Naam, Phone aur Delivery Address sab mil chuka hai.
+- Customer ka Naam, Phone aur Delivery Address mil chuke hain.
 - Aap ko is turn mein SIRF Payment Method poochna hai: "Payment method kaunsa pasand karenge ${updatedDetails.name} — Cash on Delivery (COD) ya EasyPaisa? 💵".
 - SAKHT MANA: Payment method khud se COD assume mat karein! Customer ki selection ka intezar karein.`;
+        } else if (!updatedDetails.extraItemsAnswered) {
+            checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
+- CURRENT STEP: STEP 5 (EXTRA ITEMS UPSELL).
+- Chaaron (4) zaroori details (Naam, Phone, Address, Payment Method) mil chuki hain!
+- Abhi order summary card ya create_confirmed_order call MAT karein!
+- Pehle customer se Extra items poochein: "Ji ${updatedDetails.name} bhai, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?".`;
         } else {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
-- CURRENT STEP: STEP 5 (ORDER SUMMARY & CONFIRMATION).
-- Chaaron (4) zaroori details (Naam, Phone, Address, Payment Method) mil chuki hain!
-- Ab mukammal Order Summary dikhao aur confirmation poochein:
+- CURRENT STEP: STEP 6 (ORDER SUMMARY & FINAL CONFIRMATION).
+- Chaaron details aur Extra Items ka jawab mil chuka hai!
+- Ab mukammal Order Summary dikhayein aur confirmation poochein:
   📋 *ORDER SUMMARY:*
   ${activeCartSummary}
   👤 Customer Name: ${updatedDetails.name}
-  📍 Delivery Address: ${updatedDetails.address || updatedDetails.savedAddress || activeLocation?.formattedAddress}
+  📍 Delivery Address: ${updatedDetails.address || activeLocation?.formattedAddress}
   📞 Contact Phone: ${displayPhone}
   💵 Payment Method: ${updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}
   
-  "Ji ${updatedDetails.name}, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries), ya yeh order confirm kar dein?"
+  "Kya aap tamam details check karke is order ko confirm karte hain? Order book karne ke liye 'Confirm' ya 'Haan' likhein."
 - SAKHT MANA: Jab tak customer explicitly "Haan" ya "Confirm" na kahe, 'create_confirmed_order' call MAT karein! Jab customer "Haan" kahe to foran create_confirmed_order call karein.`;
         }
     }
