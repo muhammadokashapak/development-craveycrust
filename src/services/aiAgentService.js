@@ -180,7 +180,8 @@ async function getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsapp
 
 // ─── Tool Executor (Direct Local Services) ─────────────────────────────────
 async function executeTool(toolName, args, context) {
-    const { sessionKey, chatId, whatsappPhone, restId, sock, locationData } = context;
+    const { sessionKey, chatId, whatsappPhone, restId, sock, locationData, effectiveText, text: rawText } = context || {};
+    const text = effectiveText || rawText || '';
 
     try {
         switch (toolName) {

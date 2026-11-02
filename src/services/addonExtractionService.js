@@ -195,7 +195,7 @@ export function extractRequestedItems(text, activeCart = null) {
     // 2. Detect Drink Mentions
     const drinkMatch = lower.match(/\b(?:(1\.5\s*liter|1\.5\s*litre|1\.5l|1\s*liter|1\s*litre|1l|litre|liter|regular|can|tin)\s+)?(?:drink|drinks|cold\s*drink|soft\s*drink|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b|\b(?:drink|drinks|cold\s*drink|soft\s*drink|pepsi|coke|next\s*cola|7up|mirinda)\s*(?:wali|ka|ki|add|krdo|kardo)?\s*(1\.5\s*liter|1\.5\s*litre|1\s*liter|1\s*litre|1l|litre\s*wali|litre|liter|regular|can)?\b/i);
     if (drinkMatch) {
-        let size = '1 Liter';
+        let size = null;
         const candidateSize = (drinkMatch[1] || drinkMatch[2] || '').toLowerCase();
         if (candidateSize.includes('1.5') || lower.includes('1.5 liter') || lower.includes('1.5 litre') || lower.includes('dedh litre')) {
             size = '1.5 Liter';
@@ -207,28 +207,30 @@ export function extractRequestedItems(text, activeCart = null) {
             size = '1 Liter';
         }
 
-        let qty = 1;
-        const qtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+)?(?:drink|drinks|pepsi|coke)\b/i) ||
-                         lower.match(/(?:drink|pepsi|coke)\s*(?:litre\s*wali\s+)?(?:aik|ek|ik|1)\b/i);
-        if (qtyMatch) {
-            qty = QTY_WORD_MAP[qtyMatch[1]] || parseInt(qtyMatch[1], 10) || 1;
+        if (size) {
+            let qty = 1;
+            const qtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+)?(?:drink|drinks|pepsi|coke)\b/i) ||
+                             lower.match(/(?:drink|pepsi|coke)\s*(?:litre\s*wali\s+)?(?:aik|ek|ik|1)\b/i);
+            if (qtyMatch) {
+                qty = QTY_WORD_MAP[qtyMatch[1]] || parseInt(qtyMatch[1], 10) || 1;
+            }
+
+            const drinkItem = FALLBACK_MENU_ITEMS.find(it => it.id === 'item-34');
+            const variant = (drinkItem?.variants || []).find(v => v.name.toLowerCase() === size.toLowerCase()) ||
+                            (size === '1 Liter' ? { id: 'v-34-3', price: 200 } : (size === '1.5 Liter' ? { id: 'v-34-4', price: 240 } : { id: 'v-34-1', price: 110 }));
+
+            extracted.push({
+                itemType: 'drink',
+                itemName: 'Soft Drink',
+                canonicalName: `Soft Drink (${size})`,
+                size,
+                quantity: qty,
+                menuItemId: 'item-34',
+                variantId: variant?.id || 'v-34-3',
+                unitPrice: Number(variant?.price || (size === '1 Liter' ? 200 : (size === '1.5 Liter' ? 240 : 110))),
+                lineTotal: Number(variant?.price || (size === '1 Liter' ? 200 : (size === '1.5 Liter' ? 240 : 110))) * qty,
+            });
         }
-
-        const drinkItem = FALLBACK_MENU_ITEMS.find(it => it.id === 'item-34');
-        const variant = (drinkItem?.variants || []).find(v => v.name.toLowerCase() === size.toLowerCase()) ||
-                        (size === '1 Liter' ? { id: 'v-34-3', price: 200 } : (size === '1.5 Liter' ? { id: 'v-34-4', price: 240 } : { id: 'v-34-1', price: 110 }));
-
-        extracted.push({
-            itemType: 'drink',
-            itemName: 'Soft Drink',
-            canonicalName: `Soft Drink (${size})`,
-            size,
-            quantity: qty,
-            menuItemId: 'item-34',
-            variantId: variant?.id || 'v-34-3',
-            unitPrice: Number(variant?.price || (size === '1 Liter' ? 200 : (size === '1.5 Liter' ? 240 : 110))),
-            lineTotal: Number(variant?.price || (size === '1 Liter' ? 200 : (size === '1.5 Liter' ? 240 : 110))) * qty,
-        });
     }
 
     // 3. Detect Burger Mentions (e.g. Zinger, Zegy, etc.)

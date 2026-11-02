@@ -2740,6 +2740,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Customer asks for Fries or Drinks without size (e.g. "fries add kr do ya drinks", "fries ya drink") ──
+    const isBothFriesAndDrinks = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\b/i.test(lower) &&
+        !/\b(regular|reg|large|loaded|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower);
+    if (isBothFriesAndDrinks && userSessionId) {
+        return {
+            handled: true,
+            routeName: 'fries_and_drinks_prompt',
+            reply: 'Zaroor! Hamare paas Fresh Fries (*Regular* Rs. 220 / *Large* Rs. 320) aur Chilled Soft Drinks (*Regular* Rs. 110, *Can* Rs. 130, *1 Liter* Rs. 200, *1.5 Liter* Rs. 240) dastiyab hain. 🍟🥤\n\nAap in mein se kaunsa item aur size add karna chahenge?',
+        };
+    }
+
     // ── Check Fast Route: Customer asks for Fries without size (Zero Tokens) ──
     const isFriesWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do)?[\s.!?]*$/i.test(lower.trim()) ||
                                (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower));
@@ -2758,6 +2769,164 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             routeName: 'fries_size_prompt',
             reply: 'Zaroor! Fries ka kaunsa size add karun — *Regular* (Rs. 220) ya *Large* (Rs. 320)? 🍟',
         };
+    }
+
+    // ── Check Fast Route: Customer asks for Drink without size (Zero Tokens) ──
+    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do)?[\s.!?]*$/i.test(lower.trim()) ||
+                               (/^(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower));
+    if (isDrinkWithoutSize && !hasLeadingOrderQuantity && userSessionId) {
+        const drinkItem = {
+            id: 'item-34',
+            name: 'Soft Drink',
+            variants: [
+                { id: 'v-34-1', name: 'Regular', price: 110 },
+                { id: 'v-34-2', name: 'Can', price: 130 },
+                { id: 'v-34-3', name: '1 Liter', price: 200 },
+                { id: 'v-34-4', name: '1.5 Liter', price: 240 }
+            ]
+        };
+        setLastDiscussedItem(userSessionId, drinkItem, null, cleanPhone);
+        return {
+            handled: true,
+            routeName: 'drink_size_prompt',
+            reply: 'Zaroor! Soft Drink ka kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤',
+        };
+    }
+
+    // ── Check Fast Route: Customer orders Fries with size directly (Zero Tokens) ──
+    const isDirectFriesWithSize = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
+        (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do)\b/i.test(lower) || wordCount <= 4);
+    if (isDirectFriesWithSize && userSessionId) {
+        try {
+            const isLoaded = /\bloaded\b/i.test(lower);
+            const isLarge = /\b(?:large|bari|bara)\b/i.test(lower);
+            const variantName = isLoaded ? 'Standard' : (isLarge ? 'Large' : 'Regular');
+            const variantId = isLoaded ? 'v-3-1' : (isLarge ? 'v-1-2' : 'v-1-1');
+            const itemId = isLoaded ? 'item-3' : 'item-1';
+            const itemName = isLoaded ? 'Loaded Fries' : 'Fries';
+            const price = isLoaded ? 450 : (isLarge ? 320 : 220);
+
+            let qty = 1;
+            const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s+)?(?:regular\s+|large\s+|loaded\s+)?fries\b/i);
+            const wordQtyMatch = lower.match(/\b(aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:regular\s+|large\s+|loaded\s+)?fries\b/i);
+            if (digitQtyMatch) qty = parseInt(digitQtyMatch[1], 10) || 1;
+            else if (wordQtyMatch) qty = { ek: 1, aik: 1, ik: 1, do: 2, teen: 3, char: 4, panch: 5 }[wordQtyMatch[1].toLowerCase()] || 1;
+
+            const { getActiveCart, addToCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            await addToCart({
+                sessionKey: userSessionId,
+                restaurantId: cache.restId,
+                chatId,
+                verifiedPhone: whatsappPhone,
+                menuItemId: itemId,
+                variantId: variantId,
+                quantity: qty,
+            });
+
+            clearLastDiscussedItem(userSessionId);
+
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            if (details.paymentMethod || details.extraItemsInquired || details.address) {
+                details.extraItemsAnswered = true;
+                details.extraItemsInquired = true;
+                updateSessionOrderDetails(userSessionId, {
+                    extraItemsAnswered: true,
+                    extraItemsInquired: true,
+                }, cleanPhone);
+            }
+
+            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart: cartNow,
+                cache,
+                introMessage: `Zabardast! *${itemName}* (${variantName}) cart mein add kar diya gaya hai! 🎉\n• ${qty}x ${itemName} (${variantName}) — Rs. ${price * qty}`,
+            });
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error adding direct fries with size:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Customer orders Drink with size directly (Zero Tokens) ──
+    const hasDrinkWord = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b/i.test(lower);
+    const hasDrinkSizeWord = /\b(?:1\.5\s*liter|1\.5\s*litre|1\.5l|1\s*liter|1\s*litre|1l|regular|reg|can|tin|litre|liter|dedh\s*litre)\b/i.test(lower);
+    const isDirectDrinkWithSize = hasDrinkWord && hasDrinkSizeWord &&
+        (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do|wali|wala)\b/i.test(lower) || wordCount <= 4);
+    if (isDirectDrinkWithSize && userSessionId) {
+        try {
+            let size = '1 Liter';
+            let variantId = 'v-34-3';
+            let price = 200;
+
+            if (/\b(?:1\.5\s*liter|1\.5\s*litre|1\.5l|dedh\s*litre)\b/i.test(lower)) {
+                size = '1.5 Liter';
+                variantId = 'v-34-4';
+                price = 240;
+            } else if (/\b(?:can|tin)\b/i.test(lower)) {
+                size = 'Can';
+                variantId = 'v-34-2';
+                price = 130;
+            } else if (/\b(?:regular|reg|choti)\b/i.test(lower)) {
+                size = 'Regular';
+                variantId = 'v-34-1';
+                price = 110;
+            } else if (/\b(?:1\s*liter|1\s*litre|1l|litre|liter)\b/i.test(lower)) {
+                size = '1 Liter';
+                variantId = 'v-34-3';
+                price = 200;
+            }
+
+            let qty = 1;
+            const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+|can\s+)?(?:drink|drinks|pepsi|coke)\b/i);
+            const wordQtyMatch = lower.match(/\b(aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+|can\s+)?(?:drink|drinks|pepsi|coke)\b/i);
+            if (digitQtyMatch) qty = parseInt(digitQtyMatch[1], 10) || 1;
+            else if (wordQtyMatch) qty = { ek: 1, aik: 1, ik: 1, do: 2, teen: 3, char: 4, panch: 5 }[wordQtyMatch[1].toLowerCase()] || 1;
+
+            const { getActiveCart, addToCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            await addToCart({
+                sessionKey: userSessionId,
+                restaurantId: cache.restId,
+                chatId,
+                verifiedPhone: whatsappPhone,
+                menuItemId: 'item-34',
+                variantId: variantId,
+                quantity: qty,
+            });
+
+            clearLastDiscussedItem(userSessionId);
+
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            if (details.paymentMethod || details.extraItemsInquired || details.address) {
+                details.extraItemsAnswered = true;
+                details.extraItemsInquired = true;
+                updateSessionOrderDetails(userSessionId, {
+                    extraItemsAnswered: true,
+                    extraItemsInquired: true,
+                }, cleanPhone);
+            }
+
+            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart: cartNow,
+                cache,
+                introMessage: `Zabardast! *Soft Drink* (${size}) cart mein add kar di gayi hai! 🥤\n• ${qty}x Soft Drink (${size}) — Rs. ${price * qty}`,
+            });
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error adding direct drink with size:', err.message);
+        }
     }
 
     // ── Check Fast Follow-up: Variant selection for pending discussed item (e.g. "regular", "can", "1.5 liter", "large") ──
@@ -2787,9 +2956,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 clearLastDiscussedItem(userSessionId);
 
                 const itemPrice = Number(matchedVariant.price || lastItemEntry.item.base_price || 0) * qty;
-                const { getSessionOrderDetails } = await import('./sessionService.js');
+                const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
                 const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+                if (details.paymentMethod || details.extraItemsInquired || details.address) {
+                    details.extraItemsAnswered = true;
+                    details.extraItemsInquired = true;
+                    updateSessionOrderDetails(userSessionId, {
+                        extraItemsAnswered: true,
+                        extraItemsInquired: true,
+                    }, cleanPhone);
+                }
+
                 const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 
                 return await getNextCheckoutStepResponse({
@@ -2852,9 +3031,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const dealDesc = flavourNotes ? ` (${flavourNotes})` : (d.description ? ` (${d.description})` : '');
                     const dealPrice = Number(d.deal_price);
 
-                    const { getSessionOrderDetails } = await import('./sessionService.js');
+                    const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
                     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                     const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+                    if (details.paymentMethod || details.extraItemsInquired || details.address) {
+                        details.extraItemsAnswered = true;
+                        details.extraItemsInquired = true;
+                        updateSessionOrderDetails(userSessionId, {
+                            extraItemsAnswered: true,
+                            extraItemsInquired: true,
+                        }, cleanPhone);
+                    }
+
                     const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 
                     return await getNextCheckoutStepResponse({
