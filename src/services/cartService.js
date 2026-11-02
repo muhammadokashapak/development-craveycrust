@@ -180,17 +180,87 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
     return cart;
 }
 
+export const FALLBACK_VARIANT_NAMES = {
+    'v-1-1': 'regular',
+    'v-1-2': 'large',
+    'v-3-1': 'standard',
+    'v-4-1': 'regular',
+    'v-12-1': '5 pcs',
+    'v-12-2': '10 pcs',
+    'v-13-1': '5 pcs',
+    'v-13-2': '10 pcs',
+    'v-23-1': 'small',
+    'v-23-2': 'medium',
+    'v-23-3': 'large',
+    'v-23-4': 'party size',
+    'v-24-1': 'small',
+    'v-24-2': 'medium',
+    'v-24-3': 'large',
+    'v-24-4': 'party size',
+    'v-25-1': 'small',
+    'v-25-2': 'medium',
+    'v-25-3': 'large',
+    'v-25-4': 'party size',
+    'v-26-1': 'small',
+    'v-26-2': 'medium',
+    'v-26-3': 'large',
+    'v-26-4': 'party size',
+    'v-27-1': 'small',
+    'v-27-2': 'medium',
+    'v-27-3': 'large',
+    'v-28-1': 'small',
+    'v-28-2': 'medium',
+    'v-28-3': 'large',
+    'v-28-4': 'party size',
+    'v-29-1': 'small',
+    'v-29-2': 'medium',
+    'v-29-3': 'large',
+    'v-29-4': 'party size',
+    'v-30-1': 'small',
+    'v-30-2': 'medium',
+    'v-30-3': 'large',
+    'v-30-4': 'party size',
+    'v-31-1': 'small',
+    'v-31-2': 'medium',
+    'v-31-3': 'large',
+    'v-31-4': 'party size',
+    'v-32-1': 'small',
+    'v-32-2': 'medium',
+    'v-32-3': 'large',
+    'v-32-4': 'party size',
+    'v-33-1': 'small',
+    'v-33-2': 'medium',
+    'v-33-3': 'large',
+    'v-33-4': 'party size',
+    'v-36-1': 'small',
+    'v-36-2': 'medium',
+    'v-36-3': 'large',
+    'v-36-4': 'party size',
+    'v-34-1': 'regular',
+    'v-34-2': 'can',
+    'v-34-3': '1 liter',
+    'v-34-4': '1.5 liter',
+};
+
 /**
  * Robust variant matcher: matches by database CUID, exact name, or common size aliases.
  */
 export function matchVariant(variants, query) {
     if (!variants || !Array.isArray(variants) || variants.length === 0 || !query) return null;
     const raw = String(query).trim();
-    const q = raw.toLowerCase();
+    let q = raw.toLowerCase();
 
     // 1. Exact ID match (CUID)
     const byId = variants.find(v => v.id === raw || v.id === q);
     if (byId) return byId;
+
+    // Fallback ID mapping (e.g. 'v-1-1' -> 'regular')
+    const fallbackAlias = FALLBACK_VARIANT_NAMES[q];
+    if (fallbackAlias) {
+        const byFallback = variants.find(v => v.name.toLowerCase() === fallbackAlias);
+        if (byFallback) return byFallback;
+        q = fallbackAlias;
+    }
 
     // 2. Exact name match (case-insensitive)
     const byName = variants.find(v => v.name.toLowerCase() === q);
@@ -319,33 +389,56 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
 
     // Validate Menu Item & Variant
     if (menuItemId) {
-        let item = await prisma.menuItem.findFirst({
-            where: {
-                id: menuItemId,
-                restaurant_id: restId,
-            },
-            include: {
-                category: true,
-                variants: true,
-            },
-        });
+        let item = null;
+        const lowerItemId = String(menuItemId).toLowerCase();
+        const fallbackItem = FALLBACK_MENU_ITEMS.find(it => 
+            it.id.toLowerCase() === lowerItemId || 
+            it.slug.toLowerCase() === lowerItemId || 
+            it.name.toLowerCase() === lowerItemId
+        );
 
-        // Fallback: If not found by direct ID (e.g. fallback ID or slug passed), lookup by slug or name
-        if (!item) {
-            item = await prisma.menuItem.findFirst({
-                where: {
-                    restaurant_id: restId,
-                    OR: [
+        if (prisma) {
+            try {
+                // 1. Try finding by direct ID
+                item = await prisma.menuItem.findFirst({
+                    where: {
+                        id: menuItemId,
+                        restaurant_id: restId,
+                    },
+                    include: {
+                        category: true,
+                        variants: true,
+                    },
+                });
+
+                // 2. Fallback: lookup by slug or name in DB
+                if (!item) {
+                    const orConds = [
                         { slug: menuItemId },
                         { name: { equals: menuItemId, mode: 'insensitive' } },
-                        { name: { contains: String(menuItemId).replace(/^item-\d+/i, '').trim(), mode: 'insensitive' } },
-                    ],
-                },
-                include: {
-                    category: true,
-                    variants: true,
-                },
-            });
+                    ];
+                    if (fallbackItem) {
+                        orConds.push({ slug: fallbackItem.slug });
+                        orConds.push({ name: { equals: fallbackItem.name, mode: 'insensitive' } });
+                        orConds.push({ name: { contains: fallbackItem.name, mode: 'insensitive' } });
+                    }
+                    item = await prisma.menuItem.findFirst({
+                        where: {
+                            restaurant_id: restId,
+                            OR: orConds,
+                        },
+                        include: {
+                            category: true,
+                            variants: true,
+                        },
+                    });
+                }
+            } catch (_) {}
+        }
+
+        // 3. Fallback to FALLBACK_MENU_ITEMS if not found in DB
+        if (!item && fallbackItem) {
+            item = fallbackItem;
         }
 
         if (!item) {
@@ -354,13 +447,13 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
             throw err;
         }
 
-        if (!item.is_active || !item.is_available) {
+        if (item.is_active === false || item.is_available === false) {
             const err = new Error(`Menu item '${item.name}' is currently unavailable`);
             err.code = 'MENU_ITEM_UNAVAILABLE';
             throw err;
         }
 
-        if (item.category && !item.category.is_active) {
+        if (item.category && item.category.is_active === false) {
             const err = new Error(`Category '${item.category.name}' is currently inactive`);
             err.code = 'CATEGORY_INACTIVE';
             throw err;
@@ -369,19 +462,20 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
         let matchedVariant = null;
         if (item.variants && item.variants.length > 0) {
             if (variantId) {
-                matchedVariant = matchVariant(item.variants, variantId);
+                const fbVar = fallbackItem?.variants?.find(v => v.id.toLowerCase() === String(variantId).toLowerCase());
+                const variantQuery = fbVar ? fbVar.name : variantId;
+                matchedVariant = matchVariant(item.variants, variantQuery) || matchVariant(item.variants, variantId);
                 if (!matchedVariant) {
                     const err = new Error(`Variant '${variantId}' not found for item '${item.name}'`);
                     err.code = 'VARIANT_NOT_FOUND';
                     throw err;
                 }
-                if (!matchedVariant.is_available) {
+                if (matchedVariant.is_available === false) {
                     const err = new Error(`Variant '${matchedVariant.name}' for '${item.name}' is unavailable`);
                     err.code = 'VARIANT_UNAVAILABLE';
                     throw err;
                 }
-            } else if (item.variants.length === 1 && item.variants[0].is_available) {
-                // Auto-select single variant if only 1 exists
+            } else if (item.variants.length === 1 && item.variants[0].is_available !== false) {
                 matchedVariant = item.variants[0];
             }
         }

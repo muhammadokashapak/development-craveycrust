@@ -206,7 +206,7 @@ export async function touchSession(sessionKey) {
 // ─── In-Memory Conversation History (30 messages, v9-ep{syncEpoch}) ──────
 
 const _memoryStore = new Map();
-const MAX_HISTORY_TURNS = 30; // last 30 messages (history turns)
+const MAX_HISTORY_TURNS = 60; // 30 complete dialogue turns (30 user + 30 assistant messages = 60 messages)
 
 export function getSessionHistoryKey(sessionKey, syncEpoch = 1) {
     return `${sessionKey}-v9-ep${syncEpoch}`;

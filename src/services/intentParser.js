@@ -3164,7 +3164,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Route: Customer orders Fries with size directly (Zero Tokens) ──
     const isDirectFriesWithSize = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
-        (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do)\b/i.test(lower) || wordCount <= 4);
+        (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do)\b/i.test(lower) || wordCount <= 6);
     if (isDirectFriesWithSize && userSessionId) {
         try {
             const isLoaded = /\bloaded\b/i.test(lower);
@@ -3616,7 +3616,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Order Status / Confirmation Inquiry or Bill / Cart Inquiry (Zero Tokens) ──
     const isStatusQuery = /\b(?:mera\s+order|order\s*(?:status|confirm|confirmation|pakka|hua|howa|kahan|hua\s*k\s*nai|howa\s*k\s*nai))\b/i.test(lower);
-    const isBillQuery = /\b(?:total\s*bi?ll?|kitna\s*bi?ll?|bi?ll?\s*kitna|katna\s*bana|kitna\s*banta|kitna\s*bana|cart\s*total|mera\s*bi?ll?|meara\s*total)\b/i.test(lower) && wordCount <= 8;
+    const isBillQuery = /\b(?:total\s*(?:bi?ll?|kitna|batao?|k?i?tna\s*(?:hua|hoa|howa|bana|banta|hai|h|huay|bany))|kitna\s*(?:bi?ll?|hua|hoa|howa|bana|banta|banya|bany|huay)|bi?ll?\s*(?:kitna|batao?|bhejo?)|katna\s*bana|cart\s*total|mera\s*(?:bi?ll?|total)|meara\s*total|total\s*batao?)\b/i.test(lower) && wordCount <= 8;
 
     if ((isStatusQuery || isBillQuery) && userSessionId) {
         try {
@@ -3669,11 +3669,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
             // Check active cart
             const { getActiveCart } = await import('./cartService.js');
-            const { getSessionOrderDetails } = await import('./sessionService.js');
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
+                if (isBillQuery && details?.paymentMethod && details?.extraItemsInquired) {
+                    details.extraItemsAnswered = true;
+                    updateSessionOrderDetails(userSessionId, { extraItemsAnswered: true }, cleanPhone);
+                }
                 const { calculatePricing } = await import('./pricingService.js');
                 const itemsForPricing = (cart.items || []).filter(i => i.menu_item_id).map(i => ({
                     menuItemId: i.menu_item_id,

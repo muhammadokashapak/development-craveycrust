@@ -2099,6 +2099,17 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
                 freshCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
                 const { calculateCartTotals } = await import('./cartService.js');
                 freshPricing = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId: jid }).catch(() => null);
+                try {
+                    const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                    const currD = getSessionOrderDetails(sessionKey, whatsappPhone);
+                    if (currD.paymentMethod || currD.extraItemsInquired || currD.address) {
+                        updateSessionOrderDetails(sessionKey, {
+                            extraItemsAnswered: true,
+                            extraItemsInquired: true,
+                            summaryShown: false,
+                        }, whatsappPhone);
+                    }
+                } catch (_) {}
             }
         }
 
@@ -2108,11 +2119,16 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         if (extracted && extracted.items && extracted.items.length > 0) {
             const missing = extracted.items.filter(req => {
                 const alreadyInCart = freshCart?.items?.some(ci => {
-                    if (req.menuItemId && ci.menu_item_id === req.menuItemId) {
-                        if (req.variantId) return ci.menu_variant_id === req.variantId;
+                    const cName = (ci.menu_item?.name || ci.deal?.name || ci.name || '').toLowerCase();
+                    const rName = (req.itemName || req.canonicalName || '').toLowerCase();
+                    const sameName = cName && rName && (cName.includes(rName) || rName.includes(cName));
+                    if (req.menuItemId && (ci.menu_item_id === req.menuItemId || ci.menu_item?.id === req.menuItemId || ci.menu_item?.slug === req.menuItemId || sameName)) {
+                        if (req.variantId) {
+                            return ci.menu_variant_id === req.variantId || ci.menu_variant?.id === req.variantId || (ci.menu_variant?.name && ci.menu_variant.name.toLowerCase() === (req.size || '').toLowerCase());
+                        }
                         return true;
                     }
-                    if (req.dealId && ci.deal_id === req.dealId) return true;
+                    if (req.dealId && (ci.deal_id === req.dealId || ci.deal?.id === req.dealId || ci.deal?.slug === req.dealId)) return true;
                     return false;
                 });
                 return !alreadyInCart;
