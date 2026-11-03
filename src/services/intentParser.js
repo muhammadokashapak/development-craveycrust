@@ -425,6 +425,14 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         }
     }
 
+    // Affirmation of previously provided or remembered name (e.g. "bataya to tha", "bataya to hai name", "naam bataya to tha", "bar bar kyun pooch rhy ho")
+    const isAffirmativePastName = /\b(?:b(?:a)?taya|bola|kaha|likha|diya)\s+to\s+(?:h(?:ai|y|a)?|tha)\b/i.test(lower) ||
+        /\b(?:naam|name)\s+(?:b(?:a)?taya|bola|likha)\s+to\s+(?:h(?:ai|y|a)?|tha)\b/i.test(lower) ||
+        /\b(?:bar\s*bar|dobara|phir\s*se)\s+(?:kyun|q)\s+(?:pooch|poch)\b/i.test(lower);
+    if (isAffirmativePastName && !name && (knownDetails.savedName || knownDetails.name)) {
+        name = knownDetails.name || knownDetails.savedName;
+    }
+
     // 4. Address (including address updates)
     let textForAddr = raw;
     if (name) {
@@ -541,14 +549,23 @@ export async function getNextCheckoutStepResponse({
         try {
             const { getRememberedCustomerDetails } = await import('./sessionService.js');
             const remembered = await getRememberedCustomerDetails(null, rawCleanPhone);
-            if (remembered?.name && !details.savedName) {
-                details.savedName = remembered.name;
+            if (remembered?.name) {
+                if (!details.savedName) details.savedName = remembered.name;
+                if (!details.name) {
+                    details.name = remembered.name;
+                    details.nameExplicit = true;
+                }
             }
             if (remembered?.address && !details.savedAddress) {
                 details.savedAddress = remembered.address;
                 details.savedPhone = rawCleanPhone; // Strictly lock to current WhatsApp phone
             }
         } catch (_) {}
+    }
+
+    if (details.savedName && !details.name) {
+        details.name = details.savedName;
+        details.nameExplicit = true;
     }
 
     const customerName = details.name ? details.name.trim() : '';
@@ -1623,8 +1640,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 curr.savedProfileChecked = true;
                 const remembered = await getRememberedCustomerDetails(userSessionId, cleanPhone);
                 if (remembered) {
-                    if (remembered.name && !curr.savedName) {
-                        curr.savedName = remembered.name;
+                    if (remembered.name) {
+                        if (!curr.savedName) curr.savedName = remembered.name;
+                        if (!curr.name) {
+                            curr.name = remembered.name;
+                            curr.nameExplicit = true;
+                        }
                     }
                     if (remembered.address && !curr.savedAddress) {
                         curr.savedAddress = remembered.address;
@@ -1829,11 +1850,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
 
     // ── Check Fast Route: Re-order Request (Guide to Menu & Reassure Saved Details) ──
-    const isReorderIntent =
-        /\b(?:dobara|dubara|phir\s*se|phr\s*se|naye\s*siray\s*se|naya\s*order|naye\s*order)\b/i.test(lower) ||
-        /\b(?:dobara|dubara|phir\s*se)\s*(?:se\s*)?(?:order|mangwana|karna|karwana|khana)\b/i.test(lower) ||
-        /\b(?:reorder|re-order|order\s*again)\b/i.test(lower) ||
-        /^(?:dobara\s*order|naya\s*order|phir\s*se\s*order|ek\s*aur\s*order|aur\s*order)[\s!.?]*$/i.test(lower.trim());
+    const isReorderComplaint = /\b(?:dobara|dubara|phir\s*se|phr\s*se)\s+(?:naam|name|pata|address|location|number|phone|pooch|poch|bata|maang|mang)\b/i.test(lower);
+    const isReorderIntent = !isReorderComplaint && (
+        /\b(?:naye\s*siray\s*se|naya\s*order|naye\s*order|reorder|re-order|order\s*again)\b/i.test(lower) ||
+        /\b(?:dobara|dubara|phir\s*se|phr\s*se)\s+(?:order|oder|mangwana|karna|karwana|khana|shuru)\b/i.test(lower) ||
+        /^(?:dobara\s*order|naya\s*order|phir\s*se\s*order|ek\s*aur\s*order|aur\s*order)[\s!.?]*$/i.test(lower.trim())
+    );
 
     const hasFoodItemInText = /\b(?:pizza|burger|deal|zinger|roll|fries|sandwich|wings)\b/i.test(lower);
 
@@ -2274,15 +2296,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const explicitMatch = lower.match(/(?:#?CC-?(\d{1,6})|\border\s*#?\s*(\d{1,6})\b)/i);
 
             if (allActive.length > 1 && !explicitMatch && !/\b(?:pichl[aeiy]+|puran[aeiy]+|last|aakhri|recent|latest)\b/i.test(lower)) {
-                const listText = allActive.map((ord, idx) => {
+                const displayedOrders = allActive.slice(0, 2);
+                const listText = displayedOrders.map((ord, idx) => {
                     const itemsStr = (ord.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
                     return `*${idx + 1}. Order #${ord.order_number}* (${ord.order_status})\n   • Delivery Address: *${ord.delivery_address || 'Registered Address'}*\n   • Items: ${itemsStr}\n   • Total Bill: Rs. ${Number(ord.total).toLocaleString('en-PK')}`;
                 }).join('\n\n');
 
+                const moreCount = allActive.length - displayedOrders.length;
+                const moreNote = moreCount > 0 ? `\n\n*(Aap ke ${moreCount} mazeed orders bhi system mein registered hain)*` : '';
+
                 return {
                     handled: true,
                     routeName: 'fast_order_status_inquiry_multiple',
-                    reply: `Aap ke is waqt ${allActive.length} active orders chal rahe hain:\n\n${listText}\n\nAgar kisi specific order ki details change karni hon to order number ke sath batayein (jaise *"${allActive[0].order_number} ka address badal do"*). 😊`,
+                    reply: `Aap ke is waqt active order ki details yeh hain:\n\n${listText}${moreNote}\n\nAgar kisi specific order ki details change karni hon to order number ke sath batayein (jaise *"${displayedOrders[0].order_number} ka address badal do"*). 😊`,
                 };
             }
 
@@ -4101,10 +4127,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                            .trim();
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|meara|apna|my\s+name\s+is|name\s+is|is|kr\s*du|kar\s*du)\s+/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
-    nameCandidate = nameCandidate.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|khan|jee|ji)$/i, '').trim();
+    nameCandidate = nameCandidate.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|jee|ji)$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
     const isActionOrStatusWord = /^(?:confirm|comfirm|konfirm|checkout|continue|proceed|next|book|booking|order|final|done|bill|billing|deliver|delivery|address|location|pin|yes|haan|han|jee|ji|theek|thk|ok|okay|no|nahi|nahii|nhi|nh|nai|na|menu|deal|deals|discount|discounts|riayat|sahi|shai|is|am|my|name)$/i.test(nameCandidate);
-    const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|khan|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|tikka|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|piece|pieces|pc|pcs|fajita|supreme|tandoori|same|yahi|yehi|yehe|yhe|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
+    const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|tikka|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|piece|pieces|pc|pcs|fajita|supreme|tandoori|same|yahi|yehi|yehe|yhe|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
     const hasExplicitNameKeywordInFast = /\b(?:meara\s+naam|mera\s+naam|apna\s+naam|meara\s+name|mera\s+name|my\s+name\s+is|name\s+is|\b(?:naam|name|nam)\s*[:=-]|\b(?:naam|name)\s+(?:hai|h|he|hy)\b|\b(?:naam|name)\s+(?:badal|change|update|rakh|likh))\b/i.test(raw);
     if (nameMatch && !isNotNameCandidate && !isQuestionName && !isFoodOrFlavorWord(nameCandidate) && userSessionId && wordCount <= 4) {
         try {

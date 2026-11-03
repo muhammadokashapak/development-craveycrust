@@ -595,7 +595,7 @@ export async function checkDeliveryAvailability(params) {
             };
         } else {
             if (areaName || address) {
-                const unknownLocationMsg = `Hamare system mein is exact address ya office/building ko locate nahi kiya ja saka. 📍\n\nBaraye meherbani apna mukammal address (jaise *Ghauri Town Phase 5, Street ya landmark*) ya seedha *WhatsApp location pin* share karein taake hum delivery confirm kar sakein!`;
+                const unknownLocationMsg = `Maazrat! Yeh address ya building hamare delivery map par locate nahi ho saki. 📍\n\nBaraye meherbani apna mukammal address (jaise *Ghauri Town Phase 5, Street ya landmark*) ya seedha *WhatsApp location pin* share karein taake hum delivery confirm kar sakein!`;
                 return {
                     available: false,
                     code: 'DELIVERY_NOT_AVAILABLE',

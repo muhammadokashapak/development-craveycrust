@@ -105,6 +105,7 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 TOOL CALL FORMAT:
 {"tool": "tool_name", "args": {"param": "value"}}
 
+CRITICAL RULE: When invoking a tool, respond ONLY with valid raw JSON: {"tool": "tool_name", "args": {...}}. NEVER use XML tags, <｜DSML｜calls>, or markdown code fences for tool calls.
 If no tool is needed, respond directly with customer reply text in Roman Urdu.
 `;
 
@@ -1210,7 +1211,27 @@ export function sanitizeOutput(text) {
     clean = clean.replace(/\n(?:(?:aur\s+)?customer\s+(?:se\s+poocho|ko\s+bolo|se\s+kahein|ko\s+kahein)|aap\s+(?:ko\s+customer\s+se|customer\s+se)\s+(?:poochna|kehna)\s+hai|prompt|system|assistant)\s*:\s*"?/gi, '\n');
     clean = clean.replace(/"\s*$/g, '');
 
-    // 0b. Catch and sanitize raw tool calls / JSON objects leaking to WhatsApp
+    // 0b. Catch and sanitize raw tool calls / JSON objects / DSML leaking to WhatsApp
+    const hasDsmlLeak = /<[|｜\s]*DSML[|｜\s]*calls>/i.test(clean) || /<[|｜\s]*DSML[|｜\s]*invoke/i.test(clean);
+    if (hasDsmlLeak) {
+        if (/invoke\s+name=["']check_delivery_availability["']/i.test(clean)) {
+            return 'Aap ki delivery location check ki ja rahi hai. Baraye meherbani apna mukammal address ya location pin share karein. 📍';
+        }
+        if (/invoke\s+name=["']add_to_cart["']/i.test(clean)) {
+            return 'Zabardast! Aap ka item cart mein add kar diya gaya hai! 🎉\n\nKya iske sath mazeed kuch add karna chahenge ya order finalize karein?';
+        }
+        if (/invoke\s+name=["']create_confirmed_order["']/i.test(clean)) {
+            return 'Aap ka order process kiya ja raha hai. Shukriya!';
+        }
+        // Strip DSML blocks completely
+        clean = clean.replace(/<[|｜\s]*DSML[\s\S]*?<\/[|｜\s]*DSML[|｜\s]*calls>/gi, '');
+        clean = clean.replace(/<[|｜\s]*DSML[\s\S]*?>/gi, '');
+        clean = clean.replace(/<\/[|｜\s]*DSML[\s\S]*?>/gi, '');
+        if (!clean.trim()) {
+            return 'Aap ki request note kar li gayi hai! Kya iske sath mazeed kuch add karna chahenge ya order finalize karein? 😊';
+        }
+    }
+
     if (/^\s*\{[\s\S]*"(?:tool|name)"[\s\S]*\}\s*$/.test(clean) || clean.includes('"tool":') || clean.includes('"add_to_cart"')) {
         try {
             const cleanJson = clean.replace(/```(?:json)?/g, '').trim();
@@ -1238,8 +1259,13 @@ export function sanitizeOutput(text) {
     }
 
     // 0d. Scrub fabricated technical apologies / excuses (e.g. "Choti si technical rukawat ki wajah se...")
-    clean = clean.replace(/(?:maazrat|maafi)[^.!?\n]*[.!?:-]?\s*(?:choti\s+si\s+)?(?:technical|takneeki|system)[^.!?\n]*[.!?:-]?\s*/gi, '');
-    clean = clean.replace(/(?:choti\s+si\s+)?(?:technical|takneeki|system)[^.!?\n]*[.!?:-]?\s*/gi, '');
+    // Strictly requires technical excuse nouns (kharabi, rukawat, glitch, masla) so ordinary sentences containing 'system' are never truncated!
+    clean = clean.replace(/(?:maazrat|maafi)[^.!?\n]*\b(?:technical|takneeki|system)\s+(?:kharabi|rukawat|glitch|issue|error|masla|problem)[^.!?\n]*[.!?:-]?\s*/gi, '');
+    clean = clean.replace(/\b(?:choti\s+si\s+)?(?:technical|takneeki)\s+(?:kharabi|rukawat|glitch|issue|error|masla|problem)[^.!?\n]*[.!?:-]?\s*/gi, '');
+
+    // 0e. Strip orphan single-word lines (e.g. standalone "Hamare" or "Hamara" left by previous truncation)
+    clean = clean.replace(/^\s*(?:hamare|hamara)\s*$/gim, '');
+    clean = clean.replace(/\n\s*(?:hamare|hamara)\s*\n/gi, '\n');
 
     // 1. Remove all internal IDs (menuItemId, variantId, dealId, cartItemId, id)
     clean = clean.replace(/\[\s*(?:menuItemId|variantId|dealId|cartItemId|id)\s*:[^\]]+\]/gi, '');
@@ -1457,6 +1483,66 @@ export function verifyOutput(aiText, optsOrToolResults) {
     return null; // Output is valid & verified
 }
 
+// ─── Dual-Format Tool Call Parser (JSON + DeepSeek DSML XML) ─────────────
+export function parseToolCall(content) {
+    if (!content || typeof content !== 'string') return null;
+
+    // 1. Try standard JSON tool calling format
+    try {
+        const cleanContent = content.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, '$1').trim();
+        const jsonMatch = cleanContent.match(/\{[\s\S]*"(?:tool|name)"\s*:\s*"[^"]+"[\s\S]*\}/);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const toolName = parsed.tool || parsed.name;
+            const toolArgs = parsed.args || parsed.arguments || {};
+            if (toolName) {
+                return { tool: toolName, args: toolArgs };
+            }
+        }
+    } catch (_) {}
+
+    // 2. Try DeepSeek DSML (DeepSeek Markup Language) XML tool calling format
+    try {
+        const hasDsml = /<[|｜\s]*DSML[|｜\s]*calls>/i.test(content) || /<[|｜\s]*DSML[|｜\s]*invoke/i.test(content);
+        if (hasDsml) {
+            const normalized = content
+                .replace(/[\uFF5C|]\s*[\uFF5C|]\s*DSML\s*[\uFF5C|]\s*[\uFF5C|]/gi, 'DSML')
+                .replace(/[\uFF5C|]\s*DSML\s*[\uFF5C|]/gi, 'DSML')
+                .replace(/<[|｜\s]*DSML/gi, '<DSML')
+                .replace(/<\/[|｜\s]*DSML/gi, '</DSML');
+
+            const invokeMatch = normalized.match(/<DSML\s+invoke\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/DSML\s+invoke>/i);
+            if (invokeMatch) {
+                const toolName = invokeMatch[1].trim();
+                const body = invokeMatch[2];
+                const args = {};
+
+                const paramRegex = /<DSML\s+parameter\s+name=["']([^"']+)["'](?:\s+string=["']?(?:true|false)["']?)?\s*>([\s\S]*?)<\/DSML\s+parameter>/gi;
+                let pMatch;
+                while ((pMatch = paramRegex.exec(body)) !== null) {
+                    const paramName = pMatch[1].trim();
+                    let rawVal = pMatch[2].trim();
+                    let val = rawVal;
+                    if (/^-?\d+(?:\.\d+)?$/.test(rawVal)) {
+                        val = Number(rawVal);
+                    } else if (rawVal.toLowerCase() === 'true') {
+                        val = true;
+                    } else if (rawVal.toLowerCase() === 'false') {
+                        val = false;
+                    }
+                    args[paramName] = val;
+                }
+
+                if (toolName) {
+                    return { tool: toolName, args };
+                }
+            }
+        }
+    } catch (_) {}
+
+    return null;
+}
+
 // ─── Main AI Agent Loop (Tool Calling + Exact Token Tracking) ─────────────
 const MAX_TOOL_ROUNDS = 3;
 
@@ -1533,20 +1619,8 @@ async function runAgentLoop(messages, context) {
 
         const aiResponse = aiResult.content || '';
 
-        // Parse tool call from response (strip markdown fences, support {"tool": ...} or {"name": ...})
-        let toolCall = null;
-        try {
-            const cleanContent = aiResponse.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, '$1').trim();
-            const jsonMatch = cleanContent.match(/\{[\s\S]*"(?:tool|name)"\s*:\s*"[^"]+"[\s\S]*\}/);
-            if (jsonMatch) {
-                const parsed = JSON.parse(jsonMatch[0]);
-                const toolName = parsed.tool || parsed.name;
-                const toolArgs = parsed.args || parsed.arguments || {};
-                if (toolName) {
-                    toolCall = { tool: toolName, args: toolArgs };
-                }
-            }
-        } catch (_) {}
+        // Parse tool call from response (Dual format: JSON and DeepSeek DSML XML)
+        const toolCall = parseToolCall(aiResponse);
 
         if (toolCall && toolCall.tool) {
             calledToolNames.push(toolCall.tool);
@@ -1803,8 +1877,12 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 
     // Pre-fill returning customer details ONLY if not already explicitly provided in this session
     // Explicit customer input (e.g. Aslam, Kashii) MUST NEVER be overwritten by past profile!
-    if (rememberedDetails?.name && !sessionDetails.savedName) {
-        sessionDetails.savedName = rememberedDetails.name;
+    if (rememberedDetails?.name) {
+        if (!sessionDetails.savedName) sessionDetails.savedName = rememberedDetails.name;
+        if (!sessionDetails.name) {
+            sessionDetails.name = rememberedDetails.name;
+            sessionDetails.nameExplicit = true;
+        }
     }
     if (rememberedDetails?.address && !sessionDetails.savedAddress) {
         sessionDetails.savedAddress = rememberedDetails.address;
@@ -2065,7 +2143,27 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 
     let locationPromptAddon = '';
     if (activeLocation) {
-        locationPromptAddon = `\n[Customer ne location pin/link share kiya: lat=${activeLocation.latitude}, lng=${activeLocation.longitude}, address=${activeLocation.address || 'Location Pin'}]`;
+        let delCheck = null;
+        try {
+            if (activeLocation.latitude != null && activeLocation.longitude != null) {
+                delCheck = await checkDeliveryAvailability({
+                    restaurantId: restId,
+                    address: activeLocation.address || activeLocation.formattedAddress,
+                    latitude: activeLocation.latitude,
+                    longitude: activeLocation.longitude,
+                });
+            }
+        } catch (_) {}
+
+        if (delCheck) {
+            const statusStr = delCheck.available ? 'IN DELIVERY RANGE' : 'OUT OF DELIVERY RANGE';
+            const distStr = delCheck.distanceKm != null ? ` Distance: approx. ${delCheck.distanceKm} km from outlet.` : '';
+            const feeStr = delCheck.deliveryFee != null ? ` Delivery Fee: Rs. ${delCheck.deliveryFee}.` : '';
+            const areaStr = delCheck.areaName ? ` Area: ${delCheck.areaName}.` : '';
+            locationPromptAddon = `\n[LOCATION VERIFIED: lat=${activeLocation.latitude}, lng=${activeLocation.longitude}.${areaStr}${distStr}${feeStr} Status: ${statusStr}. Ground Truth Verified. Do NOT call check_delivery_availability again; directly answer the customer acknowledging this location in Roman Urdu.]`;
+        } else {
+            locationPromptAddon = `\n[Customer ne location pin/link share kiya: lat=${activeLocation.latitude}, lng=${activeLocation.longitude}, address=${activeLocation.address || 'Location Pin'}]`;
+        }
     }
 
     const userTurnContent = effectiveText + locationPromptAddon;
