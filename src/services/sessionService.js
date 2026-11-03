@@ -473,8 +473,10 @@ export async function getRememberedCustomerDetails(key, altKey) {
                         include: { customer: true }
                     });
                     if (lastOrder) {
+                        const rawDbName = lastOrder.customer_name || lastOrder.customer?.name;
+                        const safeDbName = isValidCustomerName(rawDbName) ? rawDbName : null;
                         details = {
-                            name: lastOrder.customer_name || lastOrder.customer?.name,
+                            name: safeDbName,
                             phone: lastOrder.phone || lastOrder.customer?.phone,
                             whatsappPhone: lastOrder.whatsapp_phone || lastOrder.customer?.whatsapp_phone,
                             address: lastOrder.delivery_address,
@@ -495,8 +497,9 @@ export async function getRememberedCustomerDetails(key, altKey) {
                             }
                         });
                         if (cust && cust.name) {
+                            const safeCustName = isValidCustomerName(cust.name) ? cust.name : null;
                             details = {
-                                name: cust.name,
+                                name: safeCustName,
                                 phone: cust.phone || cleanPhone,
                                 whatsappPhone: cust.whatsapp_phone || cleanPhone,
                                 address: null,

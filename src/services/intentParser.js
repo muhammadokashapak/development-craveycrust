@@ -551,12 +551,16 @@ export async function getNextCheckoutStepResponse({
         try {
             const { getRememberedCustomerDetails } = await import('./sessionService.js');
             const remembered = await getRememberedCustomerDetails(null, rawCleanPhone);
-            if (remembered?.name) {
+            if (remembered?.name && isValidCustomerName(remembered.name)) {
                 if (!details.savedName) details.savedName = remembered.name;
                 if (!details.name) {
                     details.name = remembered.name;
                     details.nameExplicit = true;
                 }
+            } else if (remembered?.name && !isValidCustomerName(remembered.name)) {
+                details.savedName = null;
+                details.name = null;
+                details.nameExplicit = false;
             }
             if (remembered?.address && !details.savedAddress) {
                 details.savedAddress = remembered.address;
@@ -4143,7 +4147,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         updatePayload.name = extracted.name;
                         updatePayload.nameExplicit = true;
                     } else if (extracted.nameExplicit) {
-                        const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(raw);
+                        const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?(?:naam|name|nam)|(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is|naam\s+is|nam\s+is)\b/i.test(raw);
                         if (isExplicitRename && extracted.name.toLowerCase() !== currDetails.name.toLowerCase()) {
                             updatePayload.name = extracted.name;
                             isNameUpdated = true;
@@ -4272,8 +4276,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Customer Name Input during active cart checkout (Zero Tokens) ──
     const isQuestionName = raw.includes('?') || /\b(?:kya|kia|kab|kese|kaise|kahan|kidhar|kahin|konsa|konse|kyun|kyu|hai\?|he\?|h\?|btao|batao|dikhao|dekhao)\b/i.test(raw);
     const isGreetingName = FAST_GREETING_REGEX.test(raw.trim()) || /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo)[\s.!?]*$/i.test(raw.trim());
-    let nameCandidate = raw.replace(/^(?:my\s+name\s+is|name\s+is|mera\s+naam\s+(?:hai|h)?|naam\s+|name\s*(?:is|hai|h|ja)?\s*:?\s*)/i, '')
-                           .replace(/(?:\s+(?:naam|name|hai|h|ja|mera))+$/i, '')
+    let nameCandidate = raw.replace(/^(?:my\s+name\s+is|name\s+is|naam\s+is|nam\s+is|(?:mera|meara|apna)\s+(?:naam|name|nam)\s*(?:hai|h|ha|he|hy)?|(?:naam|name|nam)\s*(?:is|hai|h|ha|he|hy|ja)?\s*:?\s*)/i, '')
+                           .replace(/(?:\s+(?:naam|name|nam|hai|h|ha|he|hy|ja|mera|meara))+$/i, '')
                            .trim();
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|meara|apna|my\s+name\s+is|name\s+is|is|kr\s*du|kar\s*du)\s+/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
@@ -4282,7 +4286,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
     const isActionOrStatusWord = /^(?:confirm|comfirm|konfirm|checkout|continue|proceed|next|book|booking|order|final|done|bill|billing|deliver|delivery|address|location|pin|yes|haan|han|jee|ji|theek|thk|ok|okay|no|nahi|nahii|nhi|nh|nai|na|menu|deal|deals|discount|discounts|riayat|sahi|shai|is|am|my|name)$/i.test(nameCandidate);
     const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|tikka|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|piece|pieces|pc|pcs|fajita|supreme|tandoori|same|yahi|yehi|yehe|yhe|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
-    const hasExplicitNameKeywordInFast = /\b(?:meara\s+naam|mera\s+naam|apna\s+naam|meara\s+name|mera\s+name|my\s+name\s+is|name\s+is|\b(?:naam|name|nam)\s*[:=-]|\b(?:naam|name)\s+(?:hai|h|he|hy)\b|\b(?:naam|name)\s+(?:badal|change|update|rakh|likh))\b/i.test(raw);
+    const hasExplicitNameKeywordInFast = /\b(?:(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is|naam\s+is|nam\s+is|\b(?:naam|name|nam)\s*[:=-]|\b(?:naam|name|nam)\s+(?:hai|h|ha|he|hy)\b|\b(?:naam|name|nam)\s+(?:badal|change|update|rakh|likh))\b/i.test(raw);
     if (nameMatch && !isNotNameCandidate && !isQuestionName && !isFoodOrFlavorWord(nameCandidate) && userSessionId && wordCount <= 4) {
         try {
             const { getActiveCart } = await import('./cartService.js');
@@ -4301,7 +4305,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // STRICT IMMUTABILITY: Bare string name extraction accepts initial name or overrides unconfirmed suggestions!
                 if (canAcceptName && (!details.name || !details.nameExplicit || hasExplicitNameKeywordInFast)) {
                     const customerName = nameMatch[1].trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-                    updateSessionOrderDetails(userSessionId, { name: customerName, nameExplicit: true }, cleanPhone);
+                    updateSessionOrderDetails(userSessionId, { name: customerName, savedName: customerName, nameExplicit: true }, cleanPhone);
+                    const { rememberCustomerDetails } = await import('./sessionService.js');
+                    rememberCustomerDetails(userSessionId, { name: customerName }, cleanPhone);
                     const updated = getSessionOrderDetails(userSessionId, cleanPhone);
 
                     try {
