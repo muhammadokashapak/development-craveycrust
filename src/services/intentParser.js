@@ -1477,6 +1477,7 @@ export function parseIntent(context) {
 
 import { muteChatForHandover, unmuteChat } from './handoverService.js';
 import { getCatalogCache } from './catalogCacheService.js';
+import { isValidCustomerName } from './sessionService.js';
 import { calculateDiscount } from './discountService.js';
 
 const FAST_HANDOVER_REGEX = /\b(bot\s*(?:se|sai|sy)?\s*(?:baat\s*)?(?:nahi|nh|nai|nhi|mat)|ai\s*(?:se|sai|sy)?\s*(?:baat\s*)?(?:nahi|nh|nai|nhi|mat)|(?:ap|aap|tum)\s*(?:se|sai|sy)?\s*(?:baat\s*)?(?:nahi|nh|nai|nhi|mat)|baat\s*(?:nahi|nh|nai|nhi)\s*k(?:a)?rni|bat\s*(?:nahi|nh|nai|nhi)\s*k(?:a)?rni|agent|live\s*agent|representative|operator|manager|owner|malik|maalik|complaint|shikayat|shikayet|service\s*achi\s*nahi|service\s*achhi\s*nahi|call\s*me|call\s*karo|call\s*karein|phone\s*karo|(?:bande|insan|human)\s*(?:se|sai|sy)\s*baat|kisi\s*(?:bande|insan)\s*(?:se|sai|sy)|asli\s*(?:bande|insan)|real\s*person|live\s*person|actual\s*person|human\s*support|human\s*agent|real\s*human|talk\s*to\s*(?:a\s*)?(?:human|agent|person|someone))\b/i;
@@ -2634,7 +2635,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                 const finalAddress = details.address || details.savedAddress || details.location?.address;
                 const readyToConfirm = Boolean(details.name && (finalAddress || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
-                if (cart?.items && cart.items.length > 0 && (details.awaitingFinalConfirmation || readyToConfirm) && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
+                const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final)\b/i.test(lower.trim());
+                const isAffirmationEligible = hasExplicitConfirmWord ? (details.awaitingFinalConfirmation || readyToConfirm) : (details.awaitingFinalConfirmation === true && !details.extraItemsInquired);
+                if (cart?.items && cart.items.length > 0 && isAffirmationEligible && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
                     const finalPayment = details.paymentMethod || 'COD';
                     const { createOrder } = await import('./orderService.js');
                     const res = await createOrder({
@@ -2835,6 +2838,23 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         const n = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
                         return n.includes(targetItemQuery);
                     });
+                    // Variant / Size refinement for item removal (e.g. "regular fries ko hata do")
+                    const variantMatch = lower.match(/\b(regular|reg|large|bari|loaded|can|tin|1\.5\s*liter|1\s*liter|small|choti|medium|party)\b/i);
+                    if (variantMatch && matchingItems.length > 0) {
+                        let vQuery = variantMatch[1].toLowerCase();
+                        if (vQuery === 'reg') vQuery = 'regular';
+                        if (vQuery === 'bari') vQuery = 'large';
+                        if (vQuery === 'choti') vQuery = 'small';
+                        const vFiltered = matchingItems.filter(i => {
+                            const vName = (i.menu_variant?.name || '').toLowerCase();
+                            const notes = (i.notes || '').toLowerCase();
+                            const itName = (i.menu_item?.name || '').toLowerCase();
+                            return vName.includes(vQuery) || notes.includes(vQuery) || itName.includes(vQuery);
+                        });
+                        if (vFiltered.length > 0) {
+                            matchingItems = vFiltered;
+                        }
+                    }
                 } else if (isContextualRemoval || cart.items.length === 1) {
                     const latestItem = cart.items[cart.items.length - 1];
                     if (latestItem) matchingItems = [latestItem];
@@ -2858,7 +2878,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 }
 
                 if (matchingItems.length > 0) {
-                    const itemName = matchingItems[0].deal ? matchingItems[0].deal.name : (matchingItems[0].menu_item?.name || 'Item');
+                    const itRow = matchingItems[0];
+                    const baseName = itRow.deal ? itRow.deal.name : (itRow.menu_item?.name || 'Item');
+                    const varName = itRow.menu_variant?.name ? ` (${itRow.menu_variant.name})` : '';
+                    const itemName = `${baseName}${varName}`;
                     const totalMatchedQty = matchingItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
                     let removedQtyText = '';
@@ -3178,8 +3201,123 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         };
     }
 
+    // ── Check Fast Route: Customer complains only Regular Fries was meant to be removed, not Large ──
+    const isFriesCorrectionComplaint = /\b(?:sirf\s*)?regular\s*(?:fries)?\s*(?:hatana?y?|nikalna?y?|remove)\s*ka\s*bola\s*tha\b/i.test(lower) &&
+        /\b(?:large|bari)\s*(?:fries)?\s*(?:nahi|nahin)\b/i.test(lower);
+    if (isFriesCorrectionComplaint && userSessionId) {
+        try {
+            const { getActiveCart, removeCartItem, addToCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            
+            // Remove regular fries if present
+            const regItem = (cart.items || []).find(i => (i.menu_item?.name || '').toLowerCase().includes('fries') && (i.menu_variant?.name || '').toLowerCase().includes('regular'));
+            if (regItem) {
+                await removeCartItem({ sessionKey: userSessionId, cartItemId: regItem.id });
+            }
+            
+            // Ensure Large Fries is present
+            const hasLarge = (cart.items || []).some(i => (i.menu_item?.name || '').toLowerCase().includes('fries') && (i.menu_variant?.name || '').toLowerCase().includes('large'));
+            if (!hasLarge) {
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    menuItemId: 'item-1',
+                    variantId: 'v-1-2', // Large Fries
+                    quantity: 1,
+                });
+            }
+            
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+            details.awaitingFinalConfirmation = false;
+            updateSessionOrderDetails(userSessionId, { awaitingFinalConfirmation: false }, cleanPhone);
+            
+            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart: cartNow,
+                cache,
+                introMessage: 'Maazrat Ji, ghalti ho gayi! 🙏\nMain ne theek kar diya hai: *Fries (Large)* cart mein shamil hai aur Regular Fries hata di gayi hai. ✅',
+            });
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing fries correction complaint:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Size / Variant Replacement (e.g. "fries regular nahi hen large hen") ──
+    const isFriesSizeReplacement = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) &&
+        /\b(?:regular|reg)\b/i.test(lower) &&
+        /\b(?:large|bari|loaded)\b/i.test(lower) &&
+        /\b(?:nahi|nahin|na|mat|nhi|ki\s*jagah|balke|balky)\b/i.test(lower);
+
+    if (isFriesSizeReplacement && userSessionId) {
+        try {
+            const { getActiveCart, removeCartItem, addToCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+
+            const isLoaded = /\bloaded\b/i.test(lower);
+            const newVariantId = isLoaded ? 'v-3-1' : 'v-1-2'; // Large (or Loaded)
+            const newItemId = isLoaded ? 'item-3' : 'item-1';
+            const newVariantName = isLoaded ? 'Loaded' : 'Large';
+            const newPrice = isLoaded ? 450 : 320;
+
+            // 1. Remove any existing Regular Fries
+            const existingReg = (cart?.items || []).find(i => 
+                (i.menu_item?.name || '').toLowerCase().includes('fries') && 
+                ((i.menu_variant?.name || '').toLowerCase().includes('regular') || (i.notes || '').toLowerCase().includes('regular'))
+            );
+            let replacedQty = 1;
+            if (existingReg) {
+                replacedQty = existingReg.quantity || 1;
+                await removeCartItem({ sessionKey: userSessionId, cartItemId: existingReg.id });
+            }
+
+            // 2. Check if Large Fries is already in cart, if not, add it
+            const existingLarge = (cart?.items || []).find(i => 
+                (i.menu_item?.name || '').toLowerCase().includes('fries') && 
+                ((i.menu_variant?.name || '').toLowerCase().includes('large') || (i.notes || '').toLowerCase().includes('large'))
+            );
+            if (!existingLarge) {
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    menuItemId: newItemId,
+                    variantId: newVariantId,
+                    quantity: replacedQty,
+                });
+            }
+
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+            details.awaitingFinalConfirmation = false;
+            updateSessionOrderDetails(userSessionId, { awaitingFinalConfirmation: false }, cleanPhone);
+
+            const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            return await getNextCheckoutStepResponse({
+                details,
+                whatsappPhone,
+                cart: cartNow,
+                cache,
+                introMessage: `Theek hai Ji! *Fries (${newVariantName})* update kar di gayi hai (Regular Fries hata di gayi hai). ✅\n• ${replacedQty}x Fries (${newVariantName}) — Rs. ${newPrice * replacedQty}`,
+            });
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing fries size replacement:', err.message);
+        }
+    }
+
     // ── Check Fast Route: Customer orders Fries with size directly (Zero Tokens) ──
-    const isDirectFriesWithSize = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
+    const hasFriesNegation = /\b(?:nahi|nahin|na|mat|nhi|ki\s*jagah|balke|balky)\b/i.test(lower);
+    const isDirectFriesWithSize = !hasFriesNegation && /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
         (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do)\b/i.test(lower) || wordCount <= 6);
     if (isDirectFriesWithSize && userSessionId) {
         try {
@@ -5730,7 +5868,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
             const finalAddressForConfirm = details?.address || details?.savedAddress || details?.location?.address;
             const readyToConfirmOrder = Boolean(details?.name && (finalAddressForConfirm || details?.location) && (details?.paymentMethod || 'COD') && details?.phoneConfirmed);
-            if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation || details?.summaryShown || readyToConfirmOrder) && !details?.locationAwaitingConfirmation) {
+            if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation === true) && !details?.locationAwaitingConfirmation) {
                 const finalPayment = details.paymentMethod || 'COD';
                 const { createOrder } = await import('./orderService.js');
                 const res = await createOrder({

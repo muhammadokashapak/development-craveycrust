@@ -23,7 +23,7 @@ import { logZeroTokenReply, logAiTokenReply } from '../utils/logger.js';
 import { checkFastRoute, extractCustomerDetails, cleanExtractedAddress, setLastDiscussedItem, getLastDiscussedItem, clearLastDiscussedItem, clearLastDiscussedDeal } from './intentParser.js';
 import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
 import { extractLocationFromText } from '../../utils/location.js';
-import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails } from './sessionService.js';
+import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails, isValidCustomerName } from './sessionService.js';
 import { updateCustomerNameForChat } from './chatService.js';
 
 // ─── Local Direct Service Imports (No HTTP round-trips) ───────────────────
@@ -673,7 +673,7 @@ export async function executeTool(toolName, args, context) {
                     clearLastDiscussedItem(sessionKey);
                     clearPendingDealFlavour(sessionKey);
                     const { updateSessionOrderDetails } = await import('./sessionService.js');
-                    updateSessionOrderDetails(sessionKey, { summaryShown: false }, whatsappPhone);
+                    updateSessionOrderDetails(sessionKey, { summaryShown: false, awaitingFinalConfirmation: false }, whatsappPhone);
                     const { calculateCartTotals } = await import('./cartService.js');
                     const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId }).catch(() => null);
                     if (totals) {
