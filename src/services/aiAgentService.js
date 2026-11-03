@@ -1823,7 +1823,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             location: activeLocation,
         }, whatsappPhone);
     }
-    const extracted = extractCustomerDetails(effectiveText, sessionDetails);
+    const isAwaitingName = (!sessionDetails.name || !sessionDetails.nameExplicit) && !sessionDetails.phoneConfirmed && !sessionDetails.address && !sessionDetails.paymentMethod && !getLastDiscussedItem(sessionKey, whatsappPhone) && !getPendingDealFlavour(sessionKey);
+    const extracted = extractCustomerDetails(effectiveText, { ...sessionDetails, isAwaitingName });
     const updatePayload = {};
 
     if (extracted.name) {

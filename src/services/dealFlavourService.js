@@ -14,7 +14,7 @@ export const CLASSIC_PIZZA_FLAVOURS = [
     {
         name: 'Chicken Fajita',
         slug: 'chicken-fajita',
-        regex: /\b(?:chicken\s*)?faj[ie]ta+h?s?\b/i,
+        regex: /\b(?:chicken\s*)?(?:faj[ie]ta|faita|fejita|fajeeta|fajeta)h?s?\b/i,
     },
     {
         name: 'Chicken Supreme',
