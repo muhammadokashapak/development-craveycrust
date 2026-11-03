@@ -106,7 +106,7 @@ export function evaluateCheckoutState({ cart, details, totals, confirmIntent = f
         return {
             currentState: CHECKOUT_STATES.DELIVERY_ADDRESS,
             nextAction: 'REQUEST_ADDRESS',
-            prompt: `Delivery kahan karni hai ${details.name} bhai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍`,
+            prompt: `Delivery kahan karni hai ${details.name} bhai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* dein ya qareeb ka mashhoor *Landmark* bata dein!`,
             canProceedToOrder: false,
         };
     }

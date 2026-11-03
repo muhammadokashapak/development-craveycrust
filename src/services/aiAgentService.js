@@ -1911,7 +1911,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             updatePayload.nameExplicit = true;
             sessionDetails.nameExplicit = true;
         } else if (extracted.nameExplicit) {
-            const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is)\b/i.test(effectiveText);
+            const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is|naam\s+|name\s*[:=-])\b/i.test(effectiveText) ||
+                                     /^(?:naam\s+|mera\s+naam\s+|my\s+name\s+is\s+|name\s+is\s+)?([A-Za-z]{2,20})\s+(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|dein|do)$/i.test(effectiveText.trim());
             if (isExplicitRename && extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase()) {
                 updatePayload.name = extracted.name;
             }
@@ -1944,7 +1945,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     // If name & phone are confirmed and awaiting address (Step 3) or explicit address update provided
     if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
         const candidate = cleanExtractedAddress(effectiveText);
-        const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim());
+        const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:address\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat)|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat|ka\s*maza\s*nahi))\b/i.test(effectiveText);
         if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
             updatePayload.address = candidate;
         }
@@ -2033,9 +2035,14 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - SAKHT MANA: Delivery address ya Payment method is message mein BILKUL MAT POOCHEIN! Phone confirmation ke baghair order aage process BILKUL nahi karna!`;
         } else if (!updatedDetails.address && !activeLocation?.formattedAddress) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
-- CURRENT STEP: STEP 3 (DELIVERY ADDRESS).
+- CURRENT STEP: STEP 3 (DELIVERY ADDRESS — 3-TIER STRICT PROTOCOL).
 - Customer ka Naam aur Contact Phone dono mil chuke hain.
-- Aap ko is turn mein SIRF Delivery Address ya Location Pin poochna hai: "Delivery kahan karni hai ${updatedDetails.name}? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍".
+- Aap ko is turn mein SIRF Delivery Address / Location Pin poochna hai aur HAMESHA 3-Tier Hierarchy use karni hai:
+  "Delivery kahan karni hai ${updatedDetails.name}? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein). Agar pin share nahi kar saktay to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!"
+- Hierarchy:
+  1. Sab se pehle WhatsApp Pin Location maango (taake latitude/longitude nikalnay mein koi issue na aaye).
+  2. Agar pin na de sakein to Mukammal Correct Address.
+  3. Agar address bhi na ho to Qareeb ka Mashhoor Landmark.
 - SAKHT MANA: Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
         } else if (!updatedDetails.paymentMethod) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:

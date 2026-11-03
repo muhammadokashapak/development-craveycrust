@@ -459,6 +459,12 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isBehariRoll = /\b(?:behari|bihari|behri)\s*roll\b/i.test(cleanQ) || (strippedQ && /\b(?:behari|bihari|behri)\s*roll\b/i.test(strippedQ));
     const isPeriPeri = /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(cleanQ) || (strippedQ && /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(strippedQ));
     const isDrink = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
+    const isSupreme = /\b(?:supreme|superem|suprem|suprime)\b/i.test(cleanQ) || (strippedQ && /\b(?:supreme|superem|suprem|suprime)\b/i.test(strippedQ));
+    const isTikka = /\b(?:tikka|tika|tikaa|chikn\s*tikka)\b/i.test(cleanQ) || (strippedQ && /\b(?:tikka|tika|tikaa)\b/i.test(strippedQ));
+    const isFajita = /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(cleanQ) || (strippedQ && /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(strippedQ));
+    const isCheeseLover = /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(cleanQ) || (strippedQ && /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(strippedQ));
+    const isTandori = /\b(?:tandoori|tandori)\b/i.test(cleanQ) || (strippedQ && /\b(?:tandoori|tandori)\b/i.test(strippedQ));
+    const isExtreme = /\b(?:chicken\s*extreme|extrme)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*extreme|extrme)\b/i.test(strippedQ));
 
     let aliasTargetItem = null;
     if (isRegularFries) {
@@ -481,6 +487,18 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         aliasTargetItem = allItems.find(i => i.slug === 'peri-peri' || /peri\s*peri/i.test(i.name));
     } else if (isDrink && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name));
+    } else if (isSupreme && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-supreme' || /chicken\s*supreme/i.test(i.name));
+    } else if (isTikka && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-tikka' || /chicken\s*tikka/i.test(i.name));
+    } else if (isFajita && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-fajita' || /chicken\s*fajita/i.test(i.name));
+    } else if (isCheeseLover && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'cheese-lover' || /cheese\s*lover/i.test(i.name));
+    } else if (isTandori && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-tandori' || /chicken\s*tandori/i.test(i.name));
+    } else if (isExtreme && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-extreme' || /chicken\s*extreme/i.test(i.name));
     }
 
     if (aliasTargetItem) {

@@ -595,7 +595,7 @@ export async function checkDeliveryAvailability(params) {
             };
         } else {
             if (areaName || address) {
-                const unknownLocationMsg = `Maazrat! Yeh address ya building hamare delivery map par locate nahi ho saki. 📍\n\nBaraye meherbani apna mukammal address (jaise *Ghauri Town Phase 5, Street ya landmark*) ya seedha *WhatsApp location pin* share karein taake hum delivery confirm kar sakein!`;
+                const unknownLocationMsg = `Maazrat! Yeh address hamare delivery map par locate nahi ho saka. 📍\n\nBaraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) likhein, ya qareeb ka koi mashhoor *Landmark* (school, masjid, plaza, chowk) bata dein!`;
                 return {
                     available: false,
                     code: 'DELIVERY_NOT_AVAILABLE',

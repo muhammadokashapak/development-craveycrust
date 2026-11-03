@@ -364,6 +364,8 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // 3. Name (Strictly excluded if matches location indicators, greetings, food items, or known action words)
 
     // Explicit name change or assignment patterns (supports "naam hatim", "mera naam hatim", "my name is okasha", etc.)
+    const directNameSetMatch = raw.match(/\b(?:naam|name|nam)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)\s*(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|kr\s*dein|kar\s*dein|karo|kro)?$/i) ||
+                               raw.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)\s+(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|kr\s*dein|kar\s*dein)$/i);
     const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:bhi\s*)?(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)?|likh\s*(?:do|dein|lo|karo|du)?|kar\s*(?:do|dein|karo|du)?|kr\s*(?:do|dein|kro|du)?|ab\s+|(?:(?:is|hai|he|hy|h))|:|=|-)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:my\s+name\s+is|name\s+is)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
@@ -373,7 +375,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const nameAfter = raw.match(/\b(?:meara|mera|apna)\s+(?:naam|name|nam)\s*(?:\b(?:is|hai|he|hy|h)\b|:|=|-)?\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i) ||
                       raw.match(/\b(?:naam|name|nam)\s*[:=-]\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20}){0,2})\b/i);
 
-    let nameCandidate = (nameUpdateMatch ? nameUpdateMatch[1] : (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null)))?.trim();
+    let nameCandidate = (directNameSetMatch ? directNameSetMatch[1] : (nameUpdateMatch ? nameUpdateMatch[1] : (nameBefore ? nameBefore[1] : (nameAfter ? nameAfter[1] : null))))?.trim();
     if (nameCandidate) {
         // Repeatedly strip leading common prefixes e.g. "same ", "wahi ", "yehi ", "yahi ", "naam ", "kr du ", "kar du ", "my name is", "is "
         while (/^(?:is|am|my|name|naam|nam|apna|apni|mera|meara|kr\s*du|kar\s*du|likh\s*du|rakh\s*du|same|wahi|yahi|yehi|isi)\s+/i.test(nameCandidate)) {
@@ -382,7 +384,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         // Strip trailing sentence filler e.g. "bki sari details same ha", "baki sab same hai"
         nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
         // Strip trailing action verbs/honorifics
-        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
+        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
         if (NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate)) {
             nameCandidate = null;
         }
@@ -395,7 +397,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // If knownDetails.isAwaitingName is false or not set, bare string is NEVER accepted as a name!
     const isQuestionOrInquiry = raw.includes('?') || /\b(?:kya|kia|kab|kese|kaise|kahan|kidhar|kahin|konsa|konse|kyun|kyu|hai\?|he\?|h\?|btao|batao|dikhao|dekhao)\b/i.test(raw);
     const isMenuOrQueryWord = /\b(?:menu|manu|manue|menue|meny|mainu|mainue|mny|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
-    const nameExplicit = Boolean(nameUpdateMatch || nameBefore || nameAfter);
+    const nameExplicit = Boolean(directNameSetMatch || nameUpdateMatch || nameBefore || nameAfter);
     if (!nameCandidate && !knownDetails.name && knownDetails.isAwaitingName && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord && !isQuestionOrInquiry) {
         const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|good|great|nice|fine|best|cool|super|bad|awesome|perfect|well|wese|waise|chalo|yar|yaar|acha|achha|accha|done|thanks|thank|thx|shukriya|ok|okay)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
@@ -417,7 +419,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
             if (!knownDetails.name || !knownDetails.nameExplicit) {
                 name = parsedName;
             } else if (nameExplicit) {
-                const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?(?:naam|name)|(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is)\b/i.test(raw);
+                const isExplicitRename = Boolean(directNameSetMatch) || /\b(?:badal|change|update|ab\s+(?:mera\s+)?(?:naam|name)|(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is)\b/i.test(raw);
                 if (isExplicitRename) {
                     name = parsedName;
                 }
@@ -599,7 +601,7 @@ export async function getNextCheckoutStepResponse({
             routeName: 'step_address_needed',
             step: 'ADDRESS',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Delivery kahan karni hai ${customerName}? Baraye meherbani apna mukammal *delivery address* (ya WhatsApp location pin) bhej dein 📍`,
+                `Delivery kahan karni hai ${customerName}? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!`,
         };
     }
 
@@ -2221,7 +2223,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 hasNewChange = true;
                 activeOrderUpdate.awaitingField = null;
             } else if (activeOrderUpdate.awaitingField === 'name' && !extracted.name) {
-                const rawNameCandidate = raw.trim().replace(/^(?:mera\s+naam|naam|name|apna\s+naam)\s*[:=-]?\s*/i, '').trim();
+                let rawNameCandidate = raw.trim().replace(/^(?:mera\s+naam|naam|name|apna\s+naam)\s*[:=-]?\s*/i, '').trim();
+                rawNameCandidate = rawNameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|ja|tha)$/i, '').trim();
                 if (rawNameCandidate.length >= 2 && rawNameCandidate.length <= 30 && !NOT_NAME_REGEX.test(rawNameCandidate)) {
                     newChanges.name = rawNameCandidate.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
                     hasNewChange = true;
@@ -3134,9 +3137,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Fries without size (Zero Tokens) ──
-    const isFriesWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do)?[\s.!?]*$/i.test(lower.trim()) ||
+    const isFriesWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
                                (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower));
-    if (isFriesWithoutSize && !hasLeadingOrderQuantity && userSessionId) {
+    if (isFriesWithoutSize && userSessionId) {
         const friesItem = {
             id: 'item-1',
             name: 'Fries',
@@ -3154,9 +3157,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Drink without size (Zero Tokens) ──
-    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\s*(?:kr\s*do|kardo|krdo|chahiye|add|bhi|aur|mangwa\s*do|b)?[\s.!?]*$/i.test(lower.trim()) ||
+    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
                                (/\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower));
-    if (isDrinkWithoutSize && !hasLeadingOrderQuantity && userSessionId) {
+    if (isDrinkWithoutSize && userSessionId) {
         const drinkItem = {
             id: 'item-34',
             name: 'Soft Drink',
@@ -3596,9 +3599,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
 // ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
-    const isSizeFollowup = /^(?:small|smal|medium|medum|med|large|larg|lrg|party(?:b?\s*size)?|partyb?size|regular|reg|chota|chhota|bara|bada)(?:\s*(?:kr\s*do|kardo|kar\s*do|kr\s*du|kar\s*du|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
-    if (isSizeFollowup && userSessionId && _lastDiscussedItemBySession.has(userSessionId)) {
-        const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId);
+    const isSizeFollowup = /^(?:small|smal|medium|medum|med|large|larg|lrg|party(?:b?\s*size)?|partyb?size|regular|reg|chota|chhota|bara|bada|can|tin|1\s*liter|1\s*litre|1l|1\.5\s*liter|1\.5\s*litre|1\.5l)(?:\s*(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
+    if (isSizeFollowup && userSessionId && (_lastDiscussedItemBySession.has(userSessionId) || (cleanPhone && _lastDiscussedItemBySession.has(cleanPhone)))) {
+        const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId) || (cleanPhone ? _lastDiscussedItemBySession.get(cleanPhone) : null);
         if (lastItemEntry && (Date.now() - lastItemEntry.timestamp < 300 * 1000)) {
             try {
                 const { getActiveCart, addItemToCart, matchVariant } = await import('./cartService.js');
@@ -4128,6 +4131,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|meara|apna|my\s+name\s+is|name\s+is|is|kr\s*du|kar\s*du)\s+/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|jee|ji)$/i, '').trim();
+    nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|ja|tha)$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
     const isActionOrStatusWord = /^(?:confirm|comfirm|konfirm|checkout|continue|proceed|next|book|booking|order|final|done|bill|billing|deliver|delivery|address|location|pin|yes|haan|han|jee|ji|theek|thk|ok|okay|no|nahi|nahii|nhi|nh|nai|na|menu|deal|deals|discount|discounts|riayat|sahi|shai|is|am|my|name)$/i.test(nameCandidate);
     const isNotNameCandidate = isQuestionName || isGreetingName || isActionOrStatusWord || NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|checkout|continue|proceed|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|meny|menue|mainu|mainue|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|tikka|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|piece|pieces|pc|pcs|fajita|supreme|tandoori|same|yahi|yehi|yehe|yhe|wahi|isi|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|sahi|shai|is|my)\b/i.test(nameCandidate);
@@ -5345,16 +5349,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Address Change / Correction Request (Zero Tokens) ──
-    const isAddressChangeRequest = /\b(?:address\s*(?:change|badal|update|theek|sahi|galat|ghalat)|change\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?\s*(?:change|theek|sahi|galat|ghalat)|ad(?:d)?re(?:e)?s(?:s)?\s*(?:nahi|ni)\s*hai|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|ghalat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*ad(?:d)?re(?:e)?s(?:s)?)\b/i.test(lower);
+    const isAddressChangeRequest = /\b(?:(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?location|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:ka\s*)?(?:maza\s*nahi|achi\s*nahi|theek\s*nahi|galat|wrong|sahi\s*nahi))\b/i.test(lower);
     if (isAddressChangeRequest && userSessionId) {
         try {
-            const { updateSessionOrderDetails } = await import('./sessionService.js');
+            const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
             updateSessionOrderDetails(userSessionId, { address: null, location: null }, cleanPhone);
             return {
                 handled: true,
                 routeName: 'address_change_prompt',
-                reply: `Koi masla nahi Ji! Naya address kya rakhna chahenge? Baraye meherbani apna naya mukammal delivery address (ya WhatsApp Location Pin) yahan likh kar bhej dein taake hum update kar dein! 📍`,
+                reply: `Koi masla nahi ${currDetails?.name ? currDetails.name + ' bhai! ' : 'Ji! '}Delivery kahan karni hai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\n\nAgar pin share nahi kar sakte, to apna *mukammal address* (House/Street/Phase) likhein, ya qareeb ka koi mashhoor *Landmark* bata dein!`,
             };
         } catch (_) {}
     }
@@ -5703,7 +5708,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_phone_confirmed',
-                    reply: `Shukriya *${details.name}*! Rabtay ke liye number (*${displayPhone}*) confirm ho gaya hai. 📞\n\nAb delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein! 📍`,
+                    reply: `Shukriya *${details.name}*! Rabtay ke liye number (*${displayPhone}*) confirm ho gaya hai. 📞\n\nAb delivery kahan karni hai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!`,
                 };
             }
 
@@ -5711,7 +5716,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'awaiting_address_prompt',
-                    reply: `Ji *${details.name}*! Delivery kahan karni hai? Baraye meherbani apna mukammal delivery address (ya WhatsApp location pin) bhej dein 📍`,
+                    reply: `Ji *${details.name}*! Delivery kahan karni hai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!`,
                 };
             }
 
