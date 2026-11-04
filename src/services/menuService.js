@@ -300,6 +300,10 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     rawItemQ = rawItemQ.replace(/^(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
     // Also strip trailing ordering verbs
     rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
+    // Also strip trailing discrete item quantities (e.g. snackbox 1 -> snackbox)
+    if (!/\b(?:deal|meal)\b/i.test(rawItemQ)) {
+        rawItemQ = rawItemQ.replace(/\s+(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))$/i, '').trim();
+    }
     const cleanQ = rawItemQ;
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
     // Directive: Unsupported cuisines (e.g. biryani, pulao, karahi, sushi, pasta) fail-closed as NOT_FOUND
@@ -465,6 +469,12 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isCheeseLover = /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(cleanQ) || (strippedQ && /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(strippedQ));
     const isTandori = /\b(?:tandoori|tandori)\b/i.test(cleanQ) || (strippedQ && /\b(?:tandoori|tandori)\b/i.test(strippedQ));
     const isExtreme = /\b(?:chicken\s*extreme|extrme)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*extreme|extrme)\b/i.test(strippedQ));
+    const isSnackBox = /\b(?:snack\s*box|snackbox|snak\s*box|junior\s*chicken|junior\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:snack\s*box|snackbox|snak\s*box|junior\s*chicken|junior\s*box)\b/i.test(strippedQ));
+    const isHappyBox = /\b(?:happy\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:happy\s*box)\b/i.test(strippedQ));
+    const isQuarterBox = /\b(?:quarter\s*box|quater\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:quarter\s*box|quater\s*box)\b/i.test(strippedQ));
+    const isHalfBox = /\b(?:half\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:half\s*box)\b/i.test(strippedQ));
+    const isFullBox = /\b(?:full\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:full\s*box)\b/i.test(strippedQ));
+    const isChickenPiece = /\b(?:chicken\s*piece|chkn\s*piece|piece\s*chicken)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*piece|chkn\s*piece|piece\s*chicken)\b/i.test(strippedQ));
 
     let aliasTargetItem = null;
     if (isRegularFries) {
@@ -499,6 +509,18 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-tandori' || /chicken\s*tandori/i.test(i.name));
     } else if (isExtreme && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-extreme' || /chicken\s*extreme/i.test(i.name));
+    } else if (isSnackBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'junior-chicken' || /junior\s*chicken/i.test(i.name)) || allItems.find(i => /happy\s*box/i.test(i.name));
+    } else if (isHappyBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'happy-box' || /happy\s*box/i.test(i.name));
+    } else if (isQuarterBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'quarter-box' || /quarter\s*box/i.test(i.name));
+    } else if (isHalfBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'half-box' || /half\s*box/i.test(i.name));
+    } else if (isFullBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'full-box' || /full\s*box/i.test(i.name));
+    } else if (isChickenPiece && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+        aliasTargetItem = allItems.find(i => i.slug === 'chicken-piece' || /chicken\s*piece/i.test(i.name));
     }
 
     if (aliasTargetItem) {

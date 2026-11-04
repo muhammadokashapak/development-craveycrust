@@ -487,15 +487,19 @@ export async function handleCustomerMessage({
             case 'ADD_ITEM': {
                 const query = entities.product_name || context.referenced_entity?.name || resolvedText;
                 const resolved = await resolveMenuItemOrDeal(query, restId);
-                if (resolved && resolved.type === 'deal') {
+                const isDeal = resolved && (resolved.type === 'DEAL' || resolved.type === 'deal' || Boolean(resolved.deal));
+                const isItem = resolved && (resolved.type === 'ITEM' || resolved.type === 'item' || resolved.type === 'MENU_ITEM' || resolved.type === 'menu_item' || Boolean(resolved.item));
+
+                if (isDeal) {
+                    const dealObj = resolved.deal;
                     // Check pizza deal flavours
-                    if (isPizzaDeal(resolved.deal)) {
-                        const pizzaInfo = getDealPizzaInfo(resolved.deal);
+                    if (isPizzaDeal(dealObj)) {
+                        const pizzaInfo = getDealPizzaInfo(dealObj);
                         const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.allowedFlavours);
                         if (extractedFlavours.length < pizzaInfo.pizzaCount) {
                             setPendingDealFlavour(canonicalKey, {
-                                dealId: resolved.deal.id,
-                                dealName: resolved.deal.name,
+                                dealId: dealObj.id,
+                                dealName: dealObj.name,
                                 pizzaCount: pizzaInfo.pizzaCount,
                                 allowedFlavours: pizzaInfo.allowedFlavours,
                                 selectedFlavours: extractedFlavours,
@@ -509,36 +513,37 @@ export async function handleCustomerMessage({
                         restaurantId: restId,
                         chatId: jid,
                         verifiedPhone: whatsappPhone,
-                        dealId: resolved.deal.id,
+                        dealId: dealObj.id,
                         quantity: entities.quantity || 1,
                     });
                     const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
                     backendReply = RESPONSE_TEMPLATES.itemAdded({
-                        itemName: resolved.deal.name,
+                        itemName: dealObj.name,
                         quantity: entities.quantity || 1,
-                        price: resolved.deal.deal_price,
+                        price: dealObj.deal_price,
                         nextStepPrompt: nextPrompt,
                     });
-                } else if (resolved && resolved.type === 'menu_item') {
+                } else if (isItem) {
+                    const itemObj = resolved.item;
                     let chosenVariant = null;
-                    if ((resolved.item.variants || []).length > 0) {
-                        chosenVariant = matchVariant(resolved.item.variants, entities.size || resolvedText) || resolved.item.variants[0];
+                    if ((itemObj.variants || []).length > 0) {
+                        chosenVariant = matchVariant(itemObj.variants, entities.size || resolvedText) || itemObj.variants[0];
                     }
                     await addItemToCart({
                         sessionKey: canonicalKey,
                         restaurantId: restId,
                         chatId: jid,
                         verifiedPhone: whatsappPhone,
-                        menuItemId: resolved.item.id,
+                        menuItemId: itemObj.id,
                         variantId: chosenVariant?.id,
                         quantity: entities.quantity || 1,
                     });
                     const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
                     backendReply = RESPONSE_TEMPLATES.itemAdded({
-                        itemName: resolved.item.name,
+                        itemName: itemObj.name,
                         quantity: entities.quantity || 1,
                         size: chosenVariant?.name,
-                        price: chosenVariant?.price || resolved.item.base_price,
+                        price: chosenVariant?.price || itemObj.base_price,
                         nextStepPrompt: nextPrompt,
                     });
                 } else {
