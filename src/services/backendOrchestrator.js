@@ -517,7 +517,7 @@ export async function handleCustomerMessage({
                         dealId: dealObj.id,
                         quantity: entities.quantity || 1,
                     });
-                    const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
+                    const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
                     backendReply = RESPONSE_TEMPLATES.itemAdded({
                         itemName: dealObj.name,
                         quantity: entities.quantity || 1,
@@ -539,7 +539,7 @@ export async function handleCustomerMessage({
                         variantId: chosenVariant?.id,
                         quantity: entities.quantity || 1,
                     });
-                    const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
+                    const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
                     backendReply = RESPONSE_TEMPLATES.itemAdded({
                         itemName: itemObj.name,
                         quantity: entities.quantity || 1,
@@ -548,9 +548,10 @@ export async function handleCustomerMessage({
                         nextStepPrompt: nextPrompt,
                     });
                 } else {
-                    backendReply = RESPONSE_TEMPLATES.clarification({
-                        reason: `Maazrat! "${query}" hamare menu mein daryaft nahi ho saka. Baraye meherbani menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likhein.`,
-                    });
+                    let cleanItemName = (query || '').replace(/\b(?:chiye|chahiye|mangwana|daal\s*do|add|kardo|krdo|mujay|mujhe|me|kar\s*do|bhai|yar|please|plz)\b/gi, '').trim();
+                    cleanItemName = cleanItemName.replace(/^(?:aik|ek|ik|1|2|3|4|5|one|two|do|teen)\s*(?:x\s+)?/i, '').trim();
+                    if (!cleanItemName) cleanItemName = query;
+                    backendReply = RESPONSE_TEMPLATES.itemNotInMenu({ itemName: cleanItemName });
                 }
                 break;
             }
@@ -708,14 +709,59 @@ export async function handleCustomerMessage({
                 break;
             }
 
+            case 'MENU_QUERY':
+            case 'PRODUCT_QUERY':
+            case 'PRICE_QUERY': {
+                const isCheapest = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|kam\s*(?:rate|price|qeemat|pese|paise)|low\s*(?:level|price|rate))\b/i.test(resolvedText);
+                const isBest = /\b(?:best|famous|mashhoor|top|special|top-selling|favorite|favourite|sab\s*se\s*acha|sb\s*se\s*acha|achi|achha|zabardast|recommend|recommendation)\b/i.test(resolvedText);
+                const isZinger = /\b(?:zinger|zingr)\b/i.test(resolvedText);
+                const isBurger = !isZinger && /\b(?:burger|burgers)\b/i.test(resolvedText);
+                const isPizza = /\b(?:pi[z]+as?)\b/i.test(resolvedText);
+
+                if (isCheapest) {
+                    backendReply = RESPONSE_TEMPLATES.cheapestItemsList();
+                } else if (isBest) {
+                    backendReply = RESPONSE_TEMPLATES.bestItemsList();
+                } else if (isZinger) {
+                    backendReply = RESPONSE_TEMPLATES.zingerOptionsList();
+                } else if (isBurger) {
+                    backendReply = RESPONSE_TEMPLATES.burgerOptionsList();
+                } else if (isPizza) {
+                    backendReply = RESPONSE_TEMPLATES.pizzaFlavoursList();
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
+                }
+                break;
+            }
+
             case 'GREETING': {
                 backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
                 break;
             }
 
             default: {
-                if (hasCartItems && !sessionDetails.name) {
+                const isZinger = /\b(?:zinger|zingr)\b/i.test(resolvedText);
+                const isBurger = !isZinger && /\b(?:burger|burgers)\b/i.test(resolvedText);
+                const isPizza = /\b(?:pi[z]+as?)\b/i.test(resolvedText);
+                const isCheapest = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|kam\s*(?:rate|price|qeemat|pese|paise)|low\s*(?:level|price|rate))\b/i.test(resolvedText);
+                const isBest = /\b(?:best|famous|mashhoor|top|special|top-selling|favorite|favourite|sab\s*se\s*acha|sb\s*se\s*acha|achi|achha|zabardast|recommend|recommendation)\b/i.test(resolvedText);
+                const isAskingProductOrMenu = isZinger || isBurger || isPizza || isCheapest || isBest ||
+                    /\b(?:wings|fries|deal|deals|menu|khana|item|items|price|rate|options|batao|btao|batoo|kon|konsa|konse)\b/i.test(resolvedText);
+
+                if (isCheapest) {
+                    backendReply = RESPONSE_TEMPLATES.cheapestItemsList();
+                } else if (isBest) {
+                    backendReply = RESPONSE_TEMPLATES.bestItemsList();
+                } else if (isZinger) {
+                    backendReply = RESPONSE_TEMPLATES.zingerOptionsList();
+                } else if (isBurger) {
+                    backendReply = RESPONSE_TEMPLATES.burgerOptionsList();
+                } else if (isPizza) {
+                    backendReply = RESPONSE_TEMPLATES.pizzaFlavoursList();
+                } else if (hasCartItems && sessionDetails.awaitingFinalConfirmation && !sessionDetails.name) {
                     backendReply = RESPONSE_TEMPLATES.namePrompt();
+                } else if (hasCartItems && !sessionDetails.name && !isAskingProductOrMenu) {
+                    backendReply = 'Zabardast! Cart mein items shamil hain. Kya aap is order ko confirm/finalize karna chahte hain ya mazeed kuch add karoon? 😊';
                 } else if (hasCartItems && !sessionDetails.phoneConfirmed) {
                     backendReply = RESPONSE_TEMPLATES.phonePrompt({ name: sessionDetails.name, displayPhone: sessionDetails.phone });
                 } else if (hasCartItems && !sessionDetails.address) {

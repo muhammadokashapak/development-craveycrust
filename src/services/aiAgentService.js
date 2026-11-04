@@ -2273,7 +2273,8 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 1 (CUSTOMER NAME).
 - Customer ka cart active hai lekin Naam missing hai.
-- Aap ko is turn mein SIRF AUR SIRF Customer ka Naam poochna hai: "Order finalize karne ke liye baraye meherbani pehle apna *Naam* bata dein? 😊".
+- IMPORTANT RULE: Agar customer kisi item, burger, pizza, deal ya menu ke baare mein sawaal pooche (jaise "kon kon sa zinger hain", "burgers kon se hain", "pizza name batao"), to PEHLE unke sawaal ka tafseeli jawab dein! ZIDDI BAN KAR baar baar Naam MAT maangein!
+- Sirf tab Naam poochein jab customer item add kar chuka ho aur mazeed kuch na poocha ho ya order finalize karne ka kahe: "Order finalize karne ke liye baraye meherbani apna *Naam* bata dein? 😊".
 - SAKHT MANA: Phone number, Delivery address, ya Payment method is message mein BILKUL MAT POOCHEIN! Ek waqt mein sirf ek sawaal!`;
         } else if (!updatedDetails.phoneConfirmed) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:

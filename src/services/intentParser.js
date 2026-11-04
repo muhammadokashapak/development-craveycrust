@@ -596,6 +596,16 @@ export async function getNextCheckoutStepResponse({
 
     // STEP 1: Customer Name
     if (!details.name) {
+        if (introMessage && !details.checkoutRequested && !details.awaitingFinalConfirmation && !details.address && !details.location) {
+            return {
+                handled: true,
+                routeName: 'step_item_added_ask_confirm',
+                step: 'CART',
+                reply: `${introMessage}\n\n` +
+                    `Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊\n` +
+                    `_(Order finalize karne ke liye "Confirm" ya "Checkout" likhein)_`,
+            };
+        }
         return {
             handled: true,
             routeName: 'step_name_needed',
@@ -1300,6 +1310,40 @@ export class DeterministicIntentProvider {
                         itemQuery: cleanedItem,
                     },
                     confidence: 0.92,
+                };
+            }
+        }
+
+        // Add item Pattern A3: Item order request with verbs like "chahiye", "chiye", "mangwana", "bhej do", "kar do"
+        // e.g. "Anda wla burger chiye mujay", "mujhe beef burger chahiye", "fish burger kar do"
+        const orderRequestMatch = lower.match(/^(?:mujhe|mujay|mjhe|mjy|humein|humay|bhai)?\s*(?:(\d+|ek|aik|ik|do|teen|char|panch)\s*(?:x\s+)?)?(.+?)\s+(?:chahiye|chaiye|chahye|chahey|chahein|chiye|chye|cheye|mangwa\s*do|mangwao|bhej\s*do|daal\s*do|kar\s*do|kr\s*do|dedo|de\s*do)\s*(?:mujay|mujhe|mjhe|mjy|humein|humay|bhai|yar|plz|please)*[\s.!?]*$/i);
+        if (orderRequestMatch && orderRequestMatch[2].trim().length > 1) {
+            const potentialItem = orderRequestMatch[2].trim();
+            const isNonItem = /^(?:menu|deals?|discounts?|offer|offers|location|address|timing|timings|bill|total|status|help|madad|rabta|contact|rider|rider\s*number|phone\s*number)$/i.test(potentialItem);
+            if (!isNonItem) {
+                return {
+                    intent: 'ADD_ITEM',
+                    entities: {
+                        quantity: parseAnyQty(orderRequestMatch[1]),
+                        itemQuery: potentialItem,
+                    },
+                    confidence: 0.93,
+                };
+            }
+        }
+
+        const leadingOrderRequestMatch = lower.match(/^(?:mujhe|mujay|mjhe|mjy|humein|humay)\s+(?:(\d+|ek|aik|ik|do|teen|char|panch)\s*(?:x\s+)?)?(.+?)(?:\s+(?:chahiye|chaiye|chahye|chahey|chahein|chiye|chye|cheye))?[\s.!?]*$/i);
+        if (leadingOrderRequestMatch && leadingOrderRequestMatch[2].trim().length > 1) {
+            const potentialItem = leadingOrderRequestMatch[2].trim();
+            const isNonItem = /^(?:menu|deals?|discounts?|offer|offers|location|address|timing|timings|bill|total|status|help|madad|rabta|contact|rider|rider\s*number|phone\s*number)$/i.test(potentialItem);
+            if (!isNonItem) {
+                return {
+                    intent: 'ADD_ITEM',
+                    entities: {
+                        quantity: parseAnyQty(leadingOrderRequestMatch[1]),
+                        itemQuery: potentialItem,
+                    },
+                    confidence: 0.93,
                 };
             }
         }
@@ -2951,9 +2995,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     reply: 'Aap ka cart abhi khali hai. Pehle menu ya deals dekh kar item add karein!',
                 };
             }
-            const { getSessionOrderDetails } = await import('./sessionService.js');
+            const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const details = getSessionOrderDetails(userSessionId, cleanPhone);
+            details.checkoutRequested = true;
+            updateSessionOrderDetails(userSessionId, { checkoutRequested: true }, cleanPhone);
             return await getNextCheckoutStepResponse({
                 details,
                 whatsappPhone,
@@ -5059,6 +5105,128 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
+    // ── Check Fast Route: Both Menu AND Deals Request (Send Menu completely first, then Deals) ──
+    const isBothMenuAndDeals = (
+        (/\b(?:menu|manu|menue|mainu|card|catalog|catlog|rate\s*list|food\s*list)\b/i.test(lower) && /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lower)) ||
+        /\b(?:menu\s*(?:aur|and|&|\+)\s*deals?|deals?\s*(?:aur|and|&|\+)\s*menu)\b/i.test(lower) ||
+        /\b(?:dono\s*(?:dikhao|dekhao|bhejo|send|share|dein|do|chahiye)|menu\s*bhi\s*aur\s*deals?\s*bhi|deals?\s*bhi\s*aur\s*menu\s*bhi)\b/i.test(lower)
+    ) && !hasCartOrOrderAction;
+
+    if (isBothMenuAndDeals && wordCount <= 16) {
+        try {
+            const cache = await getCatalogCache();
+            const { markMenuSent, markDealsSent } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            if (userSessionId) {
+                markMenuSent(userSessionId, cleanPhone);
+                markDealsSent(userSessionId, cleanPhone);
+            }
+
+            const targetMenuImages = (Array.isArray(cache.menuImageUrls) && cache.menuImageUrls.length > 0)
+                ? cache.menuImageUrls
+                : (cache.menuImageUrl ? [cache.menuImageUrl] : ['assets/menu/cravey_crust_main_menu.png']);
+
+            const targetDealsImages = (Array.isArray(cache.dealsImageUrls) && cache.dealsImageUrls.length > 0)
+                ? cache.dealsImageUrls
+                : (cache.dealsImageUrl ? [cache.dealsImageUrl] : [
+                    'assets/menu/cravey_crust_deals_menu.png',
+                    'assets/menu/cravey_crust_cravey20_deals.png'
+                ]);
+
+            const combinedImages = [...targetMenuImages, ...targetDealsImages];
+
+            if (sock && (chatId || userSessionId)) {
+                const targetJid = chatId || userSessionId;
+                try {
+                    const { sendWhatsAppMediaOrText } = await import('../utils/media.js');
+                    await sendWhatsAppMediaOrText(sock, targetJid, {
+                        imageUrls: targetMenuImages,
+                        text: '📋 *Cravey Crust Menu:*',
+                    });
+                    await new Promise(r => setTimeout(r, 600));
+                    await sendWhatsAppMediaOrText(sock, targetJid, {
+                        imageUrls: targetDealsImages,
+                        text: '🔥 *Cravey Crust Deals:*',
+                    });
+                } catch (_) {}
+            }
+
+            return {
+                handled: true,
+                routeName: 'live_menu_and_deals_both',
+                reply: 'Cravey Crust ka mukammal Menu aur Deals haazir hain! 🍕🍔🔥\n\nPehle menu aur deals check kar lein. Aap ko in mein se kya order karna hai? Bas naam ya deal number bata dein! 😊',
+                imageUrls: combinedImages,
+                imageUrl: combinedImages[0],
+            };
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing both menu and deals request:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Cheapest / Lowest Price Menu Inquiry (Zero Tokens) ──
+    const isCheapestInquiry = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|kam\s*(?:rate|price|qeemat|pese|paise)|low\s*(?:level|price|rate))\b/i.test(lower) &&
+        /\b(?:item|items|cheez|food|burger|pizza|khana|dish|bato|batao|bataiye|dikhao|bhejo|konsa|konsi|konse|hai|h|hy)\b/i.test(lower) &&
+        !hasLeadingOrderQuantity;
+
+    if (isCheapestInquiry && wordCount <= 18) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'cheapest_menu_items',
+            reply: RESPONSE_TEMPLATES.cheapestItemsList(),
+        };
+    }
+
+    // ── Check Fast Route: Best / Most Popular Item Inquiry (Zero Tokens) ──
+    const isBestInquiry = /\b(?:best|famous|mashhoor|top|special|top-selling|favorite|favourite|sab\s*se\s*acha|sb\s*se\s*acha|achi|achha|zabardast|recommend|recommendation)\b/i.test(lower) &&
+        /\b(?:item|items|cheez|food|burger|pizza|deal|khana|dish|bato|batao|bataiye|dikhao|bhejo|konsa|konsi|konse|hai|h|hy)\b/i.test(lower) &&
+        !hasLeadingOrderQuantity;
+
+    if (isBestInquiry && wordCount <= 18) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'best_menu_items',
+            reply: RESPONSE_TEMPLATES.bestItemsList(),
+        };
+    }
+
+    // ── Check Fast Route: Specific Category Questions (Zinger, Burgers, Pizza flavours) ──
+    const isOptionsInquiry = /\b(?:kon|konsa|konse|kon-kon|options|batao|btao|batoo|list|naam|name|h[ae]n|h[ae]i|available|milte|milta|variety|kis\s*kis)\b/i.test(lower);
+
+    // Zinger inquiry: "Apka pass kon kon sa zinger hain", "zinger options", "zinger kon sa hai"
+    const isZingerInquiry = /\b(?:zinger|zingr)\b/i.test(lower) && isOptionsInquiry && !hasLeadingOrderQuantity;
+    if (isZingerInquiry && wordCount <= 16) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'zinger_options_list',
+            reply: RESPONSE_TEMPLATES.zingerOptionsList(),
+        };
+    }
+
+    // Burger inquiry: "Apka pass kon kon sa burgers hain", "burger options"
+    const isBurgerInquiry = !isZingerInquiry && /\b(?:burger|burgers)\b/i.test(lower) && isOptionsInquiry && !hasLeadingOrderQuantity;
+    if (isBurgerInquiry && wordCount <= 16) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'burger_options_list',
+            reply: RESPONSE_TEMPLATES.burgerOptionsList(),
+        };
+    }
+
+    // Pizza flavours inquiry: "Pizza name batoo kon kon sa hain apka", "pizza flavours"
+    const isPizzaFlavoursInquiry = /\b(?:pi[z]+as?)\b/i.test(lower) && (isOptionsInquiry || /\b(?:flavors?|flavours?|variety)\b/i.test(lower)) && !hasLeadingOrderQuantity;
+    if (isPizzaFlavoursInquiry && wordCount <= 16) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'pizza_flavours_list',
+            reply: RESPONSE_TEMPLATES.pizzaFlavoursList(),
+        };
+    }
+
     // ── Direct Picture / Photo / Flyer / Menu Card / PDF Request Route (Zero Tokens) ──
     const isDirectPictureOrPdfRequest =
         /\b(?:pictures?|pics?|photos?|tasweer(?:ein)?|tasveer(?:ein)?|images?|img|flyers?|pamphlets?|brochures?|cards?|pdf|document)\b/i.test(lower) &&
@@ -5514,7 +5682,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const { getActiveCart } = await import('./cartService.js');
                     const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: restId, chatId });
                     if (cart?.items && cart.items.length > 0) {
-                        const isExplicitCatRequest = /\b(?:dikhao|dekhao|bhejo|options|list|menu|category)\b/i.test(lower);
+                        const isExplicitCatRequest = /\b(?:dikhao|dekhao|bhejo|options|list|menu|category|btao|batao|batoo|kon|konsa|konse|kya|kia|apke\s*pas|apka\s*pass|available|hain|hen|naam|name|items?)\b/i.test(lower) || /\b(?:zinger|burger|pizza|wings|fries|pasta|roll|sandwich|deal)s?\b/i.test(lower);
                         if (!isExplicitCatRequest) isActivelyCheckingOut = true;
                     }
                 } catch (_) {}
@@ -5523,7 +5691,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (!isActivelyCheckingOut) {
                 // Strip filler words: me, mai, mei, mein, men, ka, ke, ki, dikhao, bhejo, options, list, items, kya, kia, kay, kon, konse, konsa, sa, se, hain, hen, ha, hai, hy, dekhna, dein, btao, batao, chahiye, menu, flavor, flavour, available
                 const stripped = lower
-                    .replace(/\b(?:me|mai|mei|mein|men|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|kia|kay|kon|konse|konsa|sa|se|hain|hen|ha|hai|hy|dekhna|dein|btao|batao|chahiye|menu|flavor|flavors|flavour|flavours|available)\b/gi, '')
+                    .replace(/\b(?:me|mai|mei|mein|men|ka|ke|ki|dikhao|bhejo|options|list|items?|kya|kia|kay|kon|konse|konsa|sa|se|hain|hen|ha|hai|hy|dekhna|dein|btao|batao|chahiye|chaiye|chahye|chiye|chye|cheye|menu|flavor|flavors|flavour|flavours|available)\b/gi, '')
                     .replace(/[^\w\s]/g, '')
                     .trim();
 
@@ -5594,7 +5762,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
                     // 3. Reverse word match: e.g. text contains category name as whole word
                     // SAKHT GUARD: Do NOT trigger category card if customer is specifying a quantity or ordering food!
-                    const hasOrderSignals = hasCartOrOrderAction || (typeof hasLeadingOrderQuantity !== 'undefined' && hasLeadingOrderQuantity) || hasFoodItemName || /\b(?:chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|daal\s*do|add|order|kar\s*do|kr\s*do|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|dedo|de\s*do)\b/i.test(lower);
+                    const hasOrderSignals = hasCartOrOrderAction || (typeof hasLeadingOrderQuantity !== 'undefined' && hasLeadingOrderQuantity) || hasFoodItemName || /\b(?:chahiye|chaiye|chahye|chahey|chahein|chiye|chye|cheye|mangwao|bhejo|bhej\s*do|daal\s*do|add|order|kar\s*do|kr\s*do|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|dedo|de\s*do)\b/i.test(lower);
                     if (!targetCat && !hasOrderSignals && !hasFoodItemName) {
                         const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         for (const c of allCats) {

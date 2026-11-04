@@ -15,7 +15,8 @@ export const RESPONSE_TEMPLATES = {
         const sizeStr = size ? ` (${size})` : '';
         const priceStr = price ? ` — Rs. ${Number(price).toLocaleString('en-PK')}` : '';
         const base = `Zabardast! *${quantity}x ${itemName}${sizeStr}*${priceStr} cart mein add kar di gayi hai! 🛒`;
-        return nextStepPrompt ? `${base}\n\n${nextStepPrompt}` : base;
+        const prompt = nextStepPrompt || 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+        return `${base}\n\n${prompt}`;
     },
 
     // ── Deal Query / Included Items ──
@@ -172,5 +173,89 @@ export const RESPONSE_TEMPLATES = {
 
     clarification({ reason = 'Baraye meherbani thori wazahat kar dein.' }) {
         return `${reason} 😊\n\nAap menu dekhne ke liye "menu" ya deals ke liye "deals" likh sakte hain.`;
+    },
+
+    // ── Item Not in Menu ──
+    itemNotInMenu({ itemName = null }) {
+        const itemStr = itemName ? `*"${itemName}"*` : 'Yeh item';
+        return `Maazrat! ${itemStr} hamare menu mein available nahi hai. 😔\n\n` +
+            `Hamare pas mazedaar *Crispy Zinger Burgers*, *Cheesy Pizzas*, *Loaded Fries* aur zabardast *Deals* available hain. Aap hamara menu check karke koi doosri cheez order kar sakte hain! 🍕🍔\n\n` +
+            `• Mukammal menu dekhne ke liye *"menu"* likhein.\n` +
+            `• Deals dekhne ke liye *"deals"* likhein.`;
+    },
+
+    // ── Cheapest / Lowest Price Items ──
+    cheapestItemsList() {
+        return `Hamare menu mein sab se low price aur sasti items yeh hain: 🏷️\n\n` +
+            `🥤 *Drinks:*\n` +
+            `• Mineral Water — Rs. 70\n` +
+            `• Soft Drink (Regular) — Rs. 110\n\n` +
+            `🍟 *Starters & Chicken:*\n` +
+            `• 1 Pc Chicken Piece — Rs. 180\n` +
+            `• Regular Fries — Rs. 220\n\n` +
+            `🍔 *Burgers:*\n` +
+            `• Zegy Burger — Rs. 399\n` +
+            `• Crispy Zinger Burger — Rs. 499\n\n` +
+            `🍕 *Pizzas & Deals:*\n` +
+            `• Classic Pizza (Small) — Rs. 599\n` +
+            `• Pizza Meal For 1 / Burger Meal For 1 — Rs. 599\n\n` +
+            `In mein se aap ke liye kya add karoon? 😊`;
+    },
+
+    // ── Best / Most Popular Items ──
+    bestItemsList() {
+        return `Cravey Crust ki sab se best aur customer-favorite items yeh hain: 🔥🍕\n\n` +
+            `🍔 *Crispy Zinger Burger (Rs. 499):*\n` +
+            `Hamara signature crunchy chicken fillet burger — sab se zyada pasand kiya jane wala!\n\n` +
+            `🍕 *Chicken Supreme & Peri Peri Pizza:*\n` +
+            `Rich chicken chunks, black olives, veggies aur extra melted cheese se bharpoor top-rated pizza! (Small Rs. 599/699, Medium Rs. 1,199/1,399)\n\n` +
+            `🎁 *Zinger Deals (1 to 4):*\n` +
+            `Crispy zinger burgers aur chilled soft drink ka best value combo (Rs. 950 se Rs. 2,150 tak)!\n\n` +
+            `🍟 *Loaded Fries (Rs. 699):*\n` +
+            `Crispy fries topped with chicken chunks, cheese aur secret sauces!\n\n` +
+            `In mein se aap ke liye kaunsi item add karoon? 😊`;
+    },
+
+    // ── Zinger Options ──
+    zingerOptionsList() {
+        return `Cravey Crust ke pas zinger aur burgers mein yeh mazedaar options hain: 🍔🔥\n\n` +
+            `• *Crispy Zinger Burger* — Crunchy chicken fillet with secret mayo (Rs. 499)\n` +
+            `• *Zegy Burger* — Crispy fried patty burger (Rs. 399)\n` +
+            `• *Chicken Burger* — Classic tender chicken burger (Rs. 499)\n\n` +
+            `🔥 *Zinger Combo Deals:*\n` +
+            `• *Zinger Deal 1:* 2x Zinger Burger + 1 Litre Drink — Rs. 950\n` +
+            `• *Zinger Deal 2:* 3x Zinger Burger + 1 Litre Drink — Rs. 1,350\n` +
+            `• *Zinger Deal 3:* 4x Zinger Burger + 1 Litre Drink — Rs. 1,750\n` +
+            `• *Zinger Deal 4:* 5x Zinger Burger + 1 Litre Drink — Rs. 2,150\n\n` +
+            `Aap ke liye kaunsa zinger burger ya deal add karoon? 😊`;
+    },
+
+    // ── Burger Options ──
+    burgerOptionsList() {
+        return `Cravey Crust ke pas burgers ki yeh variety available hai: 🍔\n\n` +
+            `• *Zegy Burger* — Rs. 399\n` +
+            `• *Chicken Burger* — Rs. 499\n` +
+            `• *Crispy Zinger Burger* — Rs. 499\n` +
+            `• *Burger Meal For 1* (1x Burger + Fries + Drink) — Rs. 599\n` +
+            `• *Burger Meal For 2* (2x Burger + Fries + Drink) — Rs. 999\n` +
+            `• *Burger Meal For 3* (3x Burger + Fries + Drink) — Rs. 1,599\n\n` +
+            `In mein se kaunsa burger aap ke liye cart mein add karoon? 😊`;
+    },
+
+    // ── Pizza Flavours ──
+    pizzaFlavoursList() {
+        return `Cravey Crust ke mazedaar pizza flavours yeh hain: 🍕🔥\n\n` +
+            `⭐ *Classic Flavours (Small Rs. 599 | Medium Rs. 1,299 | Large Rs. 1,499 | Party Rs. 2,599):*\n` +
+            `• *Chicken Tikka:* Traditional spicy BBQ tikka chunks with onions & cheese\n` +
+            `• *Chicken Fajita:* Mexican marinated chicken with bell peppers & onions\n` +
+            `• *Chicken Supreme:* Loaded with chicken, black olives, mushrooms & peppers\n` +
+            `• *Chicken Tandori:* Aromatic tandoori chicken chunks\n` +
+            `• *Cheese Lover:* Loaded 100% pure melted mozzarella cheese\n\n` +
+            `👑 *Premium Flavours (Small Rs. 699 | Medium Rs. 1,399 | Large Rs. 1,799 | Party Rs. 2,799):*\n` +
+            `• *Chicken Extreme:* Extra spiced chunks with rich toppings\n` +
+            `• *Peri Peri Pizza:* Tangy spicy peri peri sauce with grilled chicken\n` +
+            `• *Behari Kebab Pizza:* Tender seekh kebab chunks with signature sauce\n` +
+            `• *Crown Crust:* Stuffed crown edges with mouthwatering toppings\n\n` +
+            `Kaunsa pizza flavour aur size aap ke liye ready karoon? 😊`;
     },
 };

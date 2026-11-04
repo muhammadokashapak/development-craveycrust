@@ -307,7 +307,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const cleanQ = rawItemQ;
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
     // Directive: Unsupported cuisines (e.g. biryani, pulao, karahi, sushi, pasta) fail-closed as NOT_FOUND
-    const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|pasta|daal|roti|naan|saag)\b/i;
+    const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|pasta|daal|roti|naan|saag|anda|egg|shami|chapli|beef|fish|mutton|qeema)\b/i;
     if (UNSUPPORTED_CUISINES.test(cleanQ)) {
         return { match: null, status: 'NOT_FOUND', message: 'Cravey Crust sirf pizzas, burgers, fries aur drinks offer karta hai.' };
     }
