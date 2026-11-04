@@ -24,6 +24,8 @@ export const ORDER_STAGES = {
     AWAITING_CONFIRMATION: 'AWAITING_CONFIRMATION',
     ORDER_PROCESSING: 'ORDER_PROCESSING',
     ORDER_CONFIRMED: 'ORDER_CONFIRMED',
+    ORDER_FAILED: 'ORDER_FAILED',
+    CANCELLED: 'CANCELLED',
 };
 
 // Backwards compatibility with legacy state references
@@ -39,6 +41,8 @@ export const CHECKOUT_STATES = {
     CUSTOMER_CONFIRMATION: 'AWAITING_CONFIRMATION',
     ORDER_CREATION: 'ORDER_PROCESSING',
     ORDER_CONFIRMED: 'ORDER_CONFIRMED',
+    ORDER_FAILED: 'ORDER_FAILED',
+    CANCELLED: 'CANCELLED',
 };
 
 const DUMMY_NAMES_REGEX = /^(customer|user|guest|none|\.|anonymous|client|bhai|sir|hlo|helo|hi|hello|haan|han|ji|g|yes|ok|okay|theek|done|cod|easypaisa|confirm|final)$/i;
@@ -46,6 +50,7 @@ const DUMMY_NAMES_REGEX = /^(customer|user|guest|none|\.|anonymous|client|bhai|s
 // ─── Confirmation Lock & Snapshot Store (In-Memory Single Source of Truth) ───
 const _confirmationLocks = new Map(); // sessionKey -> timestamp
 const _orderSnapshots = new Map();    // sessionKey -> snapshot object
+const _orderFailures = new Map();     // sessionKey -> failure object
 const LOCK_TIMEOUT_MS = 30000;         // 30-second atomic lock TTL
 
 /**
@@ -117,6 +122,42 @@ export function getOrderSummarySnapshot(sessionKey) {
  * Clear order snapshot upon completion or modification
  * @param {string} sessionKey
  */
+
+/**
+ * Record order failure for recovery
+ * @param {string} sessionKey
+ * @param {string} reason
+ * @param {object} [snapshot]
+ */
+export function setOrderFailure(sessionKey, reason, snapshot = null) {
+    if (sessionKey) {
+        _orderFailures.set(sessionKey, {
+            reason: reason || 'Unknown error',
+            failedAt: Date.now(),
+            snapshot,
+        });
+    }
+}
+
+/**
+ * Retrieve saved order failure info
+ * @param {string} sessionKey
+ * @returns {object|null}
+ */
+export function getOrderFailure(sessionKey) {
+    return sessionKey ? (_orderFailures.get(sessionKey) || null) : null;
+}
+
+/**
+ * Clear saved order failure info upon recovery
+ * @param {string} sessionKey
+ */
+export function clearOrderFailure(sessionKey) {
+    if (sessionKey) {
+        _orderFailures.delete(sessionKey);
+    }
+}
+
 export function clearOrderSummarySnapshot(sessionKey) {
     if (sessionKey) {
         _orderSnapshots.delete(sessionKey);
@@ -159,6 +200,17 @@ export function isValidPhoneNumber(phone) {
  * @returns {{ stage: string, currentState: string, nextAction: string, prompt: string, canProceedToOrder: boolean }}
  */
 export function evaluateCheckoutState({ cart, details, totals, confirmIntent = false }) {
+    // 0. ORDER_FAILED (Recoverable checkout state)
+    if (details?.orderStage === ORDER_STAGES.ORDER_FAILED && cart?.items && cart.items.length > 0) {
+        return {
+            stage: ORDER_STAGES.ORDER_FAILED,
+            currentState: 'ORDER_FAILED',
+            nextAction: 'RETRY_CONFIRMATION',
+            prompt: 'Pichla order process nahi ho saka tha. Cart mehfooz hai. Order confirm karne ke liye "Haan" ya "Confirm" likhein.',
+            canProceedToOrder: confirmIntent,
+        };
+    }
+
     // 1. CART_BUILDING
     if (!cart?.items || cart.items.length === 0) {
         return {

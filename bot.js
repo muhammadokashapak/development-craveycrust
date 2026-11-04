@@ -1426,14 +1426,7 @@ async function handleMessage(sock, msg, session) {
     const isGroup = jid.endsWith('@g.us');
     let isVoiceNote = false;
 
-    // Suppress rapid identical text messages from same user (catches network re-sends / accidental double taps)
-    if (!isFromMe && !isGroup && typeof text === 'string' && text.trim().length > 0) {
-        const userDedupeKey = jid || sender;
-        if (isDuplicateUserText(userDedupeKey, text)) {
-            console.log(`[BOT] Suppressing rapid duplicate text message from ${userDedupeKey}: "${text.slice(0, 30)}"`);
-            return;
-        }
-    }
+    // Note: Deduplication is strictly handled via WhatsApp messageId (global.processedMessages). User text repetition (e.g. "han", "menu") is permitted.
 
     // ─── Voice Note (Audio / PTT) Handling (Disabled — Admin Handover) ─────────
     const extractedAudio = extractMediaMessage(msg.message);

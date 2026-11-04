@@ -6,7 +6,7 @@ import { getActiveCart } from './cartService.js';
 import { calculatePricing } from './pricingService.js';
 import { generateOrderNumber } from './orderNumberService.js';
 import { broadcastOrderEvent } from './realtimeService.js';
-import { updateSessionStage } from './sessionService.js';
+import { getOrCreateSession, updateSessionStage } from './sessionService.js';
 import { sendAdminNewOrderNotification, sendCustomerOrderStatusNotification, sendCancellationNotification } from './whatsappNotificationService.js';
 import { updateCustomerNameForChat } from './chatService.js';
 
@@ -45,6 +45,49 @@ export function getLatestInMemoryOrder({ sessionKey, phone, chatId } = {}) {
 /**
  * Create a new order with atomic Prisma transaction and idempotency protection
  */
+
+/**
+ * Retrieve recent confirmed order for session, phone or chat within a time window
+ */
+export async function getRecentOrderBySessionOrPhone({ sessionKey, phone, chatId, restaurantId, maxAgeMinutes = 15 } = {}) {
+    const prisma = getDbClient();
+    const cleanPhone = phone ? String(phone).replace(/\D/g, '') : null;
+    const since = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
+
+    if (prisma) {
+        try {
+            const orConditions = [];
+            if (sessionKey) orConditions.push({ source_session_id: sessionKey });
+            if (chatId) orConditions.push({ source_chat_id: chatId });
+            if (cleanPhone) {
+                orConditions.push({ phone: cleanPhone });
+                orConditions.push({ whatsapp_phone: cleanPhone });
+            }
+            if (orConditions.length > 0) {
+                const order = await prisma.order.findFirst({
+                    where: {
+                        created_at: { gte: since },
+                        OR: orConditions,
+                    },
+                    orderBy: { created_at: 'desc' },
+                    include: { order_items: true, customer: true },
+                });
+                if (order) return order;
+            }
+        } catch (_) {}
+    }
+
+    // In-memory fallback
+    const memOrder = getLatestInMemoryOrder({ sessionKey, phone: cleanPhone, chatId });
+    if (memOrder) {
+        const orderTime = new Date(memOrder.createdAt || memOrder.created_at || Date.now()).getTime();
+        if (Date.now() - orderTime <= maxAgeMinutes * 60 * 1000) {
+            return memOrder;
+        }
+    }
+    return null;
+}
+
 export async function createOrder(params) {
     const prisma = getDbClient();
     const {
@@ -81,6 +124,19 @@ export async function createOrder(params) {
         }
         const cart = await getActiveCart({ sessionKey, restaurantId: restId });
         if (!cart.items || cart.items.length === 0) {
+            const recentOrder = await getRecentOrderBySessionOrPhone({
+                sessionKey,
+                phone: phone || confirmationPhone,
+                maxAgeMinutes: 15,
+            });
+            if (recentOrder) {
+                return {
+                    status: 'ORDER_EXISTS',
+                    success: true,
+                    isDuplicate: true,
+                    order: recentOrder,
+                };
+            }
             const err = new Error('Cannot create order from an empty cart');
             err.code = 'CART_EMPTY';
             throw err;
@@ -208,6 +264,7 @@ export async function createOrder(params) {
 
         return {
             status: 'ORDER_CREATED',
+            success: true,
             isDuplicate: false,
             order: fullOrder,
         };
@@ -619,7 +676,8 @@ export async function createOrder(params) {
 
     return {
         status: 'ORDER_CREATED',
-        isDuplicate: false,
+            success: true,
+            isDuplicate: false,
         order: fullOrder,
     };
 }

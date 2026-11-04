@@ -55,7 +55,7 @@ import {
 } from './cartService.js';
 import { resolveMenuItemOrDeal, getActiveDeals, getActiveMenu } from './menuService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
-import { createOrder } from './orderService.js';
+import { createOrder, getLatestInMemoryOrder } from './orderService.js';
 import { isChatMuted } from './handoverService.js';
 import { interpretCustomerContext } from './aiContextInterpreter.js';
 import { RESPONSE_TEMPLATES } from './responseTemplates.js';
@@ -270,7 +270,7 @@ export async function handleCustomerMessage({
             sessionDetails.phoneConfirmed = true;
         }
         if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
-            const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yeh\s*hai|ye\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai)?[\s.!?]*$/i.test(resolvedText.trim()) ||
+            const isAffirmativePhone = /^(?:(?:han|haan|ha|hn|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yeh\s*hai|ye\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai)?[\s.!?]*$/i.test(resolvedText.trim()) ||
                 /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(resolvedText.trim()) ||
                 /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(resolvedText.trim()) ||
                 /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(resolvedText.trim());

@@ -210,8 +210,12 @@ export function cleanExtractedAddress(text) {
         }
     }
 
-    // 1. Strip leading greetings and honorifics (e.g. "bhai", "aoa", "salam", "ustaad")
-    cleaned = cleaned.replace(/^(?:aoa|assalam\s*o?\s*alaikum|salam|helo|hello|hi|hey|suno|oye)?\s*(?:bhai\s*jan|bhaiya|bhai|yaar|yar|bro|janab|paji|ustaad|sir|boss)?\s*/i, '');
+        // 1. Strip leading affirmative particles, greetings, and honorifics iteratively
+    let prevLead;
+    do {
+        prevLead = cleaned;
+        cleaned = cleaned.replace(/^(?:(?:haa?n?|hn|jee?|ji|g|yes|ok|okay|theek(?:\s*hai)?|bilkul|aoa|assalam\s*o?\s*alaikum|salam|helo|hello|hi|hey|suno|oye|bhai\s*jan|bhaiya|bhai|yaar|yar|bro|janab|paji|ustaad|sir|boss)\s+)+/i, '');
+    } while (cleaned !== prevLead);
 
     // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:", "pichly order ka address", etc.
     cleaned = cleaned.replace(/^(?:pichl[ae]y?|puran[ae]y?|last|previous|confirmed?)(?:\s+wal[ae]y?)?\s*(?:order|oder)?\s*(?:ka|mein|me|mai|pe|par|per)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)?\s*(?:badal\s*k[e]?|change\s*k[e]?|update\s*k[e]?|rakh\s*k[e]?|kar\s*k[e]?|kr\s*k[e]?)?\s*[:=-]?\s*/i, ' ');
@@ -1576,7 +1580,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         hasFoodItemName ||
         /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
         /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|dedo|de\s*do|order\s*karo|order\s*krdo|order\s*dein|order\s*dain)\b/i.test(lower) ||
-        /^(?:add|order)\s+(?:\d+|aik|ek|do|teen|char|paanch|[a-z]+)/i.test(lower) ||
+        /^(?:add|order)\s+(?!show|status|dikhao|dekhao|check|track|kahan|kidhar|kia|kya|details?|info|history|list|confirm|cancel|delete|update|badal)(?:\d+|aik|ek|do|teen|char|paanch|[a-z]+)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower);
 
     // ── 1. Handover / Complaint / Real Person Request ──
@@ -2740,6 +2744,23 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const readyToConfirm = Boolean(details.name && (finalAddress || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
                 const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes|g)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)?|haan|han|ji|g|yes|theek\s*hai|ok)\b/i.test(lower.trim());
                 const isAffirmationEligible = Boolean(details.awaitingFinalConfirmation || details.summaryShown || readyToConfirm);
+                if ((!cart?.items || cart.items.length === 0) && isAffirmationEligible) {
+                    const { getRecentOrderBySessionOrPhone } = await import('./orderService.js');
+                    const recentOrd = await getRecentOrderBySessionOrPhone({
+                        sessionKey: userSessionId,
+                        phone: cleanPhone,
+                        maxAgeMinutes: 15,
+                    });
+                    if (recentOrd) {
+                        const ordNum = recentOrd.order_number || recentOrd.orderNumber;
+                        const customerName = details?.name ? details.name.trim() : 'Customer';
+                        return {
+                            handled: true,
+                            routeName: 'fast_order_already_confirmed',
+                            reply: `Ji ${customerName}! Aap ka order (*#${ordNum}*) pehle hi successfully confirm ho chuka hai aur kitchen mein process ho raha hai! 🎉\n\nOrder Total: Rs. ${Number(recentOrd.total).toLocaleString('en-PK')}\nStatus: ${recentOrd.order_status || 'CONFIRMED'}\n\nHumari team jald se jald aap tak khana pohnchayegi! ❤️`,
+                        };
+                    }
+                }
                 if (cart?.items && cart.items.length > 0 && isAffirmationEligible && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
                     const { acquireConfirmationLock, releaseConfirmationLock } = await import('./checkoutStateMachine.js');
                     if (!acquireConfirmationLock(userSessionId)) {
