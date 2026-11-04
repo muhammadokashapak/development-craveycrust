@@ -85,7 +85,7 @@ export function detectConfirmIntent(text) {
 
 
 // ─── 18 Direct Local Tools Schema (Prompt Context) ─────────────────────────
-const TOOLS_SCHEMA = `
+export const TOOLS_SCHEMA = `
 AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"tool": "<tool_name>", "args": {<args>}}):
 
 1. get_store_info() — Restaurant timings, outlet address, phone, min order.
@@ -95,8 +95,8 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 5. get_current_deals() — Active deals with IDs and prices.
 6. check_delivery_availability(address?: string, areaName?: string, latitude?: number, longitude?: number) — Delivery coverage & fee check.
 7. get_order_status(orderNumber: string) — Track order status for CC-XXXXXX.
-8. get_cart() — View current session cart items.
-9. add_to_cart(itemName?: string, menuItemId?: string, variantId?: string, size?: string, variantName?: string, dealId?: string, quantity?: number, notes?: string, allDeals?: boolean) — Add item or deal to cart. For pizzas/items with sizes, specify size or variantId (e.g. size: "Medium" or "Party Size" or "Large" or "Small"). (Use allDeals: true or itemName: 'all deals' if customer wants all active deals).
+8. get_cart() — View current session cart items, included deal components, current quantities, prices, and totals. This is a READ-ONLY operation and must NEVER modify the cart.
+9. add_to_cart(itemName?: string, menuItemId?: string, variantId?: string, size?: string, variantName?: string, dealId?: string, quantity?: number, notes?: string, allDeals?: boolean) — Add item or deal to cart. CRITICAL: Use ONLY when customer explicitly requests adding a new product or deal. NEVER call this tool when customer is asking a question about existing items or asking what is included in a deal!
 10. update_cart_item(cartItemId: string, quantity: number, notes?: string) — Update quantity or notes.
 11. remove_cart_item(cartItemId: string) — Remove item from cart.
 12. clear_cart() — Clear all items from cart.
@@ -106,8 +106,9 @@ AVAILABLE LOCAL TOOLS (Execute any needed action by responding ONLY with JSON {"
 16. confirm_order_cancellation(orderNumber?: string) — Returns Store Admin contact to process cancellation (Direct bot cancellation disabled).
 17. send_alternate_confirmation(phone: string) — Send notification to alternate phone.
 18. request_human_handover(reason?: string) — Mute bot for 120 minutes and notify manager.
-19. update_order_details(orderNumber?: string, customerName?: string, deliveryAddress?: string, phone?: string, paymentMethod?: string) — Update details (customer name, delivery address, phone, payment method) for an active placed order (PENDING/CONFIRMED/PREPARING).
-20. add_multiple_to_cart(items: Array<{ itemName: string, size?: string, quantity?: number, notes?: string }>) — Add multiple items or deals to cart in one atomic batch. Use this whenever customer requests more than one item in a single message.
+19. update_order_details(orderNumber?: string, customerName?: string, deliveryAddress?: string, phone?: string, paymentMethod?: string) — Update details for an active placed order.
+20. add_multiple_to_cart(items: Array<{ itemName: string, size?: string, quantity?: number, notes?: string }>) — Add multiple items in one batch.
+21. get_deal_details(dealName?: string, dealId?: string) — Retrieve complete deal configuration, included items, drinks, quantities, flavours, and sizes from the authoritative backend. Use when customer asks what is included in a deal.
 
 TOOL CALL FORMAT:
 {"tool": "tool_name", "args": {"param": "value"}}
@@ -202,7 +203,7 @@ async function getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsapp
 // ─── Tool Executor (Direct Local Services) ─────────────────────────────────
 export async function executeTool(toolName, args, context) {
     const { sessionKey, chatId, whatsappPhone, restId, sock, locationData, effectiveText, text: rawText } = context || {};
-    const text = effectiveText || rawText || '';
+    const text = effectiveText || rawText || args?.userMessage || args?.text || '';
     args = args && typeof args === 'object' ? args : {};
 
     // Normalize toolName: handle trim, lowercasing, and camelCase conversion
@@ -302,11 +303,26 @@ export async function executeTool(toolName, args, context) {
 
             // 8. get_cart
             case 'get_cart': {
-                const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                const cart = context?.cart || await getActiveCart({ sessionKey, restaurantId: restId, chatId });
                 if (!cart || !cart.items || cart.items.length === 0) {
-                    return { cartId: null, items: [], itemCount: 0, total: 0, subtotal: 0, discountTotal: 0, message: 'Cart is empty' };
+                    return { cartId: null, items: [], deals: [], itemCount: 0, total: 0, subtotal: 0, discountTotal: 0, message: 'Cart is empty' };
                 }
+                const { formatDealComponents, getDealIncludedDrink, getDealIncludedFries } = await import('./intentRouter.js');
                 const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId }).catch(() => null);
+                const enrichedDeals = (cart.items || []).filter(i => i.deal_id || i.deal).map(i => {
+                    const d = i.deal || {};
+                    return {
+                        id: i.deal_id || d.id,
+                        name: d.name || 'Deal',
+                        quantity: i.quantity,
+                        unitPrice: Number(d.deal_price || 0),
+                        lineTotal: Number(d.deal_price || 0) * i.quantity,
+                        notes: i.notes || '',
+                        includedComponents: formatDealComponents(d),
+                        includedDrink: getDealIncludedDrink(d),
+                        includedFries: getDealIncludedFries(d),
+                    };
+                });
                 if (totals && totals.items) {
                     return {
                         cartId: cart.id,
@@ -321,13 +337,7 @@ export async function executeTool(toolName, args, context) {
                             discountLabel: it.discountLabel,
                             lineTotal: it.lineTotal,
                         })),
-                        deals: (totals.deals || []).map(d => ({
-                            id: d.dealId,
-                            name: d.name,
-                            quantity: d.quantity,
-                            unitPrice: d.unitPrice,
-                            lineTotal: d.lineTotal,
-                        })),
+                        deals: enrichedDeals,
                         subtotal: totals.subtotal,
                         discountTotal: totals.discountTotal,
                         total: totals.total,
@@ -347,11 +357,54 @@ export async function executeTool(toolName, args, context) {
                     };
                 });
                 const cartTotal = items.reduce((s, it) => s + it.subtotal, 0);
-                return { cartId: cart.id, items, itemCount: items.length, total: cartTotal };
+                return { cartId: cart.id, items, deals: enrichedDeals, itemCount: items.length, total: cartTotal };
+            }
+
+            // 21. get_deal_details
+            case 'get_deal_details': {
+                const dealQuery = (args.dealName || args.dealId || '').trim();
+                const deals = await getActiveDeals(restId);
+                let matched = null;
+                if (dealQuery) {
+                    matched = deals.find(d =>
+                        d.id === dealQuery ||
+                        d.slug === dealQuery ||
+                        d.name.toLowerCase().includes(dealQuery.toLowerCase()) ||
+                        dealQuery.toLowerCase().includes(d.name.toLowerCase())
+                    );
+                }
+                if (!matched) {
+                    // Check if current cart has a deal
+                    const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+                    const cartDeal = (cart?.items || []).find(i => i.deal);
+                    if (cartDeal) matched = cartDeal.deal;
+                }
+                if (!matched) {
+                    return { error: 'DEAL_NOT_FOUND', message: 'Deal nahi mili. Deals dekhne ke liye "deals" likhein.' };
+                }
+                const { formatDealComponents, getDealIncludedDrink, getDealIncludedFries } = await import('./intentRouter.js');
+                return {
+                    id: matched.id,
+                    name: matched.name,
+                    price: Number(matched.deal_price),
+                    includedComponents: formatDealComponents(matched),
+                    includedDrink: getDealIncludedDrink(matched),
+                    includedFries: getDealIncludedFries(matched),
+                };
             }
 
             // 9. add_to_cart
             case 'add_to_cart': {
+                // Guard: If customer is asking a question about deal contents or drink inclusion, do NOT call add_to_cart!
+                const isDealQuestion = /\b(?:konsi|kya|kia|included|shamil|already|pehle|hai\s*\?|hain\s*\?)\b/i.test(text) &&
+                    /\b(?:is\s*me|is\s*mein|iss\s*me|iss\s*mein|isme|ismein|deal\s*me|deal\s*mein|soft\s*drink|drink|fries)\b/i.test(text);
+                if (isDealQuestion) {
+                    return {
+                        success: false,
+                        error: 'QUESTION_NOT_ADD_COMMAND (READ-ONLY): Customer deal ke components ya drink ke bare mein pooch raha hai, item add karne ka nahi kaha! add_to_cart call mat karein. get_deal_details ya get_cart use karein.',
+                        suggestedTool: 'get_deal_details',
+                    };
+                }
                 let menuItemId = args.menuItemId;
                 let rawVariant = args.variantId || args.variantName || args.size || args.variant || null;
                 let variantId  = args.variantId;

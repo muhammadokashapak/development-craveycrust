@@ -33,6 +33,18 @@ export { setPendingDealFlavour, getPendingDealFlavour, clearPendingDealFlavour }
 // Session memory for zero-token deal follow-ups
 const _lastDiscussedDealBySession = new Map();
 
+export function getLastDiscussedDeal(sessionKey) {
+    if (!sessionKey) return null;
+    const entry = _lastDiscussedDealBySession.get(sessionKey);
+    return entry?.deal || null;
+}
+
+export function setLastDiscussedDeal(sessionKey, deal) {
+    if (sessionKey && deal) {
+        _lastDiscussedDealBySession.set(sessionKey, { deal, timestamp: Date.now() });
+    }
+}
+
 export function clearLastDiscussedDeal(sessionKey) {
     if (sessionKey) {
         _lastDiscussedDealBySession.delete(sessionKey);
@@ -3202,9 +3214,31 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         };
     }
 
+    // ── Check Fast Route: Contextual Deal / Cart / Inquiry Intent Router (Zero Tokens) ──
+    try {
+        const { handleIntentRouting } = await import('./intentRouter.js');
+        const intentResult = await handleIntentRouting({
+            text: raw,
+            sessionKey: userSessionId,
+            whatsappPhone,
+            chatId,
+            sock,
+        });
+        if (intentResult && intentResult.handled) {
+            return {
+                handled: true,
+                routeName: intentResult.routeName || 'intent_router_handled',
+                reply: intentResult.reply,
+            };
+        }
+    } catch (routeErr) {
+        console.error('[INTENT_ROUTER] Error in fast route handler:', routeErr.message);
+    }
+
     // ── Check Fast Route: Customer asks for Fries without size (Zero Tokens) ──
-    const isFriesWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
-                               (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower));
+    const isQueryOrQuestion = /\b(?:kya|kia|konsi|konsa|konse|which|what|included|shamil|already|pehle|hai\s*\?|hain\s*\?|is\s*me|iss\s*me|is\s*mein|iss\s*mein|isme|ismein|deal\s*me|deal\s*mein|bhi\s*hai|hota\s*hai|hoti\s*hai|milti\s*hai|milta\s*hai|aati\s*hai|aata\s*hai|nahi|nahin|bina|baghair|remove|nikal|hata)\b/i.test(lower) || lower.includes('?');
+    const isFriesWithoutSize = !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
+                               (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower)));
     if (isFriesWithoutSize && userSessionId) {
         const friesItem = {
             id: 'item-1',
@@ -3223,8 +3257,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Drink without size (Zero Tokens) ──
-    const isDrinkWithoutSize = /^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
-                               (/\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower));
+    const isDrinkWithoutSize = !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
+                               (/\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower)));
     if (isDrinkWithoutSize && userSessionId) {
         const drinkItem = {
             id: 'item-34',
