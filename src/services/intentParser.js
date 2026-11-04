@@ -299,17 +299,18 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     // 2. Phone (including phone updates and validation)
     let invalidPhone = null;
     const phoneUpdateMatch = raw.match(/(?:number|numbr|numebr|no|phone|rabta|contact)\s*(?:mera\s+|apna\s+)?(?:badal\s*(?:k\s*|ke\s*)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?|kar\s*(?:do|dein|karo|du)|kr\s*(?:do|dein|kro|du)|rakh\s*(?:do|dein|lo|du)|likh\s*(?:do|dein|lo|du)|(?:\b(?:hai|he|hy|h)\b)|:|=|-|\s+)\s*([+\d\s-]{7,18})/i);
-    const isExplicitSamePhone = /\b(?:(?:same|yahi|yehi|yehe|yhe|wahi|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|hi|bhi|theek|hai|he|hy|h|yar|bhai)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega|rahy\s*ga|rahe\s*ga))?)\b/i.test(lower) ||
-        /\b(?:same|yahi|yehi|yehe|yhe|wahi|isi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do)\b/i.test(lower) ||
-        /\b(?:yehe|yehi|yahi|same|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp)\b/i.test(lower) ||
-        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower);
+    const isExplicitSamePhone = /\b(?:(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp|contact)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakho|rakhein|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|hi|bhi|theek|hai|he|hy|ha|h|yar|bhai)?|num(?:br|ber)?\s*sam(?:e)?(?:\s*(?:ryga|rhega|rahega|rahy\s*ga|rahe\s*ga))?)\b/i.test(lower) ||
+        /\b(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi)\s+(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do)\b/i.test(lower) ||
+        /\b(?:yehe|yehi|yahi|yeh|ye|same|isi)\s*(?:hi\s*)?(?:number|numbr|no|whatsapp)\b/i.test(lower) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(lower) ||
+        /^(?:(?:haa?n|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:yeh|ye|yahi|yehi|yehe|yhe|wahi|isi|same)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai))?[\s.!?]*$/i.test(lower.trim()) ||
+        /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim());
     const isAwaitingPhone = knownDetails.name && !knownDetails.phoneConfirmed;
     const isNegativeSamePhone = isAwaitingPhone && /^(?:ni|nahi|nahin|nhi|nh|na|no|nope|koi\s*(?:bhi\s*)?n(?:ahi|i|hin|h)?(?:\s*krna)?|koi\s*doosra\s*n(?:ahi|i|hin|h)?|koi\s*aur\s*n(?:ahi|i|hin|h)?)[\s.!?]*$/i.test(lower.trim());
     const isContextualSamePhone = isAwaitingPhone && (
         isNegativeSamePhone ||
-        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(lower.trim()) ||
-        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
+        /^(?:haa?n|hn|ji|jee|g|yes|ok|theek\s*(?:hai|hy)?|done|confirm|sahi\s*hai)[\s.!?]*$/i.test(lower.trim()) ||
+        isExplicitSamePhone
     );
 
     if (phoneUpdateMatch) {
@@ -480,10 +481,11 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
                     address = potentialAddr;
                 }
             }
-        } else if (knownDetails.name && (knownDetails.phoneConfirmed || knownDetails.phone) && !knownDetails.address && !paymentMethod && !phone) {
+        } else if (knownDetails.name && knownDetails.phoneConfirmed && !knownDetails.address && !paymentMethod && !phone) {
             // Customer is actively at Step 3 (awaiting delivery address).
             const candidateAddr = cleanExtractedAddress(textForAddr);
-            const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|nahin|nhi|na|no|nope|theek|ok|done|hi|hello|hey|suno|bhai)\b/i.test(lower.trim());
+            const isNotAddress = /^(?:menu|deals?|cancel|khatam|band|nahi|nahin|nhi|na|no|nope|theek|ok|done|hi|hello|hey|suno|bhai)\b/i.test(lower.trim()) ||
+                /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(lower);
             if (candidateAddr && candidateAddr.length >= 3 && candidateAddr.length <= 120 && !isNotAddress) {
                 address = candidateAddr;
             }
@@ -1923,8 +1925,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         const hasDraftCartItems = Boolean(draftCart?.items && draftCart.items.length > 0);
         const hasExplicitOrderNumberInMsg = /(?:#?CC-?\d{1,6}|\border\s*#?\s*\d{1,6}\b)/i.test(lower);
 
-        if (hasDraftCartItems && !hasExplicitOrderNumberInMsg) {
-            // Customer is actively ordering/checking out new food — clear any stale pending update
+        const isFoodOrMenuIntent = /\b(?:deals?|menu|burger|pizza|fries|drink|pepsi|coke|roll|wings|shawarma|half\s*box|box|add|chahiye|mangwana|khao|order\s*karna|kardo|kar\s*do|kr\s*do)\b/i.test(lower) && !/\b(?:update|change|badal|tabdeel|cancel)\b/i.test(lower);
+
+        if ((hasDraftCartItems || isFoodOrMenuIntent) && !hasExplicitOrderNumberInMsg) {
+            // Customer is actively ordering/checking out new food or browsing — clear any stale pending update
             if (activeOrderUpdate) {
                 clearPendingOrderUpdate(userSessionId, cleanPhone);
                 activeOrderUpdate = null;
@@ -2177,51 +2181,63 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         if (activeOrderUpdate) {
             // Check if customer is selecting from multiple active orders (e.g. "12", "CC-000012", "pehla")
             if (activeOrderUpdate.awaitingOrderSelection && activeOrderUpdate.multipleOrders) {
-                let selectedOrder = null;
-                const digitMatch = lower.match(/\b(\d{1,6})\b/);
-                const digits = digitMatch ? digitMatch[1] : null;
+                const isFoodOrCatalogIntent = /\b(?:deals?|menu|burger|pizza|fries|drink|pepsi|coke|roll|wings|shawarma|half\s*box|box|add|chahiye|mangwana|khao|order\s*karna|kardo|kar\s*do|kr\s*do)\b/i.test(lower) && !/\b(?:update|change|badal|tabdeel|cancel)\b/i.test(lower);
+                if (isFoodOrCatalogIntent) {
+                    clearPendingOrderUpdate(userSessionId, cleanPhone);
+                    activeOrderUpdate = null;
+                } else {
+                    let selectedOrder = null;
+                    const digitMatch = lower.trim().match(/^(?:order\s*#?\s*)?(\d{1,6})$/i) || lower.match(/\bCC-?(\d{1,6})\b/i);
+                    const digits = digitMatch ? digitMatch[1] : null;
 
-                if (digits) {
-                    selectedOrder = activeOrderUpdate.multipleOrders.find(o => o.order_number.endsWith(digits) || o.order_number === 'CC-' + digits.padStart(6, '0'));
-                }
-                if (!selectedOrder && /\b(?:pehla|first|1st|1)\b/i.test(lower)) {
-                    selectedOrder = activeOrderUpdate.multipleOrders[0];
-                }
-                if (!selectedOrder && /\b(?:doosra|dusra|second|2nd|2)\b/i.test(lower) && activeOrderUpdate.multipleOrders[1]) {
-                    selectedOrder = activeOrderUpdate.multipleOrders[1];
-                }
+                    if (digits) {
+                        selectedOrder = activeOrderUpdate.multipleOrders.find(o => o.order_number.endsWith(digits) || o.order_number === 'CC-' + digits.padStart(6, '0'));
+                    }
+                    if (!selectedOrder && /^(?:pehla|first|1st|1|order\s*1)[\s.!?]*$/i.test(lower.trim())) {
+                        selectedOrder = activeOrderUpdate.multipleOrders[0];
+                    }
+                    if (!selectedOrder && /^(?:doosra|dusra|second|2nd|2|order\s*2)[\s.!?]*$/i.test(lower.trim()) && activeOrderUpdate.multipleOrders[1]) {
+                        selectedOrder = activeOrderUpdate.multipleOrders[1];
+                    }
+                    if (!selectedOrder && /^(?:teesra|tisra|third|3rd|3|order\s*3)[\s.!?]*$/i.test(lower.trim()) && activeOrderUpdate.multipleOrders[2]) {
+                        selectedOrder = activeOrderUpdate.multipleOrders[2];
+                    }
+                    if (!selectedOrder && /^(?:chautha|fourth|4th|4|order\s*4)[\s.!?]*$/i.test(lower.trim()) && activeOrderUpdate.multipleOrders[3]) {
+                        selectedOrder = activeOrderUpdate.multipleOrders[3];
+                    }
 
-                if (selectedOrder) {
-                    const { getDbClient } = await import('../db/client.js');
-                    const prisma = getDbClient();
-                    const targetOrder = await prisma.order.findFirst({
-                        where: { id: selectedOrder.id },
-                        include: { order_items: true, customer: true },
-                    });
+                    if (selectedOrder) {
+                        const { getDbClient } = await import('../db/client.js');
+                        const prisma = getDbClient();
+                        const targetOrder = prisma ? await prisma.order.findFirst({
+                            where: { id: selectedOrder.id },
+                            include: { order_items: true, customer: true },
+                        }) : null;
 
-                    if (targetOrder) {
-                        const itemsStr = (targetOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
+                        if (targetOrder) {
+                            const itemsStr = (targetOrder.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}${i.variant_name_snapshot ? ' (' + i.variant_name_snapshot + ')' : ''}`).join(', ') || 'Food items';
 
-                        const newUpdate = {
-                            orderId: targetOrder.id,
-                            orderNumber: targetOrder.order_number,
-                            originalName: targetOrder.customer_name,
-                            originalAddress: targetOrder.delivery_address,
-                            originalPhone: targetOrder.phone,
-                            originalPaymentMethod: targetOrder.payment_method,
-                            total: Number(targetOrder.total),
-                            itemsSummary: itemsStr,
-                            pendingChanges: {},
-                            awaitingField: 'address',
-                            timestamp: Date.now(),
-                        };
-                        setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
+                            const newUpdate = {
+                                orderId: targetOrder.id,
+                                orderNumber: targetOrder.order_number,
+                                originalName: targetOrder.customer_name,
+                                originalAddress: targetOrder.delivery_address,
+                                originalPhone: targetOrder.phone,
+                                originalPaymentMethod: targetOrder.payment_method,
+                                total: Number(targetOrder.total),
+                                itemsSummary: itemsStr,
+                                pendingChanges: {},
+                                awaitingField: 'address',
+                                timestamp: Date.now(),
+                            };
+                            setPendingOrderUpdate(userSessionId, newUpdate, cleanPhone);
 
-                        return {
-                            handled: true,
-                            routeName: 'fast_order_selected',
-                            reply: `Theek hai Ji! Aap ka order (*#${targetOrder.order_number}*) select ho gaya hai. 🍕\n\nIs order ka naya delivery address kya rakhna chahenge? Baraye meherbani apna naya address (ya WhatsApp Location Pin) bhej dein taake update note kar sakein. 📍`,
-                        };
+                            return {
+                                handled: true,
+                                routeName: 'fast_order_selected',
+                                reply: `Theek hai Ji! Aap ka order (*#${targetOrder.order_number}*) select ho gaya hai. 🍕\n\nIs order ka naya delivery address kya rakhna chahenge? Baraye meherbani apna naya address (ya WhatsApp Location Pin) bhej dein taake update note kar sakein. 📍`,
+                            };
+                        }
                     }
                 }
             }
@@ -2377,6 +2393,49 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     handled: true,
                     routeName: 'fast_order_status_inquiry',
                     reply: `Ji ${targetOrder.customer_name ? targetOrder.customer_name + ' bhai!' : 'Ji!'} Aap ke order (*#${targetOrder.order_number}*) ki current details ye hain:\n\n• Status: *${targetOrder.order_status}* (${statusDesc})\n• Delivery Address: *${targetOrder.delivery_address || 'Registered Address'}*\n• Customer Name: *${targetOrder.customer_name}*\n• Contact Phone: *${formatPakistaniPhone(targetOrder.phone)}*\n• Items: ${itemsStr}\n• Total Bill: *Rs. ${Number(targetOrder.total).toLocaleString('en-PK')}* (${targetOrder.payment_method === 'COD' ? 'Cash on Delivery' : 'EasyPaisa'})\n\nAgar is mein kuch change karwana ho to batayein! 😊`,
+                };
+            }
+        }
+
+        // ── Fast Route: Order Deletion Request ("mere purany sary orders delete kr do") ──
+        const isOrderDeleteRequest = /\b(?:delete|cancel|khatam|mita|clear|hata(?:o|yein)?)\b/i.test(lower) && /\b(?:orders?|puran[aeiy]+|tamam|sary|saray|all)\b/i.test(lower);
+        if (isOrderDeleteRequest && userSessionId) {
+            const cache = await getCatalogCache();
+            const { getAdminContact } = await import('./restaurantService.js');
+            const adminContact = await getAdminContact(cache?.restId);
+            const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent('Assalam-o-Alaikum Cravey Crust, mujhe apna order cancel / delete karwana hai.')}`;
+            const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+            return {
+                handled: true,
+                routeName: 'fast_order_delete_request',
+                reply: RESPONSE_TEMPLATES.orderDeletionNotAllowed({
+                    adminPhone: adminContact.displayPhone,
+                    whatsappLink: waLink,
+                }),
+            };
+        }
+
+        // ── Fast Route: Existing Orders Inquiry ("koi existing order ha?") ──
+        const isExistingOrderQuery = (
+            /\b(?:koi|mera|mere)\s+(?:bhi\s+)?(?:existing|active|chal\s*raha|pending)\s*orders?\s*(?:ha|hai|h|he)?\b/i.test(lower) ||
+            /\b(?:existing|active)\s+orders?\b/i.test(lower) ||
+            /^(?:koi\s+existing\s+order\s*(?:ha|hai|h|he)?|koi\s+active\s+order\s*(?:ha|hai|h|he)?|orders?\s*status|status|order\s*kahan\s*hai|order\s*kahan\s*tak\s*pohncha)[\s.!?]*$/i.test(lower.trim())
+        ) && !isOrderDeleteRequest && !/\b(?:update|change|badal|tabdeel|order\s*(?:karna|krna|kardo|kar\s*do|kr\s*do)|mangwana)\b/i.test(lower);
+
+        if (isExistingOrderQuery && userSessionId) {
+            const activeOrders = await getCustomerActiveOrders();
+            const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+            if (activeOrders && activeOrders.length > 0) {
+                return {
+                    handled: true,
+                    routeName: 'fast_existing_orders_status',
+                    reply: RESPONSE_TEMPLATES.existingOrdersList({ orders: activeOrders }),
+                };
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'fast_no_active_orders',
+                    reply: RESPONSE_TEMPLATES.noActiveOrders(),
                 };
             }
         }
@@ -4196,8 +4255,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
 
                 // Guard: if phone already confirmed or extraItemsAnswered — skip re-triggering those steps
-                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) &&
-                    /^(?:(?:g|ji|jee|haan?|han|hn|yes|theek\s*(?:hai|hy)?|ok|done)\s*)?(?:same|same\s*number|same\s*whatsapp|yahi|yehi|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yahi\s*number|yehi\s*number|isi\s*number|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim());
+                const isPhoneConfirmation = (currDetails.name && !currDetails.phoneConfirmed) && (
+                    /^(?:(?:haa?n|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:yeh|ye|yahi|yehi|yehe|yhe|wahi|isi|same)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai))?[\s.!?]*$/i.test(lower.trim()) ||
+                    /^(?:haa?n|hn|ji|jee|g|yes|ok|theek\s*(?:hai|hy)?|done|confirm|sahi\s*hai)[\s.!?]*$/i.test(lower.trim()) ||
+                    /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim()) ||
+                    /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(lower.trim())
+                );
 
                 const extracted = extractCustomerDetails(raw, currDetails);
                 const updatePayload = {};
@@ -4399,12 +4462,14 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
     const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
-        /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(lower.trim()) ||
-        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(lower.trim())
+        /^(?:(?:haa?n|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:yeh|ye|yahi|yehi|yehe|yhe|wahi|isi|same)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai))?[\s.!?]*$/i.test(lower.trim()) ||
+        /^(?:haa?n|hn|ji|jee|g|yes|ok|theek\s*(?:hai|hy)?|done|confirm|sahi\s*hai)[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(lower.trim()) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(lower.trim()) ||
+        /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim())
     );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
-    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai))?$/i.test(lower.trim()) || !!rawPhoneMatch;
+    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai|ha|hai|he))?$/i.test(lower.trim()) || /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim()) || !!rawPhoneMatch;
 
     const isPhoneNegativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) &&
         /^(?:nahi|nahin|na|no|nope|change|badal\s*do|badlo|doosra\s*number|dusra\s*number|koi\s*aur\s*number|different\s*number)[\s.!?]*$/i.test(lower.trim()) && !rawPhoneMatch;
@@ -4497,7 +4562,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     }
                 }
 
-                const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim());
+                const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|chahiye|kitne|price|rate|status|hi|hello|hey|suno|bhai)[\s.!?]*$/i.test(lower.trim()) ||
+                    /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(lower);
                 if (!isNotAddr && wordCount <= 25) {
                     const { extractLocationFromText } = await import('../../utils/location.js');
                     const loc = extractLocationFromText(raw);

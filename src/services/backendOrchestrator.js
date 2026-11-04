@@ -270,9 +270,10 @@ export async function handleCustomerMessage({
             sessionDetails.phoneConfirmed = true;
         }
         if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
-            const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(resolvedText.trim()) ||
-                /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(resolvedText.trim()) ||
-                /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(resolvedText.trim());
+            const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yeh\s*hai|ye\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai)?[\s.!?]*$/i.test(resolvedText.trim()) ||
+                /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(resolvedText.trim()) ||
+                /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(resolvedText.trim()) ||
+                /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(resolvedText.trim());
             if (isAffirmativePhone) {
                 updatePayload.phone = cleanPhone;
                 updatePayload.phoneConfirmed = true;
@@ -283,6 +284,7 @@ export async function handleCustomerMessage({
         if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
             const candidate = cleanExtractedAddress(resolvedText);
             const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(resolvedText.trim()) ||
+                /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(resolvedText) ||
                 /\b(?:address\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat)|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat|ka\s*maza\s*nahi))\b/i.test(resolvedText);
             if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
                 updatePayload.address = candidate;
@@ -630,6 +632,47 @@ export async function handleCustomerMessage({
                         distanceKm: check.distanceKm,
                         nextPrompt: RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name || 'Customer' }),
                     });
+                }
+                break;
+            }
+
+            case 'CANCEL_ORDER': {
+                const cache = await getCatalogCache();
+                const { getAdminContact } = await import('./restaurantService.js');
+                const adminContact = await getAdminContact(cache?.restId);
+                const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent('Assalam-o-Alaikum Cravey Crust, mujhe apna order cancel / delete karwana hai.')}`;
+                backendReply = RESPONSE_TEMPLATES.orderDeletionNotAllowed({
+                    adminPhone: adminContact.displayPhone,
+                    whatsappLink: waLink,
+                });
+                break;
+            }
+
+            case 'ORDER_STATUS_QUERY': {
+                const { getDbClient } = await import('../db/client.js');
+                const prisma = getDbClient();
+                let activeOrders = [];
+                if (prisma) {
+                    try {
+                        activeOrders = await prisma.order.findMany({
+                            where: {
+                                order_status: { in: ['CONFIRMED', 'PREPARING', 'READY', 'PENDING', 'OUT_FOR_DELIVERY'] },
+                                OR: [
+                                    { phone: cleanPhone },
+                                    { whatsapp_phone: cleanPhone },
+                                    { source_session_id: canonicalKey },
+                                    { source_chat_id: canonicalKey },
+                                ],
+                            },
+                            orderBy: { created_at: 'desc' },
+                            include: { order_items: true },
+                        });
+                    } catch (_) {}
+                }
+                if (activeOrders && activeOrders.length > 0) {
+                    backendReply = RESPONSE_TEMPLATES.existingOrdersList({ orders: activeOrders });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.noActiveOrders();
                 }
                 break;
             }

@@ -1,4 +1,8 @@
-import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
+const isAffirmativePhone = /^(?:(?:haa?n|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:yeh|ye|yahi|yehi|yehe|yhe|wahi|isi|same)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai))?[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /^(?:haa?n|hn|ji|jee|g|yes|ok|theek\s*(?:hai|hy)?|done|confirm|sahi\s*hai)[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(effectiveText.trim()) ||
+            /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(effectiveText.trim());import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║   AI Agent Service — src/services/aiAgentService.js          ║
@@ -2087,6 +2091,7 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
     if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
         const candidate = cleanExtractedAddress(effectiveText);
         const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(effectiveText.trim()) ||
+            /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(effectiveText) ||
             /\b(?:address\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat)|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat|ka\s*maza\s*nahi))\b/i.test(effectiveText);
         if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
             updatePayload.address = candidate;

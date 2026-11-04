@@ -30,6 +30,11 @@ export const INTENTS = {
     DELIVERY_QUERY: 'DELIVERY_QUERY',
     PAYMENT_QUERY: 'PAYMENT_QUERY',
     ORDER_CONFIRMATION: 'ORDER_CONFIRMATION',
+    ORDER_STATUS_QUERY: 'ORDER_STATUS_QUERY',
+    CANCEL_ORDER: 'CANCEL_ORDER',
+    PROVIDE_PHONE: 'PROVIDE_PHONE',
+    PROVIDE_ADDRESS: 'PROVIDE_ADDRESS',
+    PROVIDE_NAME: 'PROVIDE_NAME',
     GENERAL_CONVERSATION: 'GENERAL_CONVERSATION',
 };
 
@@ -279,6 +284,55 @@ export function classifyCustomerIntent(text, context = {}) {
     else if (/\b(?:cart|basket|bill|total)\b/i.test(lower)) referencedTopic = 'cart';
     else if (/\b(?:delivery|charges|rider)\b/i.test(lower)) referencedTopic = 'delivery';
     else if (/\b(?:payment|cod|easypaisa)\b/i.test(lower)) referencedTopic = 'payment';
+
+    // ── 0a. ORDER CANCEL / DELETE INTENT: "mere purany sary orders delete kr do" ──
+    const isOrderDelete = /\b(?:delete|cancel|khatam|mita|clear|hata(?:o|yein)?)\b/i.test(lower) && /\b(?:orders?|puran[aeiy]+|tamam|sary|saray|all)\b/i.test(lower);
+    if (isOrderDelete) {
+        return {
+            intent: INTENTS.CANCEL_ORDER,
+            isRead: false,
+            isWrite: true,
+            isModification: true,
+            isQuestion: false,
+            referencedTopic: 'order',
+            confidence: 0.95
+        };
+    }
+
+    // ── 0b. ORDER STATUS / EXISTING ORDER QUERY: "koi existing order ha?" ──
+    const isOrderStatus = (
+        /\b(?:koi|mera|mere)\s+(?:bhi\s+)?(?:existing|active|chal\s*raha|pending)\s*orders?\s*(?:ha|hai|h|he)?\b/i.test(lower) ||
+        /\b(?:existing|active)\s+orders?\b/i.test(lower) ||
+        /^(?:koi\s+existing\s+order\s*(?:ha|hai|h|he)?|koi\s+active\s+order\s*(?:ha|hai|h|he)?|orders?\s*status|status|order\s*kahan\s*hai|order\s*kahan\s*tak\s*pohncha)[\s.!?]*$/i.test(lower.trim())
+    ) && !isOrderDelete && !/\b(?:order\s*(?:karna|krna|kardo|kar\s*do|kr\s*do|karein|kar\s*dein|hai|h)|mangwana)\b/i.test(lower);
+    if (isOrderStatus) {
+        return {
+            intent: INTENTS.ORDER_STATUS_QUERY,
+            isRead: true,
+            isWrite: false,
+            isModification: false,
+            isQuestion: true,
+            referencedTopic: 'order',
+            confidence: 0.95
+        };
+    }
+
+    // ── 0c. PHONE AFFIRMATION: "han yeh number ha", "yahi number hai" ──
+    const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|yeh\s*hai|ye\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai)?[\s.!?]*$/i.test(lower.trim()) ||
+        /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(lower.trim()) ||
+        /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(lower.trim()) ||
+        /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim());
+    if (isAffirmativePhone) {
+        return {
+            intent: INTENTS.PROVIDE_PHONE,
+            isRead: false,
+            isWrite: true,
+            isModification: true,
+            isQuestion: false,
+            referencedTopic: 'phone',
+            confidence: 0.95
+        };
+    }
 
     // ── 1. NEGATIVE INTENT: "Nahi, drink add nahi karni", "nahi chahiye" ──
     if (hasNegative && /\b(?:drink|fries|burger|pizza|item|deal|kuch|extra)\b/i.test(lower)) {

@@ -136,6 +136,24 @@ export const RESPONSE_TEMPLATES = {
         return `Aap ka order (*${orderNumber}*) pehle hi confirm ho chuka hai aur kitchen mein tayyar ho raha hai! 😊 Rider jald aap se rabta karega.`;
     },
 
+    // ── Existing Orders Status & Deletion Guidance ──
+    existingOrdersList({ orders = [] }) {
+        const listText = orders.map((ord, idx) => {
+            const itms = (ord.order_items || []).map(i => `${i.quantity}x ${i.item_name_snapshot || i.deal_name_snapshot || 'Item'}`).join(', ');
+            return `*${idx + 1}. Order #${ord.order_number}* (${ord.order_status})\n   • Items: ${itms}\n   • Total: Rs. ${Number(ord.total).toLocaleString('en-PK')}\n   • Address: *${ord.delivery_address || 'Registered Address'}*`;
+        }).join('\n\n');
+
+        return `Aap ke is waqt ${orders.length} active order${orders.length > 1 ? 's' : ''} process ho rahe hain:\n\n${listText}\n\nAgar kisi order ki details update karni hon to order number bata dein, ya naya order karne ke liye *"deals"* likhein! 😊`;
+    },
+
+    noActiveOrders() {
+        return `Aap ka is waqt koi active order process nahi ho raha. 😊\n\nNaya mazedaar khana order karne ke liye:\n• Tamam deals dekhne ke liye *"deals"* likhein.\n• Mukammal menu dekhne ke liye *"menu"* likhein. 🍕🍔`;
+    },
+
+    orderDeletionNotAllowed({ adminPhone = '0343-4919319', whatsappLink = 'https://wa.me/923434919319' }) {
+        return `Maazrat! System par pehle se confirm shuda / process hone walay orders ko WhatsApp par directly cancel ya delete nahi kiya ja sakta. 🚫\n\nAgar aap koi tabdeeli ya cancellation karwana chahte hain to baraye meherbani Cravey Crust manager se foran rabta karein:\n\n📞 *Store Admin / Manager:* ${adminPhone}\n💬 *WhatsApp:* ${whatsappLink}\n\nNaya order karne ke liye *"deals"* ya *"menu"* likhein! 🍕`;
+    },
+
     selectionPreserved() {
         return 'Theek hai! Aap ki maujooda selection mehfooz hai aur koi tabdeeli nahi ki gayi. 👍\n\nAgla step proceed karne ke liye tayyar hain?';
     },
@@ -156,4 +174,3 @@ export const RESPONSE_TEMPLATES = {
         return `${reason} 😊\n\nAap menu dekhne ke liye "menu" ya deals ke liye "deals" likh sakte hain.`;
     },
 };
-
