@@ -25,6 +25,15 @@ import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
 import { extractLocationFromText } from '../../utils/location.js';
 import { getSessionHistory, appendSessionHistory, getSessionOrderDetails, updateSessionOrderDetails, isValidCustomerName } from './sessionService.js';
 import { updateCustomerNameForChat } from './chatService.js';
+import {
+    ORDER_STAGES,
+    acquireConfirmationLock,
+    releaseConfirmationLock,
+    isConfirmationLocked,
+    saveOrderSummarySnapshot,
+    getOrderSummarySnapshot,
+    clearOrderSummarySnapshot,
+} from './checkoutStateMachine.js';
 
 // ─── Local Direct Service Imports (No HTTP round-trips) ───────────────────
 import { getDefaultRestaurantId } from './restaurantService.js';
@@ -64,13 +73,11 @@ export function detectConfirmIntent(text) {
     if (MODIFICATION_INTENT.test(t)) return false;
 
     // Strong confirm keywords — must contain one of these to be treated as a real confirmation
-    // RULE: standalone "kr do" / "karo" without explicit confirm/book word is NOT enough
-    // because customer might say "deal change kr do" (not a confirmation!)
-    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
     if (EXPLICIT_CONFIRM.test(t)) return true;
 
     // Affirmatives when confirming: haan, han, ji, jee, g, theek hai, ok, yes
-    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*hai)?|thk(?:\s*hai)?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan)[\s!.?]*$/i;
+    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
     if (AFFIRMATIVE.test(t)) return true;
 
     return false;
@@ -196,9 +203,17 @@ async function getOrderLookupOrConditions(prisma, { sessionKey, chatId, whatsapp
 export async function executeTool(toolName, args, context) {
     const { sessionKey, chatId, whatsappPhone, restId, sock, locationData, effectiveText, text: rawText } = context || {};
     const text = effectiveText || rawText || '';
+    args = args && typeof args === 'object' ? args : {};
+
+    // Normalize toolName: handle trim, lowercasing, and camelCase conversion
+    // e.g. "addToCart" -> "add_to_cart", "calculateCartTotals" -> "calculate_cart_totals"
+    const normalizedTool = (toolName || '')
+        .trim()
+        .replace(/([a-z])([A-Z])/g, '$1_$2')
+        .toLowerCase();
 
     try {
-        switch (toolName) {
+        switch (normalizedTool) {
             // 1. get_store_info
             case 'get_store_info': {
                 const prisma = getDbClient();
@@ -342,6 +357,8 @@ export async function executeTool(toolName, args, context) {
                 let variantId  = args.variantId;
                 let dealId     = args.dealId;
                 let quantity   = parseInt(args.quantity || 1, 10);
+                if (isNaN(quantity) || quantity < 1) quantity = 1;
+                if (quantity > 50) quantity = 50;
                 let notes      = args.notes || undefined;
 
                 // Quantity Auto-Rescue: If quantity is 1 or missing, but user text had explicit quantity (e.g. "5 hot wings", "2 loaded fries", "6 zinger burger", "do ziggy burger")
@@ -814,23 +831,21 @@ export async function executeTool(toolName, args, context) {
 
             // 13. calculate_cart_totals
             case 'calculate_cart_totals': {
-                const cart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
-                const items = (cart.items || []).filter(i => i.menu_item_id).map(i => ({
-                    menuItemId: i.menu_item_id, variantId: i.menu_variant_id, quantity: i.quantity,
-                }));
-                const deals = (cart.items || []).filter(i => i.deal_id).map(i => ({
-                    dealId: i.deal_id, quantity: i.quantity,
-                }));
-                const pricing = await calculatePricing({ restaurantId: restId, items, deals });
+                const { calculateCartTotals } = await import('./cartService.js');
+                const totals = await calculateCartTotals({ sessionKey, restaurantId: restId, chatId });
+                const allLines = [
+                    ...(totals.items || []).map(i => `${i.quantity}x ${i.name}${i.variantName ? ` (${i.variantName})` : ''} — Rs. ${i.lineTotal}`),
+                    ...(totals.deals || []).map(d => `${d.quantity}x ${d.name}${d.notes ? ` (${d.notes})` : ''} — Rs. ${d.lineTotal}`)
+                ];
                 return {
-                    itemCount: (cart.items || []).length,
-                    itemsList: (cart.items || []).map(i => `${i.quantity}x ${i.deal ? i.deal.name : (i.menu_item?.name || 'Item')}`),
-                    subtotal: Number(pricing.subtotal || 0),
-                    deliveryFee: Number(pricing.deliveryFee || 0),
-                    discount: Number(pricing.discountTotal || 0),
-                    discountTotal: Number(pricing.discountTotal || 0),
-                    total: Number(pricing.total || 0),
-                    cartEmpty: (cart.items || []).length === 0,
+                    itemCount: allLines.length,
+                    itemsList: allLines,
+                    subtotal: Number(totals.subtotal || 0),
+                    deliveryFee: Number(totals.deliveryFee || 0),
+                    discount: Number(totals.discountTotal || 0),
+                    discountTotal: Number(totals.discountTotal || 0),
+                    total: Number(totals.total || 0),
+                    cartEmpty: allLines.length === 0,
                 };
             }
 
@@ -1205,6 +1220,18 @@ const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE
 export function sanitizeOutput(text) {
     if (!text || typeof text !== 'string') return '';
     let clean = text;
+    // Deduplicate repetitive greetings / name salutations (e.g. "Shukriya Fahad! ... Shukriya Fahad!")
+    const greetingMatch = clean.match(/\b(Shukriya\s+[A-Za-z]+(?:(?:\s+Ji|\s+bhai))?[!.]*)/i);
+    if (greetingMatch) {
+        const firstGreeting = greetingMatch[1];
+        const escapedGreeting = firstGreeting.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regexAll = new RegExp('\\b' + escapedGreeting + '\\s*', 'gi');
+        let count = 0;
+        clean = clean.replace(regexAll, (m) => {
+            count++;
+            return count === 1 ? m : '';
+        });
+    }
 
     // 0. Remove leaked system prompt instructions or prefixes
     clean = clean.replace(/^(?:(?:aur\s+)?customer\s+(?:se\s+poocho|ko\s+bolo|se\s+kahein|ko\s+kahein)|aap\s+(?:ko\s+customer\s+se|customer\s+se)\s+(?:poochna|kehna)\s+hai|prompt|system|assistant)\s*:\s*"?/gi, '');
@@ -1487,37 +1514,63 @@ export function verifyOutput(aiText, optsOrToolResults) {
 export function parseToolCall(content) {
     if (!content || typeof content !== 'string') return null;
 
-    // 1. Try standard JSON tool calling format
+    // 1. Try JSON tool calling format (single object, array, or embedded JSON)
     try {
         const cleanContent = content.replace(/```(?:json)?\s*([\s\S]*?)\s*```/gi, '$1').trim();
-        const jsonMatch = cleanContent.match(/\{[\s\S]*"(?:tool|name)"\s*:\s*"[^"]+"[\s\S]*\}/);
+        
+        // A. Array format: [{ "tool": "...", "args": {...} }] or [{ "type": "function", ... }]
+        const arrayMatch = cleanContent.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        if (arrayMatch) {
+            try {
+                const arr = JSON.parse(arrayMatch[0]);
+                if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === 'object') {
+                    const item = arr[0];
+                    const toolName = item.tool || item.name || item.function?.name || item.call?.name;
+                    let toolArgs = item.args || item.arguments || item.function?.arguments || item.parameters || {};
+                    if (typeof toolArgs === 'string') {
+                        try { toolArgs = JSON.parse(toolArgs); } catch (_) {}
+                    }
+                    if (toolName && typeof toolName === 'string') {
+                        return { tool: toolName.trim(), args: (toolArgs && typeof toolArgs === 'object' ? toolArgs : {}) };
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // B. Object format: { "tool": "..." } or { "name": "...", "arguments": ... } or { "function": {...} }
+        const jsonMatch = cleanContent.match(/\{[\s\S]*"(?:tool|name|function|call)"\s*:\s*[\s\S]*\}/);
         if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const toolName = parsed.tool || parsed.name;
-            const toolArgs = parsed.args || parsed.arguments || {};
-            if (toolName) {
-                return { tool: toolName, args: toolArgs };
-            }
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                const toolName = parsed.tool || parsed.name || parsed.function?.name || parsed.call?.name || parsed.call;
+                let toolArgs = parsed.args || parsed.arguments || parsed.function?.arguments || parsed.parameters || {};
+                if (typeof toolArgs === 'string') {
+                    try { toolArgs = JSON.parse(toolArgs); } catch (_) {}
+                }
+                if (toolName && typeof toolName === 'string') {
+                    return { tool: toolName.trim(), args: (toolArgs && typeof toolArgs === 'object' ? toolArgs : {}) };
+                }
+            } catch (_) {}
         }
     } catch (_) {}
 
-    // 2. Try DeepSeek DSML (DeepSeek Markup Language) XML tool calling format
+    // 2. Try XML format (DeepSeek DSML or standard <invoke name="...">)
     try {
-        const hasDsml = /<[|｜\s]*DSML[|｜\s]*calls>/i.test(content) || /<[|｜\s]*DSML[|｜\s]*invoke/i.test(content);
-        if (hasDsml) {
+        const hasInvoke = /invoke\s+name=/i.test(content);
+        if (hasInvoke) {
             const normalized = content
-                .replace(/[\uFF5C|]\s*[\uFF5C|]\s*DSML\s*[\uFF5C|]\s*[\uFF5C|]/gi, 'DSML')
-                .replace(/[\uFF5C|]\s*DSML\s*[\uFF5C|]/gi, 'DSML')
-                .replace(/<[|｜\s]*DSML/gi, '<DSML')
-                .replace(/<\/[|｜\s]*DSML/gi, '</DSML');
+                .replace(/<[|｜\s]*DSML[|｜\s]*invoke/gi, '<invoke')
+                .replace(/<\/[|｜\s]*DSML[|｜\s]*invoke/gi, '</invoke')
+                .replace(/<[|｜\s]*DSML[|｜\s]*parameter/gi, '<parameter')
+                .replace(/<\/[|｜\s]*DSML[|｜\s]*parameter/gi, '</parameter');
 
-            const invokeMatch = normalized.match(/<DSML\s+invoke\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/DSML\s+invoke>/i);
+            const invokeMatch = normalized.match(/<invoke\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/invoke>/i);
             if (invokeMatch) {
                 const toolName = invokeMatch[1].trim();
                 const body = invokeMatch[2];
                 const args = {};
 
-                const paramRegex = /<DSML\s+parameter\s+name=["']([^"']+)["'](?:\s+string=["']?(?:true|false)["']?)?\s*>([\s\S]*?)<\/DSML\s+parameter>/gi;
+                const paramRegex = /<parameter\s+name=["']([^"']+)["'](?:\s+string=["']?(?:true|false)["']?)?\s*>([\s\S]*?)<\/parameter>/gi;
                 let pMatch;
                 while ((pMatch = paramRegex.exec(body)) !== null) {
                     const paramName = pMatch[1].trim();
@@ -1724,7 +1777,8 @@ async function runAgentLoop(messages, context) {
                     aiImageUrl = images[0];
                     if (sessionKey) markDealsSent(sessionKey, cleanPhone);
                     const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
-                    aiResponse = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
+                    const dealsText = cache.cachedDealsSummary ? ('\n\n' + cache.cachedDealsSummary) : '';
+                    aiResponse = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥' + dealsText + '\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';
                 }
             } catch (_) {}
         } else if (asksMenu && !menuAlreadySent && (!/\b(koi|konsa|konse|best|pizza|burger|fries|drink)\b/i.test(lowerEff) || /\b(dikhao|dekhao|bhejo|send|card|flyer)\b/i.test(lowerEff))) {
@@ -1739,7 +1793,8 @@ async function runAgentLoop(messages, context) {
                     aiImageUrl = images[0];
                     if (sessionKey) markMenuSent(sessionKey, cleanPhone);
                     const sDetails = sessionKey ? getSessionOrderDetails(sessionKey, cleanPhone) : null;
-                    aiResponse = 'Cravey Crust ka menu haazir hai! 🍕🍔\n\nBataiye in mein se kya mangwana pasand karenge? 😊';
+                    const catsText = cache.cachedCategoriesSummary ? ('\n\n' + cache.cachedCategoriesSummary) : '';
+                    aiResponse = 'Cravey Crust ka menu haazir hai! 🍕🍔' + catsText + '\n\nBataiye in mein se kya mangwana pasand karenge? 😊';
                 }
             } catch (_) {}
         }
@@ -1901,7 +1956,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
             location: activeLocation,
         }, whatsappPhone);
     }
-    const isAwaitingName = (!sessionDetails.name || !sessionDetails.nameExplicit) && !sessionDetails.phoneConfirmed && !sessionDetails.address && !sessionDetails.paymentMethod && !getLastDiscussedItem(sessionKey, whatsappPhone) && !getPendingDealFlavour(sessionKey);
+    const isAwaitingName = !sessionDetails.name && !getLastDiscussedItem(sessionKey, whatsappPhone) && !getPendingDealFlavour(sessionKey);
     const extracted = extractCustomerDetails(effectiveText, { ...sessionDetails, isAwaitingName });
     const updatePayload = {};
 
@@ -1962,6 +2017,16 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         }
     }
 
+    // Detect customer answering extra items inquiry (Step 5 -> Step 6)
+    const isNoExtraItems = /^(?:nahi|nahin|na|no|nope|kuch\s*nahi|aur\s*kuch\s*nahi|aur\s*nahi|nahi\s*bhai|nahii+|bas|kuch\s*ni|nhi|nahi\s*chahiye|shukriya|sirf\s*yahi)[\s.!?]*$/i.test(effectiveText.trim()) ||
+        /\b(?:kuch\s*aur\s*nahi|aur\s*nahi\s*chahiye|extra\s*kuch\s*nahi|nahi\s*bhai|nahi\s*kuch\s*nahi)\b/i.test(effectiveText);
+    const isFinalConfirming = detectConfirmIntent(effectiveText);
+    if (isNoExtraItems || isFinalConfirming) {
+        updatePayload.extraItemsAnswered = true;
+        updatePayload.extraItemsInquired = true;
+        sessionDetails.extraItemsAnswered = true;
+        sessionDetails.extraItemsInquired = true;
+    }
     if (Object.keys(updatePayload).length > 0) {
         updateSessionOrderDetails(sessionKey, updatePayload, whatsappPhone);
         if (updatePayload.name) {
@@ -1992,9 +2057,9 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
                 });
                 let cartText = lines.join('\n');
                 if (totals.discountTotal > 0) {
-                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}\nDiscount: -Rs. ${totals.discountTotal.toLocaleString('en-PK')}\nTotal: Rs. ${totals.total.toLocaleString('en-PK')}`;
+                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}\nDiscount: -Rs. ${totals.discountTotal.toLocaleString('en-PK')}\nDelivery: ${totals.deliveryFee > 0 ? `Rs. ${totals.deliveryFee.toLocaleString('en-PK')}` : 'Free'}\nTotal: Rs. ${totals.total.toLocaleString('en-PK')}`;
                 } else {
-                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}`;
+                    cartText += `\nSubtotal: Rs. ${totals.subtotal.toLocaleString('en-PK')}\nDelivery: ${totals.deliveryFee > 0 ? `Rs. ${totals.deliveryFee.toLocaleString('en-PK')}` : 'Free'}\nTotal: Rs. ${totals.total.toLocaleString('en-PK')}`;
                 }
                 activeCartSummary = cartText;
             } else {
@@ -2018,8 +2083,96 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
     const rawCleanPhone = (whatsappPhone || '').replace(/\D/g, '');
     const displayPhone = updatedDetails.phone || (rawCleanPhone.startsWith('923') ? '03' + rawCleanPhone.slice(2) : (rawCleanPhone || '03XXXXXXXXX'));
 
+    // ─── 5c. DETERMINISTIC BACKEND CONFIRMATION LOCK & ORDER CREATION GATE ───
+    const hasCartItems = Boolean(activeCart?.items && activeCart.items.length > 0);
+    const hasValidName = Boolean(updatedDetails.name && isValidCustomerName(updatedDetails.name));
+    const hasValidPhone = Boolean(updatedDetails.phoneConfirmed || updatedDetails.phone || whatsappPhone);
+    const hasValidAddress = Boolean(updatedDetails.address || activeLocation?.formattedAddress);
+    const hasValidPayment = Boolean(updatedDetails.paymentMethod === 'COD' || updatedDetails.paymentMethod === 'EASYPAISA');
+    const isStep5Done = Boolean(updatedDetails.extraItemsAnswered || updatedDetails.summaryShown);
+
+    const isReadyForBooking = hasCartItems && hasValidName && hasValidPhone && hasValidAddress && hasValidPayment && isStep5Done;
+
+    // SCENARIO A: Customer explicitly confirmed the order at AWAITING_CONFIRMATION stage!
+    if (isReadyForBooking && confirmIntent) {
+        if (isConfirmationLocked(sessionKey)) {
+            return 'Aap ka order process ho raha hai, baraye meherbani thoda intezar karein...';
+        }
+        acquireConfirmationLock(sessionKey);
+        try {
+            const { createOrder } = await import('./orderService.js');
+            const finalPhone = updatedDetails.phone || (whatsappPhone || '').replace(/\D/g, '');
+            const finalAddress = updatedDetails.address || (activeLocation?.formattedAddress || 'Ghauri Town');
+            const bookingResult = await createOrder({
+                restaurantId: restId,
+                sessionKey,
+                customerName: updatedDetails.name,
+                phone: finalPhone,
+                delivery: { address: finalAddress },
+                paymentMethod: updatedDetails.paymentMethod,
+                sock,
+            });
+
+            if (bookingResult && bookingResult.success && bookingResult.order) {
+                updateSessionOrderDetails(sessionKey, {
+                    orderConfirmed: true,
+                    orderStage: ORDER_STAGES.ORDER_CONFIRMED,
+                    lastOrderNumber: bookingResult.order.orderNumber,
+                    summaryShown: false,
+                    extraItemsAnswered: false,
+                }, whatsappPhone);
+                clearOrderSummarySnapshot(sessionKey);
+
+                const finalOrderNum = bookingResult.order.orderNumber;
+                const finalTotal = Number(bookingResult.order.total || 0).toLocaleString('en-PK');
+                const paymentLabel = updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
+
+                const confirmMsg = `${updatedDetails.name} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n` +
+                    `Order Number: ${finalOrderNum}\n` +
+                    `Order Total: Rs. ${finalTotal}\n` +
+                    `Payment: ${paymentLabel}\n\n` +
+                    `Aap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein! 🍕🔥`;
+
+                const cleanReply = sanitizeOutput(confirmMsg);
+                appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
+                appendSessionHistory(sessionKey, 'assistant', cleanReply, syncEpoch);
+                return cleanReply;
+            }
+        } catch (bookingErr) {
+            console.error('[AI_AGENT] Deterministic booking error:', bookingErr.message);
+        } finally {
+            releaseConfirmationLock(sessionKey);
+        }
+    }
+
+    // SCENARIO B: Reaching Step 6 (Final Review / Summary) - Present authoritative summary deterministically
+    if (isReadyForBooking && !updatedDetails.summaryShown && !confirmIntent) {
+        updatedDetails.summaryShown = true;
+        updatedDetails.orderStage = ORDER_STAGES.AWAITING_CONFIRMATION;
+        updateSessionOrderDetails(sessionKey, {
+            summaryShown: true,
+            orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
+        }, whatsappPhone);
+        saveOrderSummarySnapshot(sessionKey, { cart: activeCartSummary });
+
+        const paymentLabel = updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
+        const summaryMsg = `${updatedDetails.name} bhai, aap ke order ki final details ye hain:\n\n` +
+            `📋 *ORDER SUMMARY:*\n` +
+            `${activeCartSummary}\n\n` +
+            `👤 Customer Name: ${updatedDetails.name}\n` +
+            `📍 Delivery Location: ${updatedDetails.address || activeLocation?.formattedAddress}\n` +
+            `📞 Contact: ${displayPhone}\n` +
+            `💵 Payment: ${paymentLabel}\n\n` +
+            `Kya aap tamam details check karke is order ko confirm karte hain?\n` +
+            `Order book karne ke liye "Confirm" ya "Haan" likhein. Agar koi tabdeeli karni hai to bata dein.`;
+
+        const cleanSummaryReply = sanitizeOutput(summaryMsg);
+        appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
+        appendSessionHistory(sessionKey, 'assistant', cleanSummaryReply, syncEpoch);
+        return cleanSummaryReply;
+    }
+
     let checkoutStepGuidance = '';
-    const hasCartItems = activeCart?.items && activeCart.items.length > 0;
     if (hasCartItems) {
         if (!updatedDetails.name) {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:

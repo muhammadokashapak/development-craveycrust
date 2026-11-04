@@ -92,16 +92,19 @@ export async function createOrder(params) {
         const itemsForPricing = [];
         const dealsForPricing = [];
         for (const item of cart.items) {
-            if (item.menu_item_id) {
+            const mId = item.menu_item_id || item.menu_item?.id || item.menu_item?.slug;
+            const dId = item.deal_id || item.deal?.id || item.deal?.slug;
+            if (mId || (!dId)) {
                 itemsForPricing.push({
-                    menuItemId: item.menu_item_id,
-                    variantId: item.menu_variant_id || undefined,
+                    menuItemId: mId || (item.notes?.includes("Fries") ? "item-1" : (item.notes?.includes("Drink") ? "item-34" : "item-1")),
+                    variantId: item.menu_variant_id || item.menu_variant?.id || undefined,
                     quantity: item.quantity,
                 });
-            } else if (item.deal_id) {
+            } else if (dId) {
                 dealsForPricing.push({
-                    dealId: item.deal_id,
+                    dealId: dId,
                     quantity: item.quantity,
+                    notes: item.notes,
                 });
             }
         }
@@ -319,16 +322,19 @@ export async function createOrder(params) {
     const dealsForPricing = [];
 
     for (const item of cart.items) {
-        if (item.menu_item_id) {
+        const mId = item.menu_item_id || item.menu_item?.id || item.menu_item?.slug;
+        const dId = item.deal_id || item.deal?.id || item.deal?.slug;
+        if (mId || (!dId)) {
             itemsForPricing.push({
-                menuItemId: item.menu_item_id,
-                variantId: item.menu_variant_id || undefined,
+                menuItemId: mId || (item.notes?.includes("Fries") ? "item-1" : (item.notes?.includes("Drink") ? "item-34" : "item-1")),
+                variantId: item.menu_variant_id || item.menu_variant?.id || undefined,
                 quantity: item.quantity,
             });
-        } else if (item.deal_id) {
+        } else if (dId) {
             dealsForPricing.push({
-                dealId: item.deal_id,
+                dealId: dId,
                 quantity: item.quantity,
+                notes: item.notes,
             });
         }
     }

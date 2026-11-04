@@ -667,6 +667,17 @@ export async function getNextCheckoutStepResponse({
     // STEP 6: Final Order Confirmation Summary (All details verified, waiting for explicit "Confirm" or "Haan")
     details.awaitingFinalConfirmation = true;
     details.readyForConfirmation = true;
+    details.summaryShown = true;
+    try {
+        const { updateSessionOrderDetails } = await import('./sessionService.js');
+        if (userSessionId) {
+            updateSessionOrderDetails(userSessionId, {
+                awaitingFinalConfirmation: true,
+                readyForConfirmation: true,
+                summaryShown: true,
+            }, cleanPhone);
+        }
+    } catch (_) {}
 
     // Calculate dynamic pricing & discounts using central pricingService
     const { calculatePricing } = await import('./pricingService.js');
@@ -2648,8 +2659,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                 const finalAddress = details.address || details.savedAddress || details.location?.address;
                 const readyToConfirm = Boolean(details.name && (finalAddress || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
-                const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes)\s*(?:kr\s*do|kar\s*do|kardo|krdo|karo|kro)|(?:kr\s*do|kar\s*do|kardo|krdo)\s*(?:confirm|order)?)\b/i.test(lower.trim());
-                const isAffirmationEligible = hasExplicitConfirmWord ? (details.awaitingFinalConfirmation || readyToConfirm) : (details.awaitingFinalConfirmation === true);
+                const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes|g)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)?|haan|han|ji|g|yes|theek\s*hai|ok)\b/i.test(lower.trim());
+                const isAffirmationEligible = Boolean(details.awaitingFinalConfirmation || details.summaryShown || readyToConfirm);
                 if (cart?.items && cart.items.length > 0 && isAffirmationEligible && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
                     const finalPayment = details.paymentMethod || 'COD';
                     const { createOrder } = await import('./orderService.js');
@@ -5883,7 +5894,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
             const finalAddressForConfirm = details?.address || details?.savedAddress || details?.location?.address;
             const readyToConfirmOrder = Boolean(details?.name && (finalAddressForConfirm || details?.location) && (details?.paymentMethod || 'COD') && details?.phoneConfirmed);
-            if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation === true) && !details?.locationAwaitingConfirmation) {
+            if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation === true || details?.summaryShown === true || readyToConfirmOrder) && !details?.locationAwaitingConfirmation) {
                 const finalPayment = details.paymentMethod || 'COD';
                 const { createOrder } = await import('./orderService.js');
                 const res = await createOrder({

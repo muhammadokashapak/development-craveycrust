@@ -253,6 +253,80 @@ export function extractRequestedItems(text, activeCart = null) {
             lineTotal: Number(item?.base_price || (isZegy ? 399 : 499)) * qty,
         });
     }
+    // 3b. Detect Chicken Box Mentions (e.g. Happy Box, Half Box, Full Box, Quarter Box, Junior Chicken)
+    const boxMatch = lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(half\s*box|happy\s*box|full\s*box|quarter\s*box|junior\s*chicken|chicken\s*piece)\b/i);
+    if (boxMatch) {
+        const qty = boxMatch[1] ? (QTY_WORD_MAP[boxMatch[1]] || parseInt(boxMatch[1], 10) || 1) : 1;
+        const boxNameLower = boxMatch[2].replace(/\s+/g, '-').toLowerCase();
+        const boxMap = {
+            'happy-box': { id: 'item-7', name: 'Happy Box', price: 599 },
+            'quarter-box': { id: 'item-8', name: 'Quarter Box', price: 699 },
+            'half-box': { id: 'item-9', name: 'Half Box', price: 1199 },
+            'full-box': { id: 'item-10', name: 'Full Box', price: 2199 },
+            'junior-chicken': { id: 'item-11', name: 'Junior Chicken', price: 349 },
+            'chicken-piece': { id: 'item-6', name: 'Chicken Piece', price: 180 },
+        };
+        const boxInfo = boxMap[boxNameLower];
+        if (boxInfo) {
+            const item = FALLBACK_MENU_ITEMS.find(it => it.id === boxInfo.id);
+            extracted.push({
+                itemType: 'chicken_box',
+                itemName: boxInfo.name,
+                canonicalName: boxInfo.name,
+                size: 'Standard',
+                quantity: qty,
+                menuItemId: boxInfo.id,
+                variantId: item?.variants?.[0]?.id || null,
+                unitPrice: boxInfo.price,
+                lineTotal: boxInfo.price * qty,
+            });
+        }
+    }
+
+    // 3c. Detect Standalone Pizza Mentions (e.g. 'Chicken Fajita Large', 'Chicken Tikka Large')
+    if (!isDealMention) {
+        const pizzaMatch = lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(chicken\s*fajita|chicken\s*tikka|chicken\s*supreme|cheese\s*lover|chicken\s*tandori|chicken\s*extreme|peri\s*peri|behari\s*kebab|crown\s*crust)(?:\s+(small|medium|large|party\s*size|party))?\b/i);
+        if (pizzaMatch) {
+            const qty = pizzaMatch[1] ? (QTY_WORD_MAP[pizzaMatch[1]] || parseInt(pizzaMatch[1], 10) || 1) : 1;
+            const pFlav = pizzaMatch[2].trim().toLowerCase();
+            let size = pizzaMatch[3] ? pizzaMatch[3].trim().toLowerCase() : null;
+            if (!size) {
+                if (lower.includes('large') || lower.includes('bari')) size = 'large';
+                else if (lower.includes('medium') || lower.includes('darmiyani')) size = 'medium';
+                else if (lower.includes('party')) size = 'party size';
+                else if (lower.includes('small') || lower.includes('choti')) size = 'small';
+            }
+            const normalizedSize = size ? (size.includes('party') ? 'Party Size' : size.charAt(0).toUpperCase() + size.slice(1)) : 'Large';
+
+            const pizzaSlugMap = {
+                'chicken fajita': 'item-31',
+                'chicken tikka': 'item-29',
+                'chicken supreme': 'item-30',
+                'cheese lover': 'item-28',
+                'chicken tandori': 'item-32',
+                'chicken extreme': 'item-38',
+                'peri peri': 'item-39',
+                'behari kebab': 'item-37',
+                'crown crust': 'item-40',
+            };
+            const pId = pizzaSlugMap[pFlav];
+            if (pId) {
+                const item = FALLBACK_MENU_ITEMS.find(it => it.id === pId);
+                const variant = (item?.variants || []).find(v => v.name.toLowerCase() === normalizedSize.toLowerCase()) || item?.variants?.[0];
+                extracted.push({
+                    itemType: 'pizza',
+                    itemName: item ? item.name : 'Classic Pizza',
+                    canonicalName: `${item ? item.name : 'Pizza'} (${normalizedSize})`,
+                    size: normalizedSize,
+                    quantity: qty,
+                    menuItemId: pId,
+                    variantId: variant?.id || null,
+                    unitPrice: Number(variant?.price || item?.base_price || 1499),
+                    lineTotal: Number(variant?.price || item?.base_price || 1499) * qty,
+                });
+            }
+        }
+    }
 
     // 4. Deal Composition & Included Drink Disambiguation
     let dealClarificationNeeded = false;
@@ -325,9 +399,13 @@ export async function executeBatchAddToCart({ sessionKey, restaurantId, chatId, 
     // Verify all added items are present in cart
     const allVerified = added.every(it => {
         return updatedCart.items.some(ci => {
-            if (it.menuItemId && ci.menu_item_id === it.menuItemId) return true;
-            if (it.variantId && ci.menu_variant_id === it.variantId) return true;
-            return false;
+            const matchesItem = it.menuItemId && (ci.menu_item_id === it.menuItemId || ci.menu_item?.id === it.menuItemId || ci.menu_item?.slug === it.menuItemId);
+            const matchesDeal = it.dealId && (ci.deal_id === it.dealId || ci.deal?.id === it.dealId || ci.deal?.slug === it.dealId);
+            if (!matchesItem && !matchesDeal) return false;
+            if (it.variantId) {
+                return ci.menu_variant_id === it.variantId || ci.menu_variant?.id === it.variantId;
+            }
+            return true;
         });
     });
 
