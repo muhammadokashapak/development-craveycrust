@@ -40,6 +40,7 @@ import { getDefaultRestaurantId } from './restaurantService.js';
 import { searchKnowledge } from './knowledgeService.js';
 import { getActiveCategories, resolveMenuItemOrDeal, getActiveDeals } from './menuService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
+import { resolveCartItemForRemoval } from './cartItemResolver.js';
 import { getActiveCart, addToCart, updateCartItem, removeCartItem, clearCart as clearCartService, matchVariant, calculateCartTotals } from './cartService.js';
 import { calculatePricing } from './pricingService.js';
 import { calculateDiscount, getGlobalDiscountSettings } from './discountService.js';
@@ -803,13 +804,19 @@ export async function executeTool(toolName, args, context) {
                 const currentCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
                 if (currentCart?.items && currentCart.items.length > 0) {
                     const searchStr = (args.itemName || args.cartItemId || args.dealName || '').toLowerCase().trim();
-                    const matchedItem = currentCart.items.find(i => 
+                    let matchedItem = currentCart.items.find(i => 
                         i.id === targetId ||
                         (searchStr && i.menu_item?.name?.toLowerCase().includes(searchStr)) ||
                         (searchStr && i.deal?.name?.toLowerCase().includes(searchStr)) ||
                         (args.dealId && i.deal_id === args.dealId) ||
                         (args.menuItemId && i.menu_item_id === args.menuItemId)
                     );
+                    if (!matchedItem && searchStr) {
+                        const resolution = resolveCartItemForRemoval({ cart: currentCart, text: searchStr });
+                        if (resolution.status === 'MATCH_FOUND' && resolution.item) {
+                            matchedItem = resolution.item;
+                        }
+                    }
                     if (matchedItem) {
                         targetId = matchedItem.id;
                     } else if (!targetId) {

@@ -438,6 +438,38 @@ export function clearPendingCancellation(key, altKey) {
     if (altKey) _pendingCancellation.delete(altKey);
 }
 
+
+// ─── Pending Cart Operation Tracker (e.g. Awaiting Removal Clarification) ───
+const _pendingCartAction = new Map();
+
+export function setPendingCartAction(key, data, altKey) {
+    if (!key && !altKey) return;
+    const payload = {
+        ...data,
+        timestamp: Date.now(),
+    };
+    if (key) _pendingCartAction.set(key, payload);
+    if (altKey) _pendingCartAction.set(altKey, payload);
+}
+
+export function getPendingCartAction(key, altKey) {
+    if (!key && !altKey) return null;
+    let entry = key ? _pendingCartAction.get(key) : null;
+    if (!entry && altKey) entry = _pendingCartAction.get(altKey);
+    if (!entry) return null;
+    // Expire after 15 minutes
+    if (entry.timestamp && Date.now() - entry.timestamp > 15 * 60 * 1000) {
+        clearPendingCartAction(key, altKey);
+        return null;
+    }
+    return entry;
+}
+
+export function clearPendingCartAction(key, altKey) {
+    if (key) _pendingCartAction.delete(key);
+    if (altKey) _pendingCartAction.delete(altKey);
+}
+
 // ─── Remembered Customer Details (Persisted Across Cancels & Orders) ────
 const _rememberedCustomerDetails = new Map();
 
@@ -599,6 +631,7 @@ export function clearMenuSentTracking(sessionKey, altKey) {
 export function clearAllSessionCaches() {
     _pendingOrderUpdate.clear();
     _pendingCancellation.clear();
+    _pendingCartAction.clear();
     _menuSentTracker.clear();
     _sessionOrderDetails.clear();
     console.log('[SESSION] All session memory caches cleared.');

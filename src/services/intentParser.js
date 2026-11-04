@@ -1702,6 +1702,118 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             }
         } catch (_) {}
     }
+    // ── Check Fast Route: Intercept Pending Cart Action Clarification (Zero Tokens) ──
+    const { getPendingCartAction, clearPendingCartAction, setPendingCartAction } = await import('./sessionService.js');
+    const { isRemovalIntent, isPendingActionCancellation, resolveCartItemForRemoval, executeCartItemRemoval } = await import('./cartItemResolver.js');
+    const pendingCartAction = userSessionId ? getPendingCartAction(userSessionId, cleanPhone) : null;
+    if (pendingCartAction && pendingCartAction.action === 'REMOVE_ITEM' && userSessionId) {
+        if (isPendingActionCancellation(lower)) {
+            clearPendingCartAction(userSessionId, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'pending_removal_cancelled',
+                reply: 'Theek hai, cart se koi item remove nahi kiya gaya. 😊',
+            };
+        }
+        try {
+            const { getActiveCart } = await import('./cartService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            if (cart?.items && cart.items.length > 0) {
+                const resolution = resolveCartItemForRemoval({ cart, text: lower, pendingAction: pendingCartAction });
+                if (resolution.status === 'MATCH_FOUND') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    const removeRes = await executeCartItemRemoval({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        resolution,
+                        cart,
+                    });
+                    const { clearOrderSummarySnapshot, ORDER_STAGES } = await import('./checkoutStateMachine.js');
+                    clearOrderSummarySnapshot(userSessionId);
+                    const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone) || {};
+                    if (!removeRes.updatedCart.items || removeRes.updatedCart.items.length === 0) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.CART_BUILDING,
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_item_removal_empty',
+                            reply: `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\nAap ka cart ab khali hai. Menu ya deals dekhne ke liye 'menu' ya 'deals' likhein. 😊`,
+                        };
+                    }
+                    const isAtFinalReview = Boolean(details.name && details.phoneConfirmed && (details.address || details.location) && details.paymentMethod);
+                    const lines = removeRes.updatedCart.items.map(i => {
+                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                        const fText = i.notes ? ` (${i.notes})` : '';
+                        const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
+                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
+                        return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                    }).join('\n');
+                    if (isAtFinalReview) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
+                            summaryShown: true,
+                            awaitingFinalConfirmation: true,
+                            orderConfirmed: false,
+                        }, cleanPhone);
+                        const delCharges = removeRes.pricing.deliveryFee > 0 ? `Rs. ${removeRes.pricing.deliveryFee}` : 'Free';
+                        const totalFormatted = Number(removeRes.pricing.total).toLocaleString('en-PK');
+                        const updatedSummary = `Ji bilkul! ${removeRes.removedQtyText}${removeRes.removedItemName} order se remove kar di hai. ✅\n\n` +
+                            `📋 *Aap ke Updated Order ki Details:*\n` +
+                            `${lines}\n\n` +
+                            `🚚 *Delivery Charges:* ${delCharges}\n` +
+                            `💰 *Total:* Rs. ${totalFormatted}\n\n` +
+                            `Kya aap is updated order ko confirm karte hain? (Order book karne ke liye "Haan" ya "Confirm" likhein)`;
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_item_removal_updated_summary',
+                            reply: updatedSummary,
+                        };
+                    } else {
+                        updateSessionOrderDetails(userSessionId, {
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
+                        const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
+                        return await getNextCheckoutStepResponse({
+                            details,
+                            whatsappPhone,
+                            cart: removeRes.updatedCart,
+                            cache,
+                            introMessage: removalIntro,
+                        });
+                    }
+                } else if (resolution.status === 'AMBIGUOUS') {
+                    return {
+                        handled: true,
+                        routeName: 'pending_removal_clarification_retry',
+                        reply: resolution.clarificationMessage,
+                    };
+                } else if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'deal_component_restriction',
+                        reply: resolution.message,
+                    };
+                } else if (resolution.status === 'NOT_FOUND') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'item_not_found_removal',
+                        reply: resolution.message || `Aap ke cart mein *${resolution.searchedName}* maujood nahi hai.`,
+                    };
+                }
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error resolving pending removal:', err.message);
+        }
+    }
+
 
     // Unified customer target order lookup helper for fast routes (Prisma DB + in-memory fallback)
     async function lookupCustomerTargetOrder(textInput = lower) {
@@ -2855,241 +2967,113 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     const pendingFlavour = userSessionId ? getPendingDealFlavour(userSessionId) : null;
 
-    // ── Check Fast Route: Cart Item Removal / Quantity Reduction / Modification (Zero Tokens) ──
-    const hasRemovalWord = /\b(?:remove|remov|delete|delet|hata|hatao|hatado|hata\s*d[aoeiu]+n?|nikal|nikalo|nikaldo|nikal\s*d[aoeiu]+n?|minus|kam\s*(?:kr|kar|karo|kardo|krdo|karein)|chhor\s*do|rehne\s*do|rehn\s*do)\b/i.test(lower);
-    const isQtyCorrection = /\b(?:mny|maine|mene|me\s*ne)\s+(?:to\s+)?(?:sirf\s+)?(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|mangwayi\s*thi|order\s*ki\s*thi)\b/i.test(lower) ||
-        /\b(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s+)?(?:\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|boli\s*thi|chahiye\s*thi)\b/i.test(lower) ||
-        /\b(?:sirf\s+(?:\d+|ak|aik|ek|ik|one)\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:chahiye|rakho|rakhein|kr\s*do|kar\s*do))\b/i.test(lower);
-    const isContextualRemoval = hasRemovalWord && /\b(?:wo|woh|ye|yeh|isko|isay|isey|usko|usay|usey|meri|mera)\b/i.test(lower);
-
-    // ── Check Fast Route: Customer Frustration Handling (Zero Tokens) ──
-    const isFrustration = !hasRemovalWord && (
-        /^(?:(?:yar|yaar|ohe|oye|abey|abe)\s+)?(?:kya|kia)\s*(?:bakwas|bkwas|fazool|fuzool|third\s*class|pagal|dimagh\s*kharab)\s*(?:h|hai|hy|hega)?[\s.!?]*$/i.test(lower.trim()) ||
-        /\b(?:kya\s*(?:bakwas|bkwas)|main\s*kya\s*keh\s*raha\s*h(?:u|oo)?n|ma\s*k(?:a|ya)\s*kah\s*rha\s*h(?:u|oo)?n)\b/i.test(lower.trim())
-    );
-
-    if (isFrustration && userSessionId) {
-        clearPendingDealFlavour(userSessionId);
-        _lastDiscussedDealBySession.delete(userSessionId);
-
+    // ── Check Fast Route: Cart Item Removal Intent (Zero Tokens) ──
+    const hasRemovalIntent = isRemovalIntent(lower);
+    if (hasRemovalIntent && userSessionId) {
         try {
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-
             if (cart?.items && cart.items.length > 0) {
-                const lines = cart.items.map(i => {
-                    const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                    const fText = i.notes ? ` (${i.notes})` : '';
-                    const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                    return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
-                }).join('\n');
-                const subtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-
-                return {
-                    handled: true,
-                    routeName: 'customer_frustration_cart_display',
-                    reply: `Maazrat chahta hoon Ji, meri taraf se ghalti hui. 🙏\n\nAap ke cart mein is waqt yeh items hain:\n${lines}\n💰 *Subtotal:* Rs. ${subtotal.toLocaleString('en-PK')}\n\nBaraye meherbani batayein ke aap ko in mein se kya remove ya change karna hai taake main foran theek kar doon?`,
-                };
-            } else {
-                return {
-                    handled: true,
-                    routeName: 'customer_frustration_empty_cart',
-                    reply: `Maazrat chahta hoon Ji, meri taraf se ghalti hui. 🙏 Main aap ki kya madad kar sakta hoon? Aap apna order bata dein ya support agent se rabte ke liye 'agent' likhein.`,
-                };
-            }
-        } catch (_) {}
-    }
-
-    if ((hasRemovalWord || isQtyCorrection) && userSessionId) {
-        try {
-            const { getActiveCart, removeCartItem, updateCartItem } = await import('./cartService.js');
-            const cache = await getCatalogCache();
-            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-
-            if (cart?.items && cart.items.length > 0) {
-                const numMap = { '1': 1, 'ak': 1, 'aik': 1, 'ek': 1, 'ik': 1, 'one': 1, '2': 2, 'do': 2, 'doo': 2, 'two': 2, '3': 3, 'teen': 3, 'tin': 3, 'three': 3, '4': 4, 'char': 4, 'chaar': 4, 'four': 4, '5': 5, 'paanch': 5, 'panch': 5, 'five': 5 };
-
-                const dealMatch = lower.match(/\bdeal\s*#?\s*(\d+)\b/i) || lower.match(/\b(\d+)\s*deal\b/i);
-                const targetDealNum = dealMatch ? parseInt(dealMatch[1], 10) : null;
-
-                let targetItemQuery = null;
-                if (!targetDealNum) {
-                    const itemMatch = lower.match(/\b(burger|zinger|fries|pizza|wings?|roll|pasta|nuggets?)\b/i);
-                    if (itemMatch) targetItemQuery = itemMatch[1].toLowerCase();
-                }
-
-                let qtyToRemove = null;
-                const preMatch = lower.match(/\b(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?(?:deal\s*#?\s*\d+|burger|pizza|fries|drink|wings?|roll|item)/i);
-                if (preMatch) {
-                    qtyToRemove = numMap[preMatch[1].toLowerCase()] || parseInt(preMatch[1], 10) || null;
-                } else {
-                    const doPreMatch = lower.match(/(?<!\b(?:kr|kar|karo|hata|nikal|bhej|de|daal)\s+)\b(?:do|doo)\s*(?:x\s+)?(?:deal\s*#?\s*\d+|burger|pizza|fries|drink|wings?|roll|item)/i);
-                    if (doPreMatch) qtyToRemove = 2;
-                    else {
-                        const postMatch = lower.match(/\b(?:remove|hata|nikal|kam)\s*(?:kr\s*do|kardo)?\s*(\d+|ak|aik|ek|ik|one)\b/i);
-                        if (postMatch) qtyToRemove = numMap[postMatch[1].toLowerCase()] || parseInt(postMatch[1], 10) || null;
-                    }
-                }
-
-                let targetRemainingQty = null;
-                if (isQtyCorrection) {
-                    const corrMatch = lower.match(/\b(?:mny|maine|mene|me\s*ne)?\s*(?:deal\s*#?\s*\d+|[a-z]+)\s*(?:sirf\s*)?(\d+|ak|aik|ek|ik|one)\s*(?:ki\s*thi|kahi\s*thi|chahiye\s*thi)\b/i);
-                    if (corrMatch) {
-                        targetRemainingQty = numMap[corrMatch[1].toLowerCase()] || 1;
-                    } else {
-                        targetRemainingQty = 1;
-                    }
-                }
-
-                let matchingItems = [];
-                if (targetDealNum) {
-                    matchingItems = cart.items.filter(i => {
-                        const dName = (i.deal?.name || '').toLowerCase();
-                        const dSlug = (i.deal?.slug || '').toLowerCase();
-                        const dId = (i.deal?.id || i.deal_id || '').toLowerCase();
-                        return dName.includes(`deal ${targetDealNum}`) || 
-                               dName.includes(`deal #${targetDealNum}`) || 
-                               dSlug.includes(`deal-${targetDealNum}`) || 
-                               dSlug.includes(`deal${targetDealNum}`) ||
-                               dId === `deal-${targetDealNum}` ||
-                               dId === `deal${targetDealNum}` ||
-                               dId.endsWith(`-${targetDealNum}`) ||
-                               dSlug.endsWith(`-${targetDealNum}`);
-                    });
-                    if (matchingItems.length === 0 && cache?.rawDeals) {
-                        const targetDeal = cache.rawDeals.find(d => {
-                            const name = (d.name || '').toLowerCase();
-                            const slug = (d.slug || '').toLowerCase();
-                            const id = (d.id || '').toLowerCase();
-                            return name.includes(`deal ${targetDealNum}`) || name.includes(`deal #${targetDealNum}`) || slug.includes(`deal-${targetDealNum}`) || id === `deal-${targetDealNum}`;
-                        });
-                        if (targetDeal) {
-                            matchingItems = cart.items.filter(i => (i.deal_id === targetDeal.id || i.deal?.id === targetDeal.id));
-                        }
-                    }
-                } else if (targetItemQuery) {
-                    matchingItems = cart.items.filter(i => {
-                        const n = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
-                        return n.includes(targetItemQuery);
-                    });
-                    // Variant / Size refinement for item removal (e.g. "regular fries ko hata do")
-                    const variantMatch = lower.match(/\b(regular|reg|large|bari|loaded|can|tin|1\.5\s*liter|1\s*liter|small|choti|medium|party)\b/i);
-                    if (variantMatch && matchingItems.length > 0) {
-                        let vQuery = variantMatch[1].toLowerCase();
-                        if (vQuery === 'reg') vQuery = 'regular';
-                        if (vQuery === 'bari') vQuery = 'large';
-                        if (vQuery === 'choti') vQuery = 'small';
-                        const vFiltered = matchingItems.filter(i => {
-                            const vName = (i.menu_variant?.name || '').toLowerCase();
-                            const notes = (i.notes || '').toLowerCase();
-                            const itName = (i.menu_item?.name || '').toLowerCase();
-                            return vName.includes(vQuery) || notes.includes(vQuery) || itName.includes(vQuery);
-                        });
-                        if (vFiltered.length > 0) {
-                            matchingItems = vFiltered;
-                        }
-                    }
-                } else if (isContextualRemoval || cart.items.length === 1) {
-                    const latestItem = cart.items[cart.items.length - 1];
-                    if (latestItem) matchingItems = [latestItem];
-                } else {
-                    // Ambiguous removal request: multiple items in cart and no specific item or contextual pronoun
-                    const itemsSummary = cart.items.map(i => `• ${i.quantity}x ${i.deal ? i.deal.name : (i.menu_item?.name || 'Item')}`).join('\n');
+                const resolution = resolveCartItemForRemoval({ cart, text: lower, pendingAction: null });
+                if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
                     return {
                         handled: true,
-                        routeName: 'ambiguous_removal_clarification',
-                        reply: `Aap kaunsa item remove karna chahenge? Aap ke cart mein yeh items shamil hain:\n${itemsSummary}\n\nBaraye meherbani batayein ke aap ko kaunsa item hatana hai?`,
+                        routeName: 'deal_component_restriction',
+                        reply: resolution.message,
                     };
                 }
-
-                if (matchingItems.length === 0) {
-                    const searchedName = targetDealNum ? `Deal ${targetDealNum}` : (targetItemQuery || 'Item');
+                if (resolution.status === 'NOT_FOUND') {
                     return {
                         handled: true,
                         routeName: 'item_not_in_cart_removal',
-                        reply: `Aap ke cart mein *${searchedName}* pehle se maujood nahi hai.`,
+                        reply: resolution.message || `Aap ke cart mein *${resolution.searchedName}* maujood nahi hai.`,
                     };
                 }
-
-                if (matchingItems.length > 0) {
-                    const itRow = matchingItems[0];
-                    const baseName = itRow.deal ? itRow.deal.name : (itRow.menu_item?.name || 'Item');
-                    const varName = itRow.menu_variant?.name ? ` (${itRow.menu_variant.name})` : '';
-                    const itemName = `${baseName}${varName}`;
-                    const totalMatchedQty = matchingItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
-
-                    let removedQtyText = '';
-
-                    if (targetRemainingQty !== null) {
-                        if (totalMatchedQty > targetRemainingQty) {
-                            let diff = totalMatchedQty - targetRemainingQty;
-                            removedQtyText = diff > 1 ? `${diff}x ` : '';
-                            for (let i = matchingItems.length - 1; i >= 0 && diff > 0; i--) {
-                                const row = matchingItems[i];
-                                if (row.quantity <= diff) {
-                                    await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
-                                    diff -= row.quantity;
-                                } else {
-                                    await updateCartItem({ sessionKey: userSessionId, cartItemId: row.id, quantity: row.quantity - diff });
-                                    diff = 0;
-                                }
-                            }
-                        }
-                    } else if (qtyToRemove && qtyToRemove < totalMatchedQty) {
-                        let toRemove = qtyToRemove;
-                        removedQtyText = toRemove > 1 ? `${toRemove}x ` : '';
-                        for (let i = matchingItems.length - 1; i >= 0 && toRemove > 0; i--) {
-                            const row = matchingItems[i];
-                            if (row.quantity <= toRemove) {
-                                await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
-                                toRemove -= row.quantity;
-                            } else {
-                                await updateCartItem({ sessionKey: userSessionId, cartItemId: row.id, quantity: row.quantity - toRemove });
-                                toRemove = 0;
-                            }
-                        }
-                    } else {
-                        removedQtyText = totalMatchedQty > 1 ? `${totalMatchedQty}x ` : '';
-                        for (const row of matchingItems) {
-                            await removeCartItem({ sessionKey: userSessionId, cartItemId: row.id });
-                        }
-                    }
-
-                    clearPendingDealFlavour(userSessionId);
-                    _lastDiscussedDealBySession.delete(userSessionId);
-
-                    const { getSessionOrderDetails } = await import('./sessionService.js');
-                    const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
-                    const details = getSessionOrderDetails(userSessionId, cleanPhone);
-                    const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
-
-                    if (!cartNow.items || cartNow.items.length === 0) {
+                if (resolution.status === 'AMBIGUOUS') {
+                    setPendingCartAction(userSessionId, {
+                        action: 'REMOVE_ITEM',
+                        candidateIds: resolution.candidates.map(c => c.id),
+                    }, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'ambiguous_removal_clarification',
+                        reply: resolution.clarificationMessage,
+                    };
+                }
+                if (resolution.status === 'MATCH_FOUND') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    const removeRes = await executeCartItemRemoval({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        resolution,
+                        cart,
+                    });
+                    const { clearOrderSummarySnapshot, ORDER_STAGES } = await import('./checkoutStateMachine.js');
+                    clearOrderSummarySnapshot(userSessionId);
+                    const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone) || {};
+                    if (!removeRes.updatedCart.items || removeRes.updatedCart.items.length === 0) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.CART_BUILDING,
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
                         return {
                             handled: true,
                             routeName: 'fast_cart_item_removal_empty',
-                            reply: `Theek hai Ji! Aapke order se *${removedQtyText}${itemName}* remove kar di gayi hai. ✅\n\nAap ka cart ab khali hai. Menu ya deals dekhne ke liye 'menu' ya 'deals' likhein.`,
+                            reply: `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\nAap ka cart ab khali hai. Menu ya deals dekhne ke liye 'menu' ya 'deals' likhein. 😊`,
                         };
                     }
-
-                    const lines = cartNow.items.map(i => {
+                    const isAtFinalReview = Boolean(details.name && details.phoneConfirmed && (details.address || details.location) && details.paymentMethod);
+                    const lines = removeRes.updatedCart.items.map(i => {
                         const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
                         const fText = i.notes ? ` (${i.notes})` : '';
+                        const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
                         const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                        return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
                     }).join('\n');
-                    const subtotalNow = cartNow.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
-
-                    const removalIntro = `Theek hai Ji! Aapke order se *${removedQtyText}${itemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${subtotalNow.toLocaleString('en-PK')}`;
-
-                    return await getNextCheckoutStepResponse({
-                        details,
-                        whatsappPhone,
-                        cart: cartNow,
-                        cache,
-                        introMessage: removalIntro,
-                    });
+                    if (isAtFinalReview) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
+                            summaryShown: true,
+                            awaitingFinalConfirmation: true,
+                            orderConfirmed: false,
+                        }, cleanPhone);
+                        const delCharges = removeRes.pricing.deliveryFee > 0 ? `Rs. ${removeRes.pricing.deliveryFee}` : 'Free';
+                        const totalFormatted = Number(removeRes.pricing.total).toLocaleString('en-PK');
+                        const updatedSummary = `Ji bilkul! ${removeRes.removedQtyText}${removeRes.removedItemName} order se remove kar di hai. ✅\n\n` +
+                            `📋 *Aap ke Updated Order ki Details:*\n` +
+                            `${lines}\n\n` +
+                            `🚚 *Delivery Charges:* ${delCharges}\n` +
+                            `💰 *Total:* Rs. ${totalFormatted}\n\n` +
+                            `Kya aap is updated order ko confirm karte hain? (Order book karne ke liye "Haan" ya "Confirm" likhein)`;
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_item_removal_updated_summary',
+                            reply: updatedSummary,
+                        };
+                    } else {
+                        updateSessionOrderDetails(userSessionId, {
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
+                        const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
+                        return await getNextCheckoutStepResponse({
+                            details,
+                            whatsappPhone,
+                            cart: removeRes.updatedCart,
+                            cache,
+                            introMessage: removalIntro,
+                        });
+                    }
                 }
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'fast_removal_empty_cart',
+                    reply: 'Aap ka cart pehle se khali hai. Menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likhein! 😊',
+                };
             }
         } catch (err) {
             console.error('[FAST_ROUTE] Error processing removal request:', err.message);

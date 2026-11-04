@@ -56,6 +56,7 @@ import {
 import { resolveMenuItemOrDeal, getActiveDeals, getActiveMenu } from './menuService.js';
 import { checkDeliveryAvailability } from './deliveryService.js';
 import { createOrder, getLatestInMemoryOrder } from './orderService.js';
+import { resolveCartItemForRemoval, executeCartItemRemoval } from './cartItemResolver.js';
 import { isChatMuted } from './handoverService.js';
 import { interpretCustomerContext } from './aiContextInterpreter.js';
 import { RESPONSE_TEMPLATES } from './responseTemplates.js';
