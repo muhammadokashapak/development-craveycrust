@@ -2130,7 +2130,8 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
                 const confirmMsg = `${updatedDetails.name} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n` +
                     `Order Number: ${finalOrderNum}\n` +
                     `Order Total: Rs. ${finalTotal}\n` +
-                    `Payment: ${paymentLabel}\n\n` +
+                    `Payment: ${paymentLabel}\n` +
+                    `Delivery Address: ${finalAddress}\n\n` +
                     `Aap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein! 🍕🔥`;
 
                 const cleanReply = sanitizeOutput(confirmMsg);
@@ -2208,7 +2209,7 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
 - CURRENT STEP: STEP 5 (EXTRA ITEMS UPSELL).
 - Chaaron (4) zaroori details (Naam, Phone, Address, Payment Method) mil chuki hain!
 - Abhi order summary card ya create_confirmed_order call MAT karein!
-- Pehle customer se Extra items poochein: "Ji ${updatedDetails.name} bhai, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?".`;
+- Pehle customer se Extra items poochein: "Kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?".`;
         } else {
             checkoutStepGuidance = `\n\n🚨 SAKHT STEP-BY-STEP CHECKOUT PROTOCOL:
 - CURRENT STEP: STEP 6 (ORDER SUMMARY & FINAL CONFIRMATION).
@@ -2464,24 +2465,31 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         : cleanFinalReply;
 }
 
-// ─── Per-Chat Sequential Message Processing Queue ───
+// ─── Per-Chat Sequential Message Processing Queue & Deduplication ───
 const _chatMessageQueues = new Map();
-const _lastProcessedMessages = new Map(); // jid -> { text, timestamp }
+const _lastProcessedMessages = new Map(); // jid -> { text, normalizedText, timestamp }
+const _inFlightMessages = new Map();      // jid -> { normalizedText, timestamp }
 
 async function _enqueueMessage(jid, params) {
     const prevPromise = _chatMessageQueues.get(jid) || Promise.resolve();
+    const text = (params?.text || '').trim();
+    const normalizedText = text.toLowerCase().trim();
+
+    _inFlightMessages.set(jid, { normalizedText, timestamp: Date.now() });
 
     const currentPromise = prevPromise
         .catch(() => {})
         .then(async () => {
             const reply = await _processMessageInternal(params);
             _lastProcessedMessages.set(jid, {
-                text: (params?.text || '').trim(),
+                text,
+                normalizedText,
                 timestamp: Date.now(),
             });
             return reply;
         })
         .finally(() => {
+            _inFlightMessages.delete(jid);
             if (_chatMessageQueues.get(jid) === currentPromise) {
                 _chatMessageQueues.delete(jid);
             }
@@ -2492,25 +2500,41 @@ async function _enqueueMessage(jid, params) {
 }
 
 /**
- * Process incoming message with per-chat sequential queuing and debounce buffering:
- * - Groups rapid split messages (e.g. "Deal kon c hain tmhary oas" + "Pas") into a single prompt.
- * - Suppresses isolated single-word typo corrections sent within 4s of an already answered query.
+ * Process incoming message with per-chat sequential queuing and rapid duplicate suppression:
+ * - Drops duplicate messages when identical text is already in flight.
+ * - Drops duplicate messages when identical text was processed < 6000ms ago.
+ * - Suppresses isolated single-word typo corrections sent within 5s of an already answered query.
  */
 export async function processMessage(params) {
     const jid = params?.msg?.key?.remoteJid || params?.identity?.chatId || params?.identity?.phone || 'default';
     const text = (params?.text || '').trim();
+    const normalizedText = text.toLowerCase().trim();
 
-    // 1. Check if this is an immediate, isolated 1-word typo correction (e.g. "pas", "oas")
-    // sent within 4 seconds of a previous question that was already processed
-    const lastProcessed = _lastProcessedMessages.get(jid);
-    const isSingleWordTypoCorrection = Boolean(text && text.split(/\s+/).length === 1 && text.length <= 5 &&
-        /\b(?:pas|oas|ha|han|hn|ji|g|ho|ka|ki|ke|ko|se)\b/i.test(text));
-    if (lastProcessed && (Date.now() - lastProcessed.timestamp < 5000) && isSingleWordTypoCorrection) {
-        console.log(`[AI] Suppressing isolated rapid typo correction "${text}" from ${jid} (already answered prior message).`);
-        return null;
+    if (normalizedText) {
+        // 1. Suppress if an identical message is currently in-flight
+        const inFlight = _inFlightMessages.get(jid);
+        if (inFlight && inFlight.normalizedText === normalizedText && (Date.now() - inFlight.timestamp < 10000)) {
+            console.log(`[AI] Suppressing simultaneous in-flight duplicate "${text}" from ${jid}.`);
+            return null;
+        }
+
+        // 2. Suppress rapid duplicate message if processed within last 6 seconds
+        const lastProcessed = _lastProcessedMessages.get(jid);
+        if (lastProcessed && lastProcessed.normalizedText === normalizedText && (Date.now() - lastProcessed.timestamp < 6000)) {
+            console.log(`[AI] Suppressing rapid duplicate message "${text}" from ${jid} (${Date.now() - lastProcessed.timestamp}ms ago).`);
+            return null;
+        }
+
+        // 3. Suppress isolated rapid 1-word typo corrections
+        const isSingleWordTypoCorrection = Boolean(text && text.split(/\s+/).length === 1 && text.length <= 5 &&
+            /\b(?:pas|oas|ha|han|hn|ji|g|ho|ka|ki|ke|ko|se)\b/i.test(text));
+        if (lastProcessed && (Date.now() - lastProcessed.timestamp < 5000) && isSingleWordTypoCorrection) {
+            console.log(`[AI] Suppressing isolated rapid typo correction "${text}" from ${jid} (already answered prior message).`);
+            return null;
+        }
     }
 
-    // Process incoming message immediately without artificial debounce delay
+    // Process incoming message with sequential queue
     return _enqueueMessage(jid, params);
 }
 

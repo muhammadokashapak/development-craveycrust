@@ -605,7 +605,7 @@ export async function getNextCheckoutStepResponse({
             routeName: 'step_address_needed',
             step: 'ADDRESS',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Delivery kahan karni hai ${customerName}? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!`,
+                `Delivery kahan karni hai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) dein ya qareeb ka mashhoor *Landmark* bata dein!`,
         };
     }
 
@@ -620,7 +620,15 @@ export async function getNextCheckoutStepResponse({
                 longitude: details.location?.longitude,
             });
             if (dCheck && !dCheck.available) {
-                // Out of delivery radius! Reset session address so customer must provide a valid one
+                if (dCheck.code === 'ADDRESS_INCOMPLETE') {
+                    return {
+                        handled: true,
+                        routeName: 'step_address_incomplete',
+                        step: 'ADDRESS',
+                        reply: dCheck.message,
+                    };
+                }
+                // Out of delivery radius or not found! Reset session address
                 details.address = null;
                 details.location = null;
                 details.locationConfirmed = false;
@@ -648,7 +656,7 @@ export async function getNextCheckoutStepResponse({
             routeName: 'step_payment_needed',
             step: 'PAYMENT',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Payment method kaunsa pasand karenge ${customerName} bhai — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`,
+                `Payment method kaunsa pasand karenge — *Cash on Delivery (COD)* ya *EasyPaisa*? 💵`,
         };
     }
 
@@ -660,7 +668,7 @@ export async function getNextCheckoutStepResponse({
             routeName: 'step_extra_items_needed',
             step: 'EXTRA_ITEMS',
             reply: (introMessage ? `${introMessage}\n\n` : '') +
-                `Ji ${customerName} bhai, kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?`,
+                `Kya iske sath kuch aur add karna chahenge (jaise Extra Drink ya Fries)?`,
         };
     }
 
@@ -2662,34 +2670,45 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes|g)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)?|haan|han|ji|g|yes|theek\s*hai|ok)\b/i.test(lower.trim());
                 const isAffirmationEligible = Boolean(details.awaitingFinalConfirmation || details.summaryShown || readyToConfirm);
                 if (cart?.items && cart.items.length > 0 && isAffirmationEligible && !details.locationAwaitingConfirmation && details.phoneConfirmed) {
-                    const finalPayment = details.paymentMethod || 'COD';
-                    const { createOrder } = await import('./orderService.js');
-                    const res = await createOrder({
-                        restaurantId: cache.restId,
-                        sessionKey: userSessionId,
-                        customerName: details.name || 'Customer',
-                        phone: details.phone || cleanPhone,
-                        delivery: {
-                            address: finalAddress || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
-                            latitude: details.location?.latitude ?? null,
-                            longitude: details.location?.longitude ?? null,
-                        },
-                        paymentMethod: finalPayment,
-                        sock,
-                    });
-                    const orderNum = res.order?.orderNumber || res.order?.order_number;
-                    const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
-                    const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
-                    if (orderNum) {
-                        clearSessionOrderDetails(userSessionId, cleanPhone);
-                        _lastDiscussedDealBySession.delete(userSessionId);
-                        const customerName = details.name ? details.name.trim() : 'Customer';
-                        const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
-                        return {
-                            handled: true,
-                            routeName: 'fast_order_confirm',
-                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai!\nOrder Number: ${orderNum}${discountMsg}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein!`,
-                        };
+                    const { acquireConfirmationLock, releaseConfirmationLock } = await import('./checkoutStateMachine.js');
+                    if (!acquireConfirmationLock(userSessionId)) {
+                        console.log(`[FAST_CONFIRM] Confirmation already in progress for session ${userSessionId}. Ignoring concurrent trigger.`);
+                        return null;
+                    }
+                    try {
+                        const finalPayment = details.paymentMethod || 'COD';
+                        const { createOrder } = await import('./orderService.js');
+                        const res = await createOrder({
+                            restaurantId: cache.restId,
+                            sessionKey: userSessionId,
+                            customerName: details.name || 'Customer',
+                            phone: details.phone || cleanPhone,
+                            delivery: {
+                                address: finalAddress || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
+                                latitude: details.location?.latitude ?? null,
+                                longitude: details.location?.longitude ?? null,
+                            },
+                            paymentMethod: finalPayment,
+                            sock,
+                        });
+                        const orderNum = res.order?.orderNumber || res.order?.order_number;
+                        const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                        const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
+                        if (orderNum) {
+                            clearSessionOrderDetails(userSessionId, cleanPhone);
+                            _lastDiscussedDealBySession.delete(userSessionId);
+                            const customerName = details.name ? details.name.trim() : 'Customer';
+                            const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
+                            const displayAddress = finalAddress || (details.location?.latitude ? `Location Pin (${details.location.latitude}, ${details.location.longitude})` : '');
+                            const addressLine = displayAddress ? `\nDelivery Address: ${displayAddress}` : '';
+                            return {
+                                handled: true,
+                                routeName: 'fast_order_confirm',
+                                reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\nOrder Number: ${orderNum}${discountMsg}\nOrder Total: Rs. ${total.toLocaleString('en-PK')}\nPayment: ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}${addressLine}\n\nAap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein! ❤️`,
+                            };
+                        }
+                    } finally {
+                        releaseConfirmationLock(userSessionId);
                     }
                 } else if (cart?.items && cart.items.length > 0) {
                     // Customer said "confirm / confirm kr do" but details are not yet complete: start checkout!
@@ -4249,7 +4268,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     if (isNameUpdated) {
                         introMessage = `Theek hai ${updatePayload.name} bhai! Aap ka naam update kar diya hai (*${updatePayload.name}*). 😊`;
                     } else if (isAddressUpdated) {
-                        const distSuffix = updatePayload.distanceKm != null ? ` (delivery range mein available hai - approx. ${updatePayload.distanceKm} km)` : '';
+                        const distSuffix = (updatePayload.isPin && updatePayload.distanceKm != null) ? ` (delivery range mein available hai - approx. ${updatePayload.distanceKm} km)` : '';
                         introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Delivery address update kar diya hai (*${updatePayload.address}*)${distSuffix}. 📍`;
                     } else if (isPaymentUpdated) {
                         introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Payment method update kar diya hai (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*). 💵`;
@@ -4263,9 +4282,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     } else if (updatePayload.paymentMethod) {
                         introMessage = `Payment method (*${updatePayload.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}*) note kar liya hai. 💵`;
                     } else if (updatePayload.phoneConfirmed) {
-                        introMessage = `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Contact number confirm ho gaya (${formatPakistaniPhone(details.phone || cleanPhone)}). 👍`;
+                        introMessage = `Contact number confirm ho gaya (${formatPakistaniPhone(details.phone || cleanPhone)}). 👍`;
                     } else if (updatePayload.name) {
-                        introMessage = `Theek hai ${details.name} bhai! Aap ka naam note kar liya hai. 😊`;
+                        introMessage = `Theek hai ${details.name}! Aap ka naam note kar liya hai. 😊`;
                     } else {
                         introMessage = `Theek hai ${details.name ? details.name + ' Ji! ' : ''}Aap ki details note kar li hain.`;
                     }
@@ -4382,7 +4401,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     whatsappPhone,
                     cart,
                     cache,
-                    introMessage: `Theek hai ${details.name ? details.name + ' bhai! ' : ''}Contact number confirm ho gaya (${formatPakistaniPhone(targetPhone)}). 👍`,
+                    introMessage: `Contact number confirm ho gaya (${formatPakistaniPhone(targetPhone)}). 👍`,
                 });
             }
         } catch (_) {}
@@ -4461,6 +4480,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         });
 
                         if (!delCheck.available) {
+                            if (delCheck.code === 'ADDRESS_INCOMPLETE') {
+                                return {
+                                    handled: true,
+                                    routeName: 'step_address_incomplete',
+                                    reply: delCheck.message,
+                                };
+                            }
                             return {
                                 handled: true,
                                 routeName: 'address_out_of_range',
@@ -4477,13 +4503,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                                 locationConfirmed: true,
                                 locationAwaitingConfirmation: false,
                             }, cleanPhone);
-                            const distText = delCheck.distanceKm != null ? ` (approx. ${delCheck.distanceKm} km door)` : '';
+                            const distText = (isPin && delCheck.distanceKm != null) ? ` (approx. ${delCheck.distanceKm} km door)` : '';
                             return await getNextCheckoutStepResponse({
                                 details,
                                 whatsappPhone,
                                 cart,
                                 cache,
-                                introMessage: isPin ? `Delivery location pin note kar li hai${distText}. 📍` : `Delivery address (*${cleanedAddr}*) note kar liya hai${distText}. 📍`,
+                                introMessage: isPin ? `Delivery location pin note kar li hai${distText}. 📍` : `Delivery address (*${cleanedAddr}*) note kar liya hai. 📍`,
                             });
                         }
                     } else if (raw.trim().length > 0 && raw.trim().length < 3) {
@@ -5897,32 +5923,43 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (cart?.items && cart.items.length > 0 && (details?.awaitingFinalConfirmation === true || details?.summaryShown === true || readyToConfirmOrder) && !details?.locationAwaitingConfirmation) {
                 const finalPayment = details.paymentMethod || 'COD';
                 const { createOrder } = await import('./orderService.js');
-                const res = await createOrder({
-                    restaurantId: cache.restId,
-                    sessionKey: userSessionId,
-                    customerName: details.name || 'Customer',
-                    phone: details.phone || cleanPhone,
-                    delivery: {
-                        address: finalAddressForConfirm || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
-                        latitude: details.location?.latitude ?? null,
-                        longitude: details.location?.longitude ?? null,
-                    },
-                    paymentMethod: finalPayment,
-                    sock,
-                });
-                const orderNum = res.order?.orderNumber || res.order?.order_number;
-                const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
-                const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
-                if (orderNum) {
-                    clearSessionOrderDetails(userSessionId, cleanPhone);
-                    _lastDiscussedDealBySession.delete(userSessionId);
-                    const customerName = details.name ? details.name.trim() : 'Customer';
-                    const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
-                    return {
-                        handled: true,
-                        routeName: 'fast_order_confirm',
-                        reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\n📋 *Order Number:* ${orderNum}${discountMsg}\n💰 *Order Total:* Rs. ${total.toLocaleString('en-PK')}\n💵 *Payment:* ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}\n\nAap ka order Cravey Crust ki kitchen ko bhej diya gaya hai. Shukriya! 🍕✨`,
-                    };
+                const { acquireConfirmationLock, releaseConfirmationLock } = await import('./checkoutStateMachine.js');
+                if (!acquireConfirmationLock(userSessionId)) {
+                    console.log(`[FAST_CONFIRM] Confirmation already in progress for session ${userSessionId}. Ignoring concurrent trigger.`);
+                    return null;
+                }
+                try {
+                    const res = await createOrder({
+                        restaurantId: cache.restId,
+                        sessionKey: userSessionId,
+                        customerName: details.name || 'Customer',
+                        phone: details.phone || cleanPhone,
+                        delivery: {
+                            address: finalAddressForConfirm || (details.location?.latitude ? `Google Maps Location Pin: https://www.google.com/maps?q=${details.location.latitude},${details.location.longitude}` : 'Google Maps Location Pin'),
+                            latitude: details.location?.latitude ?? null,
+                            longitude: details.location?.longitude ?? null,
+                        },
+                        paymentMethod: finalPayment,
+                        sock,
+                    });
+                    const orderNum = res.order?.orderNumber || res.order?.order_number;
+                    const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
+                    const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
+                    if (orderNum) {
+                        clearSessionOrderDetails(userSessionId, cleanPhone);
+                        _lastDiscussedDealBySession.delete(userSessionId);
+                        const customerName = details.name ? details.name.trim() : 'Customer';
+                        const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
+                        const displayAddress = finalAddressForConfirm || (details.location?.latitude ? `Location Pin (${details.location.latitude}, ${details.location.longitude})` : '');
+                        const addressLine = displayAddress ? `\n📍 *Delivery Address:* ${displayAddress}` : '';
+                        return {
+                            handled: true,
+                            routeName: 'fast_order_confirm',
+                            reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\n📋 *Order Number:* ${orderNum}${discountMsg}\n💰 *Order Total:* Rs. ${total.toLocaleString('en-PK')}\n💵 *Payment:* ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}${addressLine}\n\nAap ka order Cravey Crust ki kitchen ko bhej diya gaya hai. Shukriya! 🍕✨`,
+                        };
+                    }
+                } finally {
+                    releaseConfirmationLock(userSessionId);
                 }
             }
 

@@ -97,14 +97,19 @@ export async function geocodeAddress(addressText, options = {}) {
         return { ...cached, distanceKm };
     }
 
-    // 2. Build Search Queries (with and without city context)
-    const candidates = [query];
-    if (!query.toLowerCase().includes(defaultCity.toLowerCase())) {
-        candidates.push(`${query}, ${defaultCity}`);
-        candidates.push(`${query}, ${defaultCity}, ${defaultCountry}`);
-    } else if (!query.toLowerCase().includes(defaultCountry.toLowerCase())) {
-        candidates.push(`${query}, ${defaultCountry}`);
+    // 2. Build Search Queries (preferring Twin Cities Pakistan context to avoid international confusion)
+    const candidates = [];
+    const lowerQuery = query.toLowerCase();
+    if (!lowerQuery.includes('pakistan')) {
+        if (!lowerQuery.includes('rawalpindi') && !lowerQuery.includes('islamabad')) {
+            candidates.push(`${query}, Rawalpindi, Pakistan`);
+            candidates.push(`${query}, Islamabad, Pakistan`);
+            candidates.push(`${query}, Pakistan`);
+        } else {
+            candidates.push(`${query}, Pakistan`);
+        }
     }
+    candidates.push(query);
 
     for (const searchQuery of candidates) {
         try {

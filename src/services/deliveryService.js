@@ -83,6 +83,10 @@ export const DELIVERY_AREA_COORDINATES = {
     'chistiyan-market':      { name: 'Chistiyan market',      lat: 33.6520, lng: 73.1390, radiusKm: 1.2 },
     'gulberg-green':         { name: 'Gulberg green',         lat: 33.6020, lng: 73.1390, radiusKm: 3.5 },
     'gulzar-e-quaid':        { name: 'Gulzar e Quaid',        lat: 33.6080, lng: 73.1120, radiusKm: 2.5 },
+    'chandni-chowk':         { name: 'Chandni Chowk',         lat: 33.6269, lng: 73.0713, radiusKm: 2.0 },
+    'commercial-market':     { name: 'Commercial Market',     lat: 33.6366, lng: 73.0766, radiusKm: 2.0 },
+    'faizabad':              { name: 'Faizabad',              lat: 33.6631, lng: 73.0847, radiusKm: 2.5 },
+    'soan-gardens':          { name: 'Soan Gardens',          lat: 33.5670, lng: 73.1490, radiusKm: 2.5 },
 };
 
 export const RESTAURANT_CENTER = {
@@ -281,6 +285,10 @@ function findAreaByText(areas, text) {
         else if (cleanLower.includes('tali')) found = areas.find(a => a.slug === 'tali-mor');
         else if (cleanLower.includes('karachi house')) found = areas.find(a => a.slug === 'karachi-house');
         else if (cleanLower.includes('juma bazar')) found = areas.find(a => a.slug === 'juma-bazar');
+        else if (cleanLower.includes('chandni') || cleanLower.includes('chandani')) found = areas.find(a => a.slug === 'chandni-chowk');
+        else if (cleanLower.includes('commercial market')) found = areas.find(a => a.slug === 'commercial-market');
+        else if (cleanLower.includes('faizabad') || cleanLower.includes('faiz abad')) found = areas.find(a => a.slug === 'faizabad');
+        else if (cleanLower.includes('soan')) found = areas.find(a => a.slug === 'soan-gardens');
     }
 
     if (!found) {
@@ -312,6 +320,41 @@ function findAreaByText(areas, text) {
  * @param {number} [params.subtotal]
  * @returns {Promise<Object>}
  */
+
+/**
+ * Check if the address string has specific house, street, plaza, flat, phase, or landmark details.
+ * Standalone chowks, stops, or broad areas (e.g. "chandni chowk", "sanam chowk", "ghauri town") return false.
+ *
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function hasSpecificAddressDetails(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim().toLowerCase();
+
+    // If coordinates or Google Maps link, it is specific
+    if (/https?:\/\//i.test(clean) || /lat=\s*-?\d+/i.test(clean) || /@(-?\d+\.\d+),\s*(-?\d+\.\d+)/.test(clean)) {
+        return true;
+    }
+
+    // Explicit street / house / flat / shop / phase / sector / lane / block / gali keywords
+    const hasDetailKeywords = /\b(?:street|st|st#|strt|gali|gali#|gli|house|h#|makan|flat|shop|dukan|plaza|building|apt|apartment|sector|phase|block|lane|plot|floor|p#|fl#|near|opp|opposite|qareeb|masjid|school|hospital|colony|scheme)\b/i.test(clean);
+
+    // Digits (e.g. "street 2", "h 12", "phase 4", "st 5", "gali 3")
+    const hasNumbers = /\d+/.test(clean);
+
+    // If it mentions detail keywords and numbers: e.g. "street 2", "phase 5", "house 12", "st 3"
+    if (hasDetailKeywords && hasNumbers) return true;
+
+    // Descriptive context with detail keywords and longer (> 15 chars), e.g. "near bilal masjid"
+    if (hasDetailKeywords && (clean.length >= 15 || /\b(?:near|opp|opposite|qareeb)\b/i.test(clean))) return true;
+
+    // Multiple address components separated by comma, slash or dash with context
+    if (/[,\/-]/.test(clean) && (hasNumbers || hasDetailKeywords)) return true;
+
+    return false;
+}
+
 export async function checkDeliveryAvailability(params) {
     const prisma = getDbClient();
     const restaurantId = params.restaurantId || 'default-restaurant';
@@ -377,7 +420,7 @@ export async function checkDeliveryAvailability(params) {
         }).catch(() => null);
         if (area) {
             if (!area.is_active) {
-                return { available: false, code: 'DELIVERY_NOT_AVAILABLE', message: 'Delivery is currently unavailable in this area' };
+                return { available: false, code: 'ADDRESS_NOT_FOUND', message: 'Delivery is currently unavailable in this area' };
             }
             matchedArea = area;
         }
@@ -598,7 +641,7 @@ export async function checkDeliveryAvailability(params) {
                 const unknownLocationMsg = `Maazrat! Yeh address hamare delivery map par locate nahi ho saka. 📍\n\nBaraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\nAgar pin share nahi kar saktay, to apna *mukammal address* (House/Street/Phase) likhein, ya qareeb ka koi mashhoor *Landmark* (school, masjid, plaza, chowk) bata dein!`;
                 return {
                     available: false,
-                    code: 'DELIVERY_NOT_AVAILABLE',
+                    code: 'ADDRESS_NOT_FOUND',
                     message: unknownLocationMsg,
                     maxRadiusKm,
                 };
@@ -624,6 +667,22 @@ export async function checkDeliveryAvailability(params) {
         .replace(/^Gulberg green$/i, 'Gulberg Greens')
         .replace(/^Khana Pull$/i, 'Khanna Pul')
         .trim();
+
+    const isPinProvided = Boolean(params.latitude != null && params.longitude != null) ||
+        Boolean(lat != null && lng != null && (params.latitude != null || (address && (address.includes('lat=') || address.includes('google.com/maps')))));
+
+    // Classify ADDRESS_INCOMPLETE: recognized area or landmark without street, house, or specific details
+    if (!isPinProvided && !hasSpecificAddressDetails(rawAddressText)) {
+        return {
+            available: false,
+            code: 'ADDRESS_INCOMPLETE',
+            matchedArea,
+            areaName: cleanDisplayName,
+            message: `Ji, ${cleanDisplayName} samajh aa gaya. Baraye meherbani qareebi street, sector ya kisi mashhoor landmark ka naam bata dein taake delivery location verify kar sakein. 📍`,
+            requiresDetails: true,
+            maxRadiusKm,
+        };
+    }
 
     // Construct the formatted delivery address from shared location
     const mapUrl = (lat != null && lng != null) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
@@ -661,6 +720,7 @@ export async function checkDeliveryAvailability(params) {
 
     return {
         available: true,
+        code: minMet ? 'DELIVERY_AVAILABLE' : 'DELIVERY_MINIMUM_NOT_MET',
         area: {
             id: matchedArea.id,
             name: cleanDisplayName,
@@ -677,10 +737,10 @@ export async function checkDeliveryAvailability(params) {
         latitude: lat,
         longitude: lng,
         googleMapsUrl: mapUrl,
-        distanceKm: distToRest,
+        distanceKm: isPinProvided ? distToRest : null,
+        isPinVerified: isPinProvided,
         maxRadiusKm,
         ...(minMet ? {} : {
-            code: 'DELIVERY_MINIMUM_NOT_MET',
             message: `Order subtotal of Rs. ${subtotalNum} is below minimum delivery order of Rs. ${minimumOrder}`,
         }),
     };

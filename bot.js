@@ -943,6 +943,27 @@ class BoundedMessageCache {
 global.messageCache = new MessageStore(10000);
 // 10-minute TTL, cleanup every 2 minutes — bounded memory, strong deduplication
 global.processedMessages = new BoundedMessageCache(10 * 60 * 1000, 2 * 60 * 1000);
+
+// Per-user rapid duplicate message suppression (catches double-taps, duplicate webhooks, identical text retries within 5s)
+const _recentUserTextMap = new Map();
+function isDuplicateUserText(senderKey, rawText) {
+    if (!rawText || typeof rawText !== 'string') return false;
+    const clean = rawText.trim().toLowerCase();
+    if (!clean) return false;
+    const key = `${senderKey}_${clean}`;
+    const now = Date.now();
+    const prev = _recentUserTextMap.get(key);
+    if (prev && (now - prev) < 5000) {
+        return true;
+    }
+    _recentUserTextMap.set(key, now);
+    if (_recentUserTextMap.size > 2000) {
+        for (const [k, ts] of _recentUserTextMap.entries()) {
+            if (now - ts > 30000) _recentUserTextMap.delete(k);
+        }
+    }
+    return false;
+}
 global.antiDeleteEnabled = {};
 global.antiLinkGroups = {};
 global.welcomeGroups = {};
@@ -1404,6 +1425,15 @@ async function handleMessage(sock, msg, session) {
     const sender = msg.key.participant || msg.key.remoteJid;
     const isGroup = jid.endsWith('@g.us');
     let isVoiceNote = false;
+
+    // Suppress rapid identical text messages from same user (catches network re-sends / accidental double taps)
+    if (!isFromMe && !isGroup && typeof text === 'string' && text.trim().length > 0) {
+        const userDedupeKey = jid || sender;
+        if (isDuplicateUserText(userDedupeKey, text)) {
+            console.log(`[BOT] Suppressing rapid duplicate text message from ${userDedupeKey}: "${text.slice(0, 30)}"`);
+            return;
+        }
+    }
 
     // ─── Voice Note (Audio / PTT) Handling (Disabled — Admin Handover) ─────────
     const extractedAudio = extractMediaMessage(msg.message);
