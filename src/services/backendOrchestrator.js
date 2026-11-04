@@ -1,0 +1,696 @@
+/**
+ * ╔══════════════════════════════════════════════════════════════╗
+ * ║   Backend Orchestrator — src/services/backendOrchestrator.js ║
+ * ║   100% Business Logic, State Machine & Deterministic Exec   ║
+ * ╚══════════════════════════════════════════════════════════════╝
+ *
+ * Architecture:
+ *   Customer WhatsApp Message
+ *     → 1. Rapid Duplicate Suppression
+ *     → 2. Deterministic Routing (checkFastRoute — 0 TOKENS)
+ *     → 3. Customer Details Extraction & State Machine Evaluation
+ *     → 4. Confirmation Lock & Booking Gate (0 TOKENS)
+ *     → 5. AI Context Interpreter (Only when contextual understanding needed — 1 LLM call, JSON only)
+ *     → 6. Backend Manager Execution (Cart, Menu, Deal, Delivery, Order)
+ *     → 7. Deterministic Response Templates (Pure Roman Urdu output)
+ *     → WhatsApp
+ */
+
+import { getDefaultRestaurantId } from './restaurantService.js';
+import { getCatalogCache, getSyncEpoch } from './catalogCacheService.js';
+import { logZeroTokenReply, logAiTokenReply } from '../utils/logger.js';
+import { cleanWhatsAppPhone } from '../../utils/senderIdentity.js';
+import { extractLocationFromText } from '../../utils/location.js';
+import {
+    getCanonicalSessionKey,
+    getSessionOrderDetails,
+    updateSessionOrderDetails,
+    getRememberedCustomerDetails,
+    isValidCustomerName,
+    appendSessionHistory,
+    getSessionHistory,
+} from './sessionService.js';
+import {
+    ORDER_STAGES,
+    acquireConfirmationLock,
+    releaseConfirmationLock,
+    isConfirmationLocked,
+    saveOrderSummarySnapshot,
+    clearOrderSummarySnapshot,
+} from './checkoutStateMachine.js';
+import {
+    checkFastRoute,
+    cleanExtractedAddress,
+    extractCustomerDetails,
+    setLastDiscussedItem,
+    getLastDiscussedItem,
+    clearLastDiscussedItem,
+} from './intentParser.js';
+import {
+    getActiveCart,
+    addItemToCart,
+    calculateCartTotals,
+    removeCartItem,
+    matchVariant,
+} from './cartService.js';
+import { resolveMenuItemOrDeal, getActiveDeals, getActiveMenu } from './menuService.js';
+import { checkDeliveryAvailability } from './deliveryService.js';
+import { createOrder } from './orderService.js';
+import { isChatMuted } from './handoverService.js';
+import { interpretCustomerContext } from './aiContextInterpreter.js';
+import { RESPONSE_TEMPLATES } from './responseTemplates.js';
+import {
+    isPizzaDeal,
+    getDealPizzaInfo,
+    extractFlavoursFromText,
+    formatSingleFlavourConfirmationPrompt,
+    setPendingDealFlavour,
+    getPendingDealFlavour,
+    clearPendingDealFlavour,
+} from './dealFlavourService.js';
+
+// In-flight message tracking & duplicate suppression
+const _inFlightMessages = new Map();
+const _lastProcessedMessages = new Map();
+
+/**
+ * Detect explicit confirmation intent
+ */
+export function detectConfirmIntent(text) {
+    if (!text || typeof text !== 'string') return false;
+    const t = text.trim().toLowerCase();
+    const words = t.split(/\s+/).filter(Boolean);
+    if (words.length < 1 || words.length > 8) return false;
+    if (/\d/.test(t)) return false;
+
+    const NEGATIONS = /\b(?:nahi|nahin|na|no|mat|cancel|rok|ruko|galat|wrong|hatao|nhi)\b/i;
+    if (NEGATIONS.test(t)) return false;
+
+    const MODIFICATION_INTENT = /\b(?:add|change|badal|update|hatao?|nikal|remove|wapas|aur|extra|fries|drink|pepsi|coke|7up|deal|item|burger|pizza|wings|roll|naya|doosra)\b/i;
+    if (MODIFICATION_INTENT.test(t)) return false;
+
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
+    if (EXPLICIT_CONFIRM.test(t)) return true;
+
+    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
+    return AFFIRMATIVE.test(t);
+}
+
+/**
+ * Clean and format output text
+ */
+export function sanitizeOutput(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+        .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
+        .replace(/<｜DSML｜[^>]*>[\s\S]*?<\/｜DSML｜[^>]*>/gi, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+/**
+ * Centralized Backend Orchestration Handler
+ */
+export async function handleCustomerMessage({
+    sock,
+    msg,
+    text,
+    identity,
+    locationData,
+}) {
+    const rawSender = identity?.whatsappPhone || identity?.phone || '';
+    const whatsappPhone = cleanWhatsAppPhone(rawSender);
+    const jid = msg?.key?.remoteJid || identity?.chatId || identity?.phone || 'default';
+    const canonicalKey = getCanonicalSessionKey(jid, jid, whatsappPhone);
+    const syncEpoch = getSyncEpoch();
+
+    // ── 1. Rapid Duplicate Suppression ──
+    const effectiveText = (text || '').trim();
+    const normalizedText = effectiveText.toLowerCase();
+
+    if (normalizedText) {
+        const inFlight = _inFlightMessages.get(canonicalKey);
+        if (inFlight && inFlight.normalizedText === normalizedText && (Date.now() - inFlight.timestamp < 10000)) {
+            console.log(`[ORCHESTRATOR] Suppressing simultaneous in-flight duplicate "${effectiveText}" from ${canonicalKey}.`);
+            return null;
+        }
+
+        const lastProcessed = _lastProcessedMessages.get(canonicalKey);
+        if (lastProcessed && lastProcessed.normalizedText === normalizedText && (Date.now() - lastProcessed.timestamp < 6000)) {
+            console.log(`[ORCHESTRATOR] Suppressing rapid duplicate message "${effectiveText}" from ${canonicalKey} (${Date.now() - lastProcessed.timestamp}ms ago).`);
+            return null;
+        }
+
+        _inFlightMessages.set(canonicalKey, { normalizedText, timestamp: Date.now() });
+    }
+
+    try {
+        // Location data extraction
+        const activeLocation = locationData || extractLocationFromText(effectiveText);
+        let resolvedText = effectiveText;
+        if (!resolvedText && activeLocation) {
+            resolvedText = activeLocation.latitude != null && activeLocation.longitude != null
+                ? `https://www.google.com/maps?q=${activeLocation.latitude},${activeLocation.longitude}`
+                : (activeLocation.address || 'Location Pin');
+        }
+
+        if (!resolvedText) return '';
+
+        // Check Human Handover Mute
+        const muteStatus = isChatMuted(jid) || isChatMuted(whatsappPhone) || isChatMuted(canonicalKey);
+        if (muteStatus?.isMuted) {
+            console.log(`[HANDOVER] Chat ${canonicalKey} is muted for human support. Skipping.`);
+            return '';
+        }
+
+        // ── 2. Zero-Token Fast Route Interceptor ──
+        try {
+            const fastResult = await checkFastRoute({
+                text: resolvedText,
+                whatsappPhone,
+                sessionKey: canonicalKey,
+                chatId: jid,
+                sock,
+            });
+
+            const hasFastContent = Boolean(
+                (fastResult.reply && fastResult.reply.trim()) ||
+                fastResult.imageUrl ||
+                (Array.isArray(fastResult.imageUrls) && fastResult.imageUrls.length > 0)
+            );
+
+            if ((fastResult.handled || fastResult.reply) && hasFastContent) {
+                const cleanReply = sanitizeOutput(fastResult.reply);
+                logZeroTokenReply({
+                    whatsappPhone,
+                    message: resolvedText,
+                    routeName: fastResult.routeName || 'Deterministic Fast Route',
+                });
+
+                appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+                if (cleanReply) {
+                    appendSessionHistory(canonicalKey, 'assistant', cleanReply, syncEpoch);
+                }
+
+                return {
+                    text: cleanReply,
+                    imageUrl: fastResult.imageUrl || (fastResult.imageUrls && fastResult.imageUrls[0]) || null,
+                    imageUrls: fastResult.imageUrls || (fastResult.imageUrl ? [fastResult.imageUrl] : []),
+                };
+            }
+        } catch (fastErr) {
+            console.warn('[ORCHESTRATOR] Fast route error:', fastErr.message);
+        }
+
+        // ── 3. Load Live Context & State Data ──
+        let restId;
+        try {
+            restId = await getDefaultRestaurantId();
+        } catch (_) {
+            return { text: 'Store database se rabta nahi ho pa raha. Thodi der baad dobara koshish karein.' };
+        }
+
+        const sessionDetails = getSessionOrderDetails(canonicalKey, whatsappPhone);
+        const rememberedDetails = await getRememberedCustomerDetails(canonicalKey, whatsappPhone);
+
+        // Populate remembered profile if not already set
+        if (rememberedDetails?.name && !sessionDetails.name) {
+            sessionDetails.name = rememberedDetails.name;
+            sessionDetails.nameExplicit = true;
+        }
+        if (rememberedDetails?.address && !sessionDetails.address) {
+            sessionDetails.address = rememberedDetails.address;
+        }
+        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+        if (!sessionDetails.phone) {
+            sessionDetails.phone = cleanPhone;
+        }
+
+        if (activeLocation) {
+            updateSessionOrderDetails(canonicalKey, {
+                address: activeLocation.formattedAddress || activeLocation.address || 'Google Maps Location Pin',
+                location: activeLocation,
+            }, whatsappPhone);
+            sessionDetails.address = activeLocation.formattedAddress || activeLocation.address || 'Google Maps Location Pin';
+        }
+
+        // ── 3b. Extract & Update Customer Details from current message ──
+        const isAwaitingName = !sessionDetails.name && !getLastDiscussedItem(canonicalKey, whatsappPhone) && !getPendingDealFlavour(canonicalKey);
+        const extracted = extractCustomerDetails(resolvedText, { ...sessionDetails, isAwaitingName });
+        const updatePayload = {};
+
+        if (extracted.name) {
+            if (!sessionDetails.name || !sessionDetails.nameExplicit) {
+                updatePayload.name = extracted.name;
+                updatePayload.nameExplicit = true;
+                sessionDetails.nameExplicit = true;
+                sessionDetails.name = extracted.name;
+            } else if (extracted.nameExplicit) {
+                const isExplicitRename = /\b(?:badal|change|update|ab\s+(?:mera\s+)?naam|mera\s+naam|my\s+name\s+is|name\s+is|naam\s+|name\s*[:=-])\b/i.test(resolvedText) ||
+                                         /^(?:naam\s+|mera\s+naam\s+|my\s+name\s+is\s+|name\s+is\s+)?([A-Za-z]{2,20})\s+(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|dein|do)$/i.test(resolvedText.trim());
+                if (isExplicitRename && extracted.name.toLowerCase() !== sessionDetails.name.toLowerCase()) {
+                    updatePayload.name = extracted.name;
+                    sessionDetails.name = extracted.name;
+                }
+            }
+        }
+        if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase())) {
+            updatePayload.address = extracted.address;
+            sessionDetails.address = extracted.address;
+        }
+        if (extracted.paymentMethod && (!sessionDetails.paymentMethod || extracted.paymentMethod !== sessionDetails.paymentMethod)) {
+            updatePayload.paymentMethod = extracted.paymentMethod;
+            sessionDetails.paymentMethod = extracted.paymentMethod;
+        }
+        if (extracted.phone && (!sessionDetails.phone || extracted.phone !== sessionDetails.phone || !sessionDetails.phoneConfirmed)) {
+            updatePayload.phone = extracted.phone === 'SAME_WHATSAPP' ? cleanPhone : extracted.phone;
+            updatePayload.phoneConfirmed = true;
+            sessionDetails.phone = updatePayload.phone;
+            sessionDetails.phoneConfirmed = true;
+        }
+        if (sessionDetails.name && !sessionDetails.phoneConfirmed && !updatePayload.phone) {
+            const isAffirmativePhone = /^(?:(?:haan?|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s*)?(?:same|yahi|yehi|yehe|yhe|wahi|isi\s*pe|yahi\s*hai|yehi\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|g|yes|theek\s*hai|theek\s*hy|ok|done)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?\s*(?:pe|par|per)?\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|yar|bhai)?[\s.!?]*$/i.test(resolvedText.trim()) ||
+                /\b(?:same|yahi|yehi|yehe|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do)\b/i.test(resolvedText.trim()) ||
+                /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|same|isi)\s+number\b/i.test(resolvedText.trim());
+            if (isAffirmativePhone) {
+                updatePayload.phone = cleanPhone;
+                updatePayload.phoneConfirmed = true;
+                sessionDetails.phone = cleanPhone;
+                sessionDetails.phoneConfirmed = true;
+            }
+        }
+        if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
+            const candidate = cleanExtractedAddress(resolvedText);
+            const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(resolvedText.trim()) ||
+                /\b(?:address\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat)|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat|ka\s*maza\s*nahi))\b/i.test(resolvedText);
+            if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
+                updatePayload.address = candidate;
+                sessionDetails.address = candidate;
+            }
+        }
+        if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(resolvedText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(resolvedText.toLowerCase())) {
+            if (!sessionDetails.paymentMethod || sessionDetails.paymentMethod !== 'COD') {
+                updatePayload.paymentMethod = 'COD';
+                sessionDetails.paymentMethod = 'COD';
+            }
+        } else if (/^(?:easypaisa|easy\s*paisa|ep|2)[\s.!?]*$/i.test(resolvedText.trim()) || /\b(?:easypaisa|easy\s*paisa|ep)\b/i.test(resolvedText.toLowerCase())) {
+            if (!sessionDetails.paymentMethod || sessionDetails.paymentMethod !== 'EASYPAISA') {
+                updatePayload.paymentMethod = 'EASYPAISA';
+                sessionDetails.paymentMethod = 'EASYPAISA';
+            }
+        }
+
+        const isNoExtraItems = /^(?:nahi|nahin|na|no|nope|kuch\s*nahi|aur\s*kuch\s*nahi|aur\s*nahi|nahi\s*bhai|nahii+|bas|kuch\s*ni|nhi|nahi\s*chahiye|shukriya|sirf\s*yahi)[\s.!?]*$/i.test(resolvedText.trim()) ||
+            /\b(?:kuch\s*aur\s*nahi|aur\s*nahi\s*chahiye|extra\s*kuch\s*nahi|nahi\s*bhai|nahi\s*kuch\s*nahi)\b/i.test(resolvedText);
+        const isFinalConfirming = detectConfirmIntent(resolvedText);
+        if (isNoExtraItems || isFinalConfirming) {
+            updatePayload.extraItemsAnswered = true;
+            updatePayload.extraItemsInquired = true;
+            sessionDetails.extraItemsAnswered = true;
+            sessionDetails.extraItemsInquired = true;
+        }
+        if (Object.keys(updatePayload).length > 0) {
+            updateSessionOrderDetails(canonicalKey, updatePayload, whatsappPhone);
+        }
+
+        // Retrieve active cart
+        const activeCart = await getActiveCart({
+            sessionKey: canonicalKey,
+            restaurantId: restId,
+            chatId: jid,
+            verifiedPhone: whatsappPhone,
+        });
+        const hasCartItems = Boolean(activeCart?.items && activeCart.items.length > 0);
+        let cartTotals = null;
+        if (hasCartItems) {
+            cartTotals = await calculateCartTotals({ sessionKey: canonicalKey, restaurantId: restId }).catch(() => null);
+        }
+
+        // Build active cart text representation
+        let activeCartSummary = '';
+        if (hasCartItems && cartTotals?.items) {
+            const lines = cartTotals.items.map(it => `• ${it.quantity}x ${it.name}${it.variantName ? ` (${it.variantName})` : ''} — Rs. ${it.lineTotal}`);
+            (cartTotals.deals || []).forEach(d => {
+                lines.push(`• ${d.quantity}x ${d.name}${d.notes ? ` (${d.notes})` : ''} — Rs. ${d.lineTotal || d.totalPrice}`);
+            });
+            activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${cartTotals.subtotal}`;
+        }
+
+        // Determine current order stage
+        const hasValidName = Boolean(sessionDetails.name && isValidCustomerName(sessionDetails.name));
+        const hasValidPhone = Boolean(sessionDetails.phoneConfirmed || sessionDetails.phone);
+        const hasValidAddress = Boolean(sessionDetails.address || activeLocation?.formattedAddress);
+        const hasValidPayment = Boolean(sessionDetails.paymentMethod === 'COD' || sessionDetails.paymentMethod === 'EASYPAISA');
+        const isStep5Done = Boolean(sessionDetails.extraItemsAnswered || sessionDetails.summaryShown);
+
+        let currentStage = ORDER_STAGES.CART_BUILDING;
+        if (hasCartItems) {
+            if (!hasValidName) currentStage = ORDER_STAGES.CUSTOMER_DETAILS;
+            else if (!hasValidPhone) currentStage = ORDER_STAGES.CUSTOMER_DETAILS;
+            else if (!hasValidAddress) currentStage = ORDER_STAGES.DELIVERY_VALIDATION;
+            else if (!hasValidPayment) currentStage = ORDER_STAGES.PAYMENT_SELECTION;
+            else if (!isStep5Done) currentStage = ORDER_STAGES.FINAL_REVIEW;
+            else if (!sessionDetails.orderConfirmed) currentStage = ORDER_STAGES.AWAITING_CONFIRMATION;
+            else currentStage = ORDER_STAGES.ORDER_CONFIRMED;
+        }
+
+        const confirmIntent = detectConfirmIntent(resolvedText);
+
+        // ── 4. SCENARIO A: Confirmation Lock & Direct Booking ──
+        const isReadyForBooking = hasCartItems && hasValidName && hasValidPhone && hasValidAddress && hasValidPayment && isStep5Done;
+        if (isReadyForBooking && confirmIntent) {
+            if (isConfirmationLocked(canonicalKey)) {
+                return { text: RESPONSE_TEMPLATES.orderProcessing() };
+            }
+            acquireConfirmationLock(canonicalKey);
+            try {
+                const bookingResult = await createOrder({
+                    restaurantId: restId,
+                    sessionKey: canonicalKey,
+                    customerName: sessionDetails.name,
+                    phone: sessionDetails.phone,
+                    delivery: { address: sessionDetails.address },
+                    paymentMethod: sessionDetails.paymentMethod,
+                    sock,
+                });
+
+                if (bookingResult && bookingResult.success && bookingResult.order) {
+                    updateSessionOrderDetails(canonicalKey, {
+                        orderConfirmed: true,
+                        orderStage: ORDER_STAGES.ORDER_CONFIRMED,
+                        lastOrderNumber: bookingResult.order.orderNumber,
+                        summaryShown: false,
+                        extraItemsAnswered: false,
+                    }, whatsappPhone);
+                    clearOrderSummarySnapshot(canonicalKey);
+
+                    const finalReply = RESPONSE_TEMPLATES.orderConfirmed({
+                        name: sessionDetails.name,
+                        orderNumber: bookingResult.order.orderNumber,
+                        total: bookingResult.order.total,
+                        paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
+                        address: sessionDetails.address,
+                    });
+
+                    logZeroTokenReply({
+                        whatsappPhone,
+                        message: resolvedText,
+                        routeName: 'deterministic_order_booking',
+                    });
+
+                    appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+                    appendSessionHistory(canonicalKey, 'assistant', finalReply, syncEpoch);
+                    return { text: finalReply };
+                }
+            } catch (bookingErr) {
+                console.error('[ORCHESTRATOR] Deterministic booking error:', bookingErr.message);
+            } finally {
+                releaseConfirmationLock(canonicalKey);
+            }
+        }
+
+        // ── 5. SCENARIO B: Present Authoritative Order Summary ──
+        if (isReadyForBooking && !sessionDetails.summaryShown && !confirmIntent) {
+            updateSessionOrderDetails(canonicalKey, {
+                summaryShown: true,
+                orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
+            }, whatsappPhone);
+            saveOrderSummarySnapshot(canonicalKey, { cart: activeCartSummary });
+
+            const summaryReply = RESPONSE_TEMPLATES.finalReview({
+                name: sessionDetails.name,
+                cartSummary: activeCartSummary,
+                address: sessionDetails.address,
+                phone: sessionDetails.phone,
+                paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
+            });
+
+            logZeroTokenReply({
+                whatsappPhone,
+                message: resolvedText,
+                routeName: 'deterministic_final_summary',
+            });
+
+            appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+            appendSessionHistory(canonicalKey, 'assistant', summaryReply, syncEpoch);
+            return { text: summaryReply };
+        }
+
+        // ── 6. Context-Only AI Interpretation (Single Compact LLM Call) ──
+        const rawHistory = getSessionHistory(canonicalKey, syncEpoch);
+        const { context, tokenUsage, providerInfo } = await interpretCustomerContext({
+            text: resolvedText,
+            orderStage: currentStage,
+            sessionDetails,
+            activeCartSummary,
+            recentHistory: rawHistory.slice(-4),
+        });
+
+        logAiTokenReply({
+            whatsappPhone,
+            message: resolvedText,
+            promptTokens: tokenUsage.promptTokens || 0,
+            completionTokens: tokenUsage.completionTokens || 0,
+            totalTokens: tokenUsage.totalTokens || 0,
+            provider: providerInfo.provider,
+            model: providerInfo.model,
+        });
+
+        // ── 7. Map Intent & Execute Backend Managers ──
+        let backendReply = '';
+        const intent = context.intent;
+        const entities = context.entities || {};
+
+        switch (intent) {
+            case 'CONFIRM_ORDER': {
+                if (!hasCartItems) {
+                    backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
+                } else if (!hasValidName) {
+                    backendReply = RESPONSE_TEMPLATES.namePrompt();
+                } else if (!hasValidPhone) {
+                    backendReply = RESPONSE_TEMPLATES.phonePrompt({ name: sessionDetails.name, displayPhone: sessionDetails.phone });
+                } else if (!hasValidAddress) {
+                    backendReply = RESPONSE_TEMPLATES.addressPrompt({ name: sessionDetails.name });
+                } else if (!hasValidPayment) {
+                    backendReply = RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name });
+                } else if (!sessionDetails.extraItemsAnswered) {
+                    backendReply = RESPONSE_TEMPLATES.extraItemsUpsell({ name: sessionDetails.name });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.orderProcessing();
+                }
+                break;
+            }
+
+            case 'ADD_ITEM': {
+                const query = entities.product_name || context.referenced_entity?.name || resolvedText;
+                const resolved = await resolveMenuItemOrDeal(query, restId);
+                if (resolved && resolved.type === 'deal') {
+                    // Check pizza deal flavours
+                    if (isPizzaDeal(resolved.deal)) {
+                        const pizzaInfo = getDealPizzaInfo(resolved.deal);
+                        const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.allowedFlavours);
+                        if (extractedFlavours.length < pizzaInfo.pizzaCount) {
+                            setPendingDealFlavour(canonicalKey, {
+                                dealId: resolved.deal.id,
+                                dealName: resolved.deal.name,
+                                pizzaCount: pizzaInfo.pizzaCount,
+                                allowedFlavours: pizzaInfo.allowedFlavours,
+                                selectedFlavours: extractedFlavours,
+                            });
+                            backendReply = formatSingleFlavourConfirmationPrompt(pizzaInfo.allowedFlavours, extractedFlavours[0]);
+                            break;
+                        }
+                    }
+                    await addItemToCart({
+                        sessionKey: canonicalKey,
+                        restaurantId: restId,
+                        chatId: jid,
+                        verifiedPhone: whatsappPhone,
+                        dealId: resolved.deal.id,
+                        quantity: entities.quantity || 1,
+                    });
+                    const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
+                    backendReply = RESPONSE_TEMPLATES.itemAdded({
+                        itemName: resolved.deal.name,
+                        quantity: entities.quantity || 1,
+                        price: resolved.deal.deal_price,
+                        nextStepPrompt: nextPrompt,
+                    });
+                } else if (resolved && resolved.type === 'menu_item') {
+                    let chosenVariant = null;
+                    if ((resolved.item.variants || []).length > 0) {
+                        chosenVariant = matchVariant(resolved.item.variants, entities.size || resolvedText) || resolved.item.variants[0];
+                    }
+                    await addItemToCart({
+                        sessionKey: canonicalKey,
+                        restaurantId: restId,
+                        chatId: jid,
+                        verifiedPhone: whatsappPhone,
+                        menuItemId: resolved.item.id,
+                        variantId: chosenVariant?.id,
+                        quantity: entities.quantity || 1,
+                    });
+                    const nextPrompt = !sessionDetails.name ? RESPONSE_TEMPLATES.namePrompt() : 'Ab bataiye delivery kahan karni hai? 📍';
+                    backendReply = RESPONSE_TEMPLATES.itemAdded({
+                        itemName: resolved.item.name,
+                        quantity: entities.quantity || 1,
+                        size: chosenVariant?.name,
+                        price: chosenVariant?.price || resolved.item.base_price,
+                        nextStepPrompt: nextPrompt,
+                    });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.clarification({
+                        reason: `Maazrat! "${query}" hamare menu mein daryaft nahi ho saka. Baraye meherbani menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likhein.`,
+                    });
+                }
+                break;
+            }
+
+            case 'DEAL_QUERY': {
+                const dealName = context.referenced_entity?.name || 'Deal';
+                if (/drink|cold\s*drink|pepsi|coke|beverage/i.test(resolvedText)) {
+                    backendReply = RESPONSE_TEMPLATES.dealDrinkIncluded({
+                        dealName,
+                        drinkDetails: '1 Liter Soft Drink',
+                    });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.dealDetails({
+                        dealName,
+                        includedItems: '• Fresh Crispy Burgers / Pizzas\n• Soft Drink (Chilled)',
+                    });
+                }
+                break;
+            }
+
+            case 'CART_QUERY': {
+                if (!hasCartItems) {
+                    backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
+                } else {
+                    const freshTotals = await calculateCartTotals({ sessionKey: canonicalKey, restaurantId: restId });
+                    backendReply = RESPONSE_TEMPLATES.cartSummary({
+                        cartLines: activeCartSummary,
+                        subtotal: freshTotals.subtotal,
+                        deliveryFee: freshTotals.deliveryFee,
+                        total: freshTotals.total,
+                    });
+                }
+                break;
+            }
+
+            case 'REMOVE_ITEM': {
+                const itemToRemove = activeCart?.items?.[0];
+                if (itemToRemove) {
+                    await removeCartItem(itemToRemove.id, canonicalKey);
+                    const freshTotals = await calculateCartTotals({ sessionKey: canonicalKey, restaurantId: restId });
+                    backendReply = RESPONSE_TEMPLATES.itemRemoved({
+                        itemName: itemToRemove.deal ? itemToRemove.deal.name : (itemToRemove.menu_item?.name || 'Item'),
+                        updatedTotal: freshTotals.total,
+                    });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
+                }
+                break;
+            }
+
+            case 'PROVIDE_NAME': {
+                const name = entities.customer_name || resolvedText.trim();
+                updateSessionOrderDetails(canonicalKey, { name, nameExplicit: true }, whatsappPhone);
+                backendReply = RESPONSE_TEMPLATES.nameConfirmed({
+                    name,
+                    nextPrompt: RESPONSE_TEMPLATES.phonePrompt({ name, displayPhone: sessionDetails.phone }),
+                });
+                break;
+            }
+
+            case 'PROVIDE_PHONE': {
+                const phone = entities.phone || cleanPhone;
+                updateSessionOrderDetails(canonicalKey, { phone, phoneConfirmed: true }, whatsappPhone);
+                backendReply = RESPONSE_TEMPLATES.phoneConfirmed({
+                    name: sessionDetails.name || 'Customer',
+                    phone,
+                    nextPrompt: RESPONSE_TEMPLATES.addressPrompt({ name: sessionDetails.name || 'Customer' }),
+                });
+                break;
+            }
+
+            case 'PROVIDE_ADDRESS': {
+                const rawAddr = entities.address || resolvedText;
+                const cleaned = cleanExtractedAddress(rawAddr);
+                const check = await checkDeliveryAvailability({ address: cleaned, restaurantId: restId });
+                if (!check.available && check.code === 'ADDRESS_INCOMPLETE') {
+                    backendReply = RESPONSE_TEMPLATES.addressIncomplete({ locality: check.areaName || cleaned });
+                } else if (!check.available) {
+                    backendReply = RESPONSE_TEMPLATES.addressOutOfRange({ maxRadiusKm: check.maxRadiusKm, distanceKm: check.distanceKm });
+                } else {
+                    updateSessionOrderDetails(canonicalKey, { address: cleaned }, whatsappPhone);
+                    backendReply = RESPONSE_TEMPLATES.addressConfirmed({
+                        name: sessionDetails.name || 'Customer',
+                        address: cleaned,
+                        distanceKm: check.distanceKm,
+                        nextPrompt: RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name || 'Customer' }),
+                    });
+                }
+                break;
+            }
+
+            case 'PAYMENT_QUERY': {
+                const payment = /easy\s*paisa|ep/i.test(resolvedText) ? 'EASYPAISA' : 'COD';
+                updateSessionOrderDetails(canonicalKey, { paymentMethod: payment }, whatsappPhone);
+                backendReply = RESPONSE_TEMPLATES.paymentConfirmed({
+                    name: sessionDetails.name || 'Customer',
+                    paymentLabel: payment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
+                    nextPrompt: RESPONSE_TEMPLATES.extraItemsUpsell({ name: sessionDetails.name || 'Customer' }),
+                });
+                break;
+            }
+
+            case 'PRESERVE_CURRENT_SELECTION': {
+                backendReply = RESPONSE_TEMPLATES.selectionPreserved();
+                break;
+            }
+
+            case 'REFER_TO_PREVIOUS_INFORMATION': {
+                const known = [];
+                if (sessionDetails.name) known.push(`Naam: *${sessionDetails.name}*`);
+                if (sessionDetails.phone) known.push(`Contact: *${sessionDetails.phone}*`);
+                if (sessionDetails.address) known.push(`Address: *${sessionDetails.address}*`);
+                backendReply = RESPONSE_TEMPLATES.contextRecalled({ knownDetails: known });
+                break;
+            }
+
+            case 'GREETING': {
+                backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
+                break;
+            }
+
+            default: {
+                if (hasCartItems && !sessionDetails.name) {
+                    backendReply = RESPONSE_TEMPLATES.namePrompt();
+                } else if (hasCartItems && !sessionDetails.phoneConfirmed) {
+                    backendReply = RESPONSE_TEMPLATES.phonePrompt({ name: sessionDetails.name, displayPhone: sessionDetails.phone });
+                } else if (hasCartItems && !sessionDetails.address) {
+                    backendReply = RESPONSE_TEMPLATES.addressPrompt({ name: sessionDetails.name });
+                } else {
+                    backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
+                }
+                break;
+            }
+        }
+
+        const cleanFinalReply = sanitizeOutput(backendReply);
+        appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+        if (cleanFinalReply) {
+            appendSessionHistory(canonicalKey, 'assistant', cleanFinalReply, syncEpoch);
+        }
+
+        return {
+            text: cleanFinalReply,
+            imageUrl: null,
+            imageUrls: [],
+        };
+    } finally {
+        _inFlightMessages.delete(canonicalKey);
+        _lastProcessedMessages.set(canonicalKey, { normalizedText, timestamp: Date.now() });
+    }
+}

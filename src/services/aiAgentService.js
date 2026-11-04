@@ -1902,6 +1902,11 @@ async function runAgentLoop(messages, context) {
 
 // ─── Internal Implementation: _processMessageInternal ───────────────────
 async function _processMessageInternal({ sock, msg, session, text, identity, locationData }) {
+    const { handleCustomerMessage } = await import('./backendOrchestrator.js');
+    return await handleCustomerMessage({ sock, msg, session, text, identity, locationData });
+}
+
+async function _legacyProcessMessageInternal({ sock, msg, session, text, identity, locationData }) {
     const jid = msg?.key?.remoteJid || identity?.chatId || identity?.phone || 'default';
     const sessionKey = jid || identity?.phone || 'default';
     const syncEpoch = getSyncEpoch();
