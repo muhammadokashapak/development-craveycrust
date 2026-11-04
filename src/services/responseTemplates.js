@@ -156,3 +156,4 @@ export const RESPONSE_TEMPLATES = {
         return `${reason} 😊\n\nAap menu dekhne ke liye "menu" ya deals ke liye "deals" likh sakte hain.`;
     },
 };
+
