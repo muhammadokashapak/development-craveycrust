@@ -374,21 +374,70 @@ export async function executeBatchAddToCart({ sessionKey, restaurantId, chatId, 
     const added = [];
     const failed = [];
 
+    const { resolveMenuItemOrDeal } = await import('./menuService.js');
+    const { matchVariant } = await import('./cartService.js');
+
     for (const it of items) {
         try {
+            let mId = it.menuItemId || null;
+            let dId = it.dealId || null;
+            let vId = it.variantId || null;
+            let qty = parseInt(it.quantity || 1, 10);
+            if (isNaN(qty) || qty < 1) qty = 1;
+            let notes = it.notes || null;
+
+            // Resolve name if IDs missing
+            const nameQuery = (it.itemName || it.canonicalName || it.name || '').trim();
+            if (!mId && !dId && nameQuery) {
+                const resolved = await resolveMenuItemOrDeal(nameQuery, restId);
+                if (resolved && resolved.status === 'EXACT_MATCH') {
+                    if (resolved.type === 'DEAL') {
+                        dId = resolved.deal?.id;
+                        if (resolved.flavourNotes) notes = notes ? `${notes}, ${resolved.flavourNotes}` : resolved.flavourNotes;
+                    } else if (resolved.type === 'ITEM') {
+                        mId = resolved.item?.id;
+                        if (resolved.variant) {
+                            vId = resolved.variant.id;
+                        } else {
+                            const vName = it.size || it.variantName || it.variant || null;
+                            if (resolved.item?.variants && resolved.item.variants.length > 0) {
+                                const matchedVar = matchVariant(resolved.item.variants, vName);
+                                if (matchedVar) vId = matchedVar.id;
+                                else if (resolved.item.variants.length === 1) vId = resolved.item.variants[0].id;
+                            }
+                        }
+                    }
+                } else if (resolved?.item) {
+                    mId = resolved.item.id;
+                    const vName = it.size || it.variantName || it.variant || null;
+                    if (resolved.item.variants && resolved.item.variants.length > 0) {
+                        const matchedVar = matchVariant(resolved.item.variants, vName);
+                        if (matchedVar) vId = matchedVar.id;
+                        else if (resolved.item.variants.length === 1) vId = resolved.item.variants[0].id;
+                    }
+                }
+            }
+
+            if (!mId && !dId) {
+                console.warn(`[ADDON_SERVICE] Could not resolve product "${nameQuery}" to valid database ID`);
+                failed.push({ item: it, error: `Could not resolve product "${nameQuery}"` });
+                continue;
+            }
+
             await addItemToCart({
                 sessionKey,
                 restaurantId: restId,
                 chatId,
                 verifiedPhone,
-                menuItemId: it.menuItemId,
-                variantId: it.variantId,
-                quantity: it.quantity || 1,
-                notes: it.notes || null,
+                menuItemId: mId,
+                variantId: vId,
+                dealId: dId,
+                quantity: qty,
+                notes,
             });
-            added.push(it);
+            added.push({ ...it, menuItemId: mId, dealId: dId, variantId: vId, quantity: qty });
         } catch (err) {
-            console.error(`[ADDON_SERVICE] Failed to add item ${it.canonicalName}:`, err.message);
+            console.error(`[ADDON_SERVICE] Failed to add item ${it.canonicalName || it.itemName}:`, err.message);
             failed.push({ item: it, error: err.message });
         }
     }

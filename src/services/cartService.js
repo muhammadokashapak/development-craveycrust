@@ -1,6 +1,6 @@
 import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
-import { getOrCreateSession, touchSession } from './sessionService.js';
+import { getOrCreateSession, touchSession, getCanonicalSessionKey } from './sessionService.js';
 import { calculatePricing } from './pricingService.js';
 import { FALLBACK_MENU_ITEMS, FALLBACK_DEALS } from './fallbackCatalog.js';
 
@@ -49,6 +49,7 @@ export function incrementCartVersion(sessionKey) {
  * Get or create the active cart for a session
  */
 export async function getActiveCart({ sessionKey, restaurantId, chatId, verifiedPhone }) {
+    const canonicalKey = getCanonicalSessionKey(sessionKey, chatId, verifiedPhone);
     const prisma = getDbClient();
     let restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
     if (prisma && (!restId || restId === 'default-restaurant' || restId === 'cravey-crust-main')) {
@@ -59,10 +60,10 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
     }
 
     if (!prisma) {
-        let cart = _inMemoryCarts.get(sessionKey);
+        let cart = _inMemoryCarts.get(canonicalKey) || (sessionKey ? _inMemoryCarts.get(sessionKey) : null) || (chatId ? _inMemoryCarts.get(chatId) : null);
         if (cart) {
             const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
-            if (cartAgeMs > 15 * 60 * 1000) {
+            if (cartAgeMs > 2 * 60 * 60 * 1000) {
                 cart.status = 'EXPIRED';
                 cart.items = [];
                 _inMemoryCarts.delete(sessionKey);
@@ -79,7 +80,7 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
                 created_at: new Date(),
                 updated_at: new Date(),
             };
-            _inMemoryCarts.set(sessionKey, cart);
+            _inMemoryCarts.set(canonicalKey, cart); if (sessionKey) _inMemoryCarts.set(sessionKey, cart); if (chatId) _inMemoryCarts.set(chatId, cart);
         }
         cart.version = _cartVersions.get(String(sessionKey)) || 1;
         _cartVersions.set(String(sessionKey), cart.version);
@@ -126,7 +127,7 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
     if (cart) {
         const cartAgeMs = Date.now() - new Date(cart.updated_at).getTime();
         // If an abandoned cart has been idle for more than 15 minutes, expire it so old items don't leak into new orders
-        if (cartAgeMs > 15 * 60 * 1000) {
+        if (cartAgeMs > 2 * 60 * 60 * 1000) {
             await prisma.cart.update({
                 where: { id: cart.id },
                 data: { status: 'EXPIRED' },
@@ -154,7 +155,7 @@ export async function getActiveCart({ sessionKey, restaurantId, chatId, verified
                     created_at: new Date(),
                     updated_at: new Date(),
                 };
-                _inMemoryCarts.set(sessionKey, fallbackCart);
+                _inMemoryCarts.set(canonicalKey, fallbackCart); if (sessionKey) _inMemoryCarts.set(sessionKey, fallbackCart); if (chatId) _inMemoryCarts.set(chatId, fallbackCart);
             }
             return fallbackCart;
         }
@@ -618,8 +619,12 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
         };
         cart.items.push(newItem);
         cart.updated_at = new Date();
-        cart.version = incrementCartVersion(sessionKey);
-        await touchSession(sessionKey);
+        const cKey = getCanonicalSessionKey(sessionKey, chatId, verifiedPhone);
+        _inMemoryCarts.set(cKey, cart);
+        if (sessionKey) _inMemoryCarts.set(sessionKey, cart);
+        if (chatId) _inMemoryCarts.set(chatId, cart);
+        cart.version = incrementCartVersion(cKey);
+        await touchSession(cKey);
         return cart;
     }
 

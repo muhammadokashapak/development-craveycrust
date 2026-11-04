@@ -1650,7 +1650,7 @@ export function parseToolCall(content) {
 }
 
 // ─── Main AI Agent Loop (Tool Calling + Exact Token Tracking) ─────────────
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 2;
 
 async function runAgentLoop(messages, context) {
     const allToolResults = [];
@@ -1761,6 +1761,34 @@ async function runAgentLoop(messages, context) {
             if (result?.requiresFlavourConfirmation) {
                 return {
                     text: result.message,
+                    imageUrl: null,
+                    imageUrls: null,
+                    toolResults: allToolResults,
+                    calledToolNames,
+                    tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
+                    providerInfo: { provider: lastProvider, model: lastModel, keyIndex: lastKeyIndex },
+                };
+            }
+
+            // Direct return for add_multiple_to_cart (Zero extra round)
+            if (toolCall.tool === 'add_multiple_to_cart' && result?.success) {
+                const itemsList = (result.items || []).join('\n• ');
+                return {
+                    text: `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n\n• ${itemsList}\n\nKya iske sath kuch aur add karna chahenge ya order finalize karein?`,
+                    imageUrl: null,
+                    imageUrls: null,
+                    toolResults: allToolResults,
+                    calledToolNames,
+                    tokenUsage: { promptTokens: totalPromptTokens, replyTokens: totalReplyTokens, totalTokens },
+                    providerInfo: { provider: lastProvider, model: lastModel, keyIndex: lastKeyIndex },
+                };
+            }
+
+            // Direct return for get_deal_details (Zero extra round)
+            if (toolCall.tool === 'get_deal_details' && result?.includedComponents) {
+                const drinkStr = result.includedDrink?.hasDrink ? `\n• Drink: ${result.includedDrink.size} Soft Drink included` : '';
+                return {
+                    text: `*${result.name}* (Rs. ${result.price}) mein yeh items shamil hain: 🍽️\n\n${result.includedComponents}${drinkStr}\n\nKya yeh deal cart mein add karoon?`,
                     imageUrl: null,
                     imageUrls: null,
                     toolResults: allToolResults,
@@ -2348,12 +2376,27 @@ async function _processMessageInternal({ sock, msg, session, text, identity, loc
         adminWhatsappLink: cache.adminWhatsappLink || 'https://wa.me/923434919319',
     });
 
-    const fullSystemPrompt = systemPromptText
-        ? `${systemPromptText}\n\n${TOOLS_SCHEMA}`
-        : (TOOLS_SCHEMA || '');
+    // Dynamic Tool Schema Selection:
+    // If cart is empty, do NOT offer create_confirmed_order to the model
+    let activeToolsSchema = TOOLS_SCHEMA;
+    if (!hasCartItems) {
+        activeToolsSchema = activeToolsSchema.replace(/15\.\s*create_confirmed_order[^\n]+\n?/g, '');
+    }
 
-    // Load last 30 messages from sessionService (sessionKey + '-v9-ep' + syncEpoch)
-    const history = getSessionHistory(sessionKey, syncEpoch);
+    const fullSystemPrompt = systemPromptText
+        ? `${systemPromptText}\n\n${activeToolsSchema}`
+        : (activeToolsSchema || '');
+
+    // Compact session history: Keep only last 6 turns (most recent context) to avoid massive prompt token explosion
+    const rawHistory = getSessionHistory(sessionKey, syncEpoch);
+    const history = (rawHistory || []).slice(-6).map(m => {
+        if (m.role === 'assistant' && typeof m.content === 'string' && m.content.length > 300) {
+            if (m.content.includes('ORDER SUMMARY') || m.content.includes('Aap Ke Cart Mein')) {
+                return { ...m, content: '[Previous order summary presented to customer]' };
+            }
+        }
+        return m;
+    });
 
     let locationPromptAddon = '';
     if (activeLocation) {

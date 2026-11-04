@@ -631,6 +631,99 @@ export async function handleIntentRouting(params) {
     // ══════════════════════════════════════════════════════════════════════════
     // INTENT C: NEGATIVE ACKNOWLEDGEMENT ("Nahi, drink add nahi karni")
     // ══════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════════
+    // INTENT D: CONTEXT RETRIEVAL ("bataya to tha", "pehle bataya tha")
+    // ══════════════════════════════════════════════════════════════════════════
+    const isContextRecall = /\b(?:b(?:a)?taya|bola|kaha)\s+(?:to\s+)?(?:tha|h(?:ai|y)?)\b/i.test(lower) ||
+        /\bpehle\s+(?:b(?:a)?taya|likhwaya|diya)\s+(?:tha|h(?:ai|y)?)\b/i.test(lower);
+    if (isContextRecall) {
+        const { getSessionOrderDetails } = await import('./sessionService.js');
+        const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+        const details = getSessionOrderDetails(sessionKey, cleanPhone);
+        const namePart = details.name ? `Naam: *${details.name}*` : null;
+        const phonePart = details.phone ? `Contact: *${details.phone}*` : null;
+        const addrPart = details.address ? `Address: *${details.address}*` : null;
+        const known = [namePart, phonePart, addrPart].filter(Boolean);
+
+        if (known.length > 0) {
+            return {
+                handled: true,
+                routeName: 'context_recalled',
+                intent: INTENTS.GENERAL_CONVERSATION,
+                reply: `Ji bilkul! Aap ki yeh details hamare paas pehle se mehfooz hain: 😊\n\n• ${known.join('\n• ')}\n\nKya isi address par order proceed karein ya koi cheez change karni hai?`,
+            };
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // INTENT E: SELECTION PRESERVATION ("wohi rahy ga", "yehi rahy ga")
+    // ══════════════════════════════════════════════════════════════════════════
+    const isPreserveSelection = /\b(?:wohi|yehi|wahi|yahi|same|isi)\s*(?:hi)?\s*(?:rahy\s*ga|rahe\s*ga|rahyga|rahega|rhega|ryga|hoga|rakho|rakhein|rehn\s*do|theek\s*hai)\b/i.test(lower) ||
+        /\b(?:nahi\s+)?(?:yehi|wohi|same)\s+(?:rahy\s*ga|theek\s*hai|thek\s*h)\b/i.test(lower);
+    if (isPreserveSelection && !lower.includes('add') && !lower.includes('aur')) {
+        return {
+            handled: true,
+            routeName: 'selection_preserved',
+            intent: INTENTS.GENERAL_CONVERSATION,
+            reply: 'Theek hai! Aap ki maujooda selection mehfooz hai aur koi tabdeeli nahi ki gayi. 👍\n\nAgla step proceed karne ke liye tayyar hain?',
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // INTENT F: EMPTY CART CONFIRMATION GUARD ("confirm kr do" when cart is empty)
+    // ══════════════════════════════════════════════════════════════════════════
+    const isConfirmAttempt = /\b(?:confirm|comfirm|final|book)\b/i.test(lower) && /\b(?:kr\s*do|kar\s*do|kardo|krdo|krdu|karein|dein|dain|karo|kro)\b/i.test(lower);
+    if (isConfirmAttempt && (!cart || !cart.items || cart.items.length === 0)) {
+        return {
+            handled: true,
+            routeName: 'confirm_attempt_empty_cart',
+            intent: INTENTS.ORDER_CONFIRMATION,
+            reply: 'Aap ka cart is waqt khali hai. 🛒\n\nOrder confirm karne se pehle menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likh kar koi item select karein!',
+        };
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // INTENT G: EXTRA DRINK WITH SIZE REQUEST ("wo kam hogi to aik 1.5 litre ki aur bhi kr do")
+    // ══════════════════════════════════════════════════════════════════════════
+    const isExtraDrinkWithSize = /\b(?:1\.5|1\.5l|1\.5\s*liter|1\.5\s*litre|1\s*liter|1\s*litre|regular|can)\b/i.test(lower) &&
+        /\b(?:aur\s*bhi|extra|aur\s*kr|aur\s*daal|aur\s*add|bhi\s*kr|bhi\s*kar|kam\s*hogi)\b/i.test(lower);
+    if (isExtraDrinkWithSize && sessionKey) {
+        const { addItemToCart } = await import('./cartService.js');
+        const sizeMatch = lower.match(/\b(1\.5\s*(?:liter|litre|l)|1\s*(?:liter|litre|l)|regular|can)\b/i);
+        const targetSize = sizeMatch ? sizeMatch[1].replace(/\s+/g, ' ') : '1.5 Liter';
+        const normalizedSize = /1\.5/i.test(targetSize) ? '1.5 Liter' : (/1/i.test(targetSize) ? '1 Liter' : (/can/i.test(targetSize) ? 'Can' : 'Regular'));
+        
+        // Find Soft Drink item and variant
+        const { getActiveMenu } = await import('./menuService.js').catch(() => ({}));
+        const menu = await getActiveMenu(cache?.restId).catch(() => []);
+        let drinkItem = null;
+        for (const cat of (menu || [])) {
+            const found = (cat.menu_items || []).find(it => /soft\s*drink|pepsi|coke|beverage/i.test(it.name));
+            if (found) { drinkItem = found; break; }
+        }
+        const matchedVariant = drinkItem?.variants?.find(v => v.name.toLowerCase().includes(normalizedSize.toLowerCase()));
+
+        if (drinkItem && matchedVariant) {
+            await addItemToCart({
+                sessionKey,
+                restaurantId: cache?.restId,
+                chatId,
+                verifiedPhone: whatsappPhone,
+                menuItemId: drinkItem.id,
+                variantId: matchedVariant.id,
+                quantity: 1,
+            });
+            const priceStr = matchedVariant.price ? ` — Rs. ${matchedVariant.price}` : '';
+            return {
+                handled: true,
+                routeName: 'extra_drink_added_with_size',
+                intent: INTENTS.ADD_ITEM,
+                reply: `Zabardast! Deal ke sath *1x Soft Drink (${normalizedSize})*${priceStr} cart mein add kar di gayi hai! 🥤\n\nAb bataiye delivery kahan karni hai? (Location pin ya address share karein) 📍`,
+            };
+        }
+    }
+
+
     if (NEGATIVE_ADD_REGEX.test(lower) && /\b(?:drink|fries|burger|pizza|item|extra|aur)\b/i.test(lower)) {
         return {
             handled: true,

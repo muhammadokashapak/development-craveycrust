@@ -219,8 +219,8 @@ export function cleanExtractedAddress(text) {
     cleaned = cleaned.replace(/^(?:mera|meri|apna|apni|hamara|humari)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|pata|location|jagah)\s*(?:hai|h|he|hy)?\s*[:=-]?\s*/i, ' ');
 
     // 2b. Strip leading intent phrases like "yahan delivery karni hai", "delivery krni hai", etc.
-    cleaned = cleaned.replace(/^(?:yahan|idhar|idr|idher|yhn)?\s*(?:pe|par)?\s*(?:bhi)?\s*(?:delivery|deliver|order|parcel)?\s*(?:karni|krni|karna|krna|karwana|krwana|bhejna|bhej|send)?\s*(?:hai|ha|h|he|hy|chahiye)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
-    cleaned = cleaned.replace(/^(?:delivery|deliver|parcel)\s*(?:karni|krni|karna|krna|karwana|krwana|bhejna)?\s*(?:hai|ha|h|he|hy)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
+    cleaned = cleaned.replace(/^(?:yahan|idhar|idr|idher|yhn)\s+(?:pe\s+|par\s+)?(?:bhi\s+)?(?:delivery|deliver|order|parcel)?\s*(?:karni|krni|karna|krna|karwana|krwana|bhejna|bhej|send)?\s*(?:hai|ha|h|he|hy|chahiye)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
+    cleaned = cleaned.replace(/^(?:delivery|deliver|parcel)\s+(?:karni|krni|karna|krna|karwana|krwana|bhejna)?\s*(?:hai|ha|h|he|hy)?\s*(?:pe|par|mein|me|ko)?\s*/i, '');
 
     // 3. Canonical mapping for common typos and delivery areas
     cleaned = cleaned.replace(/\b(?:khann?a)\s+(?:pull?l?|pool|pol)\b/gi, 'Khana Pull');
@@ -5628,6 +5628,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             });
 
             if (!delCheck.available) {
+                if (delCheck.code === 'ADDRESS_INCOMPLETE' || delCheck.requiresDetails) {
+                    return {
+                        handled: true,
+                        routeName: 'step_address_incomplete',
+                        reply: delCheck.message,
+                    };
+                }
                 return {
                     handled: true,
                     routeName: 'customer_location_out_of_range',

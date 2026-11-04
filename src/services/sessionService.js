@@ -1,4 +1,26 @@
 
+/**
+ * Canonicalize session key across JID, Pakistani phone, and international phone formats.
+ * Ensures that 923495696659@s.whatsapp.net, 03495696659, and 923495696659 resolve to the SAME key.
+ */
+export function getCanonicalSessionKey(sessionKey, chatId, phone) {
+    const raw = sessionKey || chatId || phone || 'default';
+    if (!raw || raw === 'default') return 'default';
+    let clean = String(raw).replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '').trim();
+    const digits = clean.replace(/\D/g, '');
+    if (digits.length >= 10) {
+        if (digits.startsWith('03') && digits.length === 11) {
+            return '92' + digits.slice(1);
+        }
+        if (digits.startsWith('923') && digits.length === 12) {
+            return digits;
+        }
+        return digits;
+    }
+    return clean.toLowerCase();
+}
+
+
 // ─── Customer Name Validator & Anti-Corruption Guard ────────────────────
 export function isValidCustomerName(name) {
     if (!name || typeof name !== 'string') return false;
@@ -16,7 +38,7 @@ import { getDbClient } from '../db/client.js';
 import { getDefaultRestaurantId } from './restaurantService.js';
 import { normalizePhone } from './customerService.js';
 
-export const SESSION_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+export const SESSION_TIMEOUT_MS = 2 * 60 * 60 * 1000; // 2 hours idle timeout // 15 minutes
 
 export const SESSION_STAGES = [
     'START',
@@ -50,7 +72,7 @@ const _inMemorySessions = new Map();
 export async function getOrCreateSession({ restaurantId, chatId, sessionKey, verifiedPhone, stage }) {
     const prisma = getDbClient();
     const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'cravey-crust-main');
-    const key = sessionKey || chatId;
+    const key = getCanonicalSessionKey(sessionKey, chatId, verifiedPhone);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SESSION_TIMEOUT_MS);
     const cleanPhone = normalizePhone(verifiedPhone);
