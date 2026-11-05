@@ -143,6 +143,14 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
      Customer is specifying the size and quantity for Soft Drink!
      Call "add_to_cart" with "itemName": "Soft Drink", "variant": "Can", "quantity": 10 (or parsed count).
      Do NOT ask for size again! Do NOT loop or argue! Add directly to cart.
+11. Multi-Product Orders in a Single Message:
+   - When a customer orders multiple products in one message (e.g. "20x zinger burger aur 30x cold drinks 1.5 liter wali kr do", "15x chicken tandoori Party Size 20x Zeggy Burgers 50x Cold drinks kr do 1.5 liter wali", "2 zeggy burger aur 1 large fajita pizza kr do", "2 zinger burger, 1 regular fries aur 2 cold drink can kr do"):
+     Output an "add_to_cart" action for EVERY product requested:
+     "actions": [
+       { "tool": "add_to_cart", "args": { "itemName": "Zinger Burger", "quantity": 20 } },
+       { "tool": "add_to_cart", "args": { "itemName": "Soft Drink", "size": "1.5 Liter", "quantity": 30 } }
+     ]
+     NEVER drop, ignore, or skip any item requested by the customer!
 
 OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {

@@ -520,7 +520,22 @@ export async function handleCustomerMessage({
                     }
                 }
                 if (replies.length > 0) {
-                    backendReply = replies.join('\n\n');
+                    const addItemActions = (context.actions || []).filter(a => a.tool === 'add_to_cart' || a.tool === 'add_item');
+                    if (addItemActions.length > 1) {
+                        const lines = [];
+                        for (const r of replies) {
+                            const bulletMatch = r.match(/•\s*[^\n]+/g);
+                            if (bulletMatch) lines.push(...bulletMatch);
+                        }
+                        if (lines.length > 0) {
+                            const promptTail = '\n\nKya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+                            backendReply = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${lines.join('\n')}${promptTail}`;
+                        } else {
+                            backendReply = replies.join('\n\n');
+                        }
+                    } else {
+                        backendReply = replies.join('\n\n');
+                    }
                 }
             }
         }
@@ -565,6 +580,57 @@ export async function handleCustomerMessage({
             }
 
             case 'ADD_ITEM': {
+                const { extractRequestedItems } = await import('./addonExtractionService.js');
+                const extractedMulti = extractRequestedItems(resolvedText);
+                if (extractedMulti.hasMultiple || (extractedMulti.items.length > 0 && extractedMulti.hasUnresolvedVariations)) {
+                    const addedSummaries = [];
+                    for (const it of extractedMulti.items) {
+                        await addItemToCart({
+                            sessionKey: canonicalKey,
+                            restaurantId: restId,
+                            chatId: jid,
+                            verifiedPhone: whatsappPhone,
+                            menuItemId: it.menuItemId || null,
+                            variantId: it.variantId || null,
+                            dealId: it.dealId || null,
+                            quantity: it.quantity || 1,
+                        });
+                        addedSummaries.push(`• ${it.quantity}x ${it.canonicalName || it.itemName} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`);
+                    }
+
+                    if (extractedMulti.hasUnresolvedVariations && extractedMulti.unresolvedItems.length > 0) {
+                        const unresolved = extractedMulti.unresolvedItems[0];
+                        if (unresolved.itemType === 'drink') {
+                            const drinkItem = unresolved.itemObj || {
+                                id: 'item-34',
+                                name: 'Soft Drink',
+                                variants: [
+                                    { id: 'v-34-1', name: 'Regular', price: 110 },
+                                    { id: 'v-34-2', name: 'Can', price: 130 },
+                                    { id: 'v-34-3', name: '1 Liter', price: 200 },
+                                    { id: 'v-34-4', name: '1.5 Liter', price: 240 }
+                                ]
+                            };
+                            setLastDiscussedItem(canonicalKey, drinkItem, null, whatsappPhone, unresolved.quantity);
+
+                            let replyText = '';
+                            if (addedSummaries.length > 0) {
+                                replyText = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${addedSummaries.join('\n')}\n\n`;
+                                replyText += `Aur *${unresolved.quantity}x Cold Drinks* ke liye kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤`;
+                            } else {
+                                replyText = `Zaroor! *${unresolved.quantity}x Cold Drinks* ke liye kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤`;
+                            }
+                            backendReply = replyText;
+                            break;
+                        }
+                    }
+
+                    clearLastDiscussedItem(canonicalKey);
+                    const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+                    backendReply = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${addedSummaries.join('\n')}\n\n${nextPrompt}`;
+                    break;
+                }
+
                 const query = entities.product_name || context.referenced_entity?.name || resolvedText;
                 const resolved = await resolveMenuItemOrDeal(query, restId);
 
@@ -952,6 +1018,45 @@ export async function handleCustomerMessage({
                 }
                 break;
             }
+        }
+
+        // ── Universal Safeguard: Ensure no requested items from multi-product orders were dropped ──
+        try {
+            const isOrderPlacement = /\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do)|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add)\b/i.test(resolvedText);
+            if (isOrderPlacement && !confirmIntent) {
+                const { extractRequestedItems } = await import('./addonExtractionService.js');
+                const extractedCheck = extractRequestedItems(resolvedText);
+                if (extractedCheck?.items?.length > 0) {
+                    const latestCart = await getActiveCart({ sessionKey: canonicalKey, restaurantId: restId, chatId: jid });
+                    const missingItems = extractedCheck.items.filter(req => {
+                        return !(latestCart?.items || []).some(ci => {
+                            const cName = (ci.menu_item?.name || ci.deal?.name || ci.name || '').toLowerCase();
+                            const rName = (req.itemName || req.canonicalName || '').toLowerCase();
+                            const nameMatch = cName && rName && (cName.includes(rName) || rName.includes(cName));
+                            const idMatch = req.menuItemId ? (ci.menu_item_id === req.menuItemId || ci.menu_item?.id === req.menuItemId) : false;
+                            const dealMatch = req.dealId ? (ci.deal_id === req.dealId || ci.deal?.id === req.dealId) : false;
+                            return idMatch || dealMatch || nameMatch;
+                        });
+                    });
+
+                    if (missingItems.length > 0) {
+                        for (const mItem of missingItems) {
+                            await addItemToCart({
+                                sessionKey: canonicalKey,
+                                restaurantId: restId,
+                                chatId: jid,
+                                verifiedPhone: whatsappPhone,
+                                menuItemId: mItem.menuItemId || null,
+                                variantId: mItem.variantId || null,
+                                dealId: mItem.dealId || null,
+                                quantity: mItem.quantity || 1,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (safeguardErr) {
+            console.error('[ORCHESTRATOR] Multi-item safeguard error:', safeguardErr.message);
         }
 
         const cleanFinalReply = sanitizeOutput(backendReply);

@@ -1280,6 +1280,19 @@ export class DeterministicIntentProvider {
             return QTY_WORD_MAP[str] || 1;
         };
 
+        const isMultiItemOrder = (/\b(?:aur|and|\+)\b/i.test(lower) || lower.includes('\n') || (lower.match(/\b\d+\s*x\b/gi) || []).length >= 2) &&
+            /\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do)|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add)\b/i.test(lower);
+        if (isMultiItemOrder) {
+            return {
+                intent: 'ADD_ITEM',
+                entities: {
+                    isMultiple: true,
+                    rawText: lower,
+                },
+                confidence: 0.96,
+            };
+        }
+
         const prefixQtyMatch = lower.match(/^(?:(\d+)|(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|gyara|gyarah|bara|barah|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?([a-zA-Z0-9\s-]+?)(?:\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do)))?[\s.!?]*$/i);
         if (prefixQtyMatch && prefixQtyMatch[3].trim().length > 1) {
             const rawItem = prefixQtyMatch[3].trim();
@@ -3380,9 +3393,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Fries without size (Zero Tokens) ──
+    const hasOtherItemsInFriesPrompt = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|drink|drinks|cold\s*drink|soft\s*drink|pepsi|coke|next\s*cola|7up|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n') || /\b(?:aur|and|\+)\b/i.test(lower);
     const isQueryOrQuestion = /\b(?:kya|kia|konsi|konsa|konse|which|what|included|shamil|already|pehle|hai\s*\?|hain\s*\?|is\s*me|iss\s*me|is\s*mein|iss\s*mein|isme|ismein|deal\s*me|deal\s*mein|bhi\s*hai|hota\s*hai|hoti\s*hai|milti\s*hai|milta\s*hai|aati\s*hai|aata\s*hai|nahi|nahin|bina|baghair|remove|nikal|hata)\b/i.test(lower) || lower.includes('?');
-    const isFriesWithoutSize = !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
-                               (/^(?:fries|french\s*fries)\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower)));
+    const isFriesWithoutSize = !hasOtherItemsInFriesPrompt && !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:fries|fris|french\s*fries)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
+                               (/^fries\b/i.test(lower.trim()) && !/\b(regular|reg|large|loaded|standard)\b/i.test(lower)));
     if (isFriesWithoutSize && userSessionId) {
         const friesItem = {
             id: 'item-1',
@@ -3401,7 +3415,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer asks for Drink without size (Zero Tokens) ──
-    const isDrinkWithoutSize = !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
+    const hasOtherItemsInDrinkPrompt = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|fries|fris|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n') || /\b(?:aur|and|\+)\b/i.test(lower);
+    const isDrinkWithoutSize = !hasOtherItemsInDrinkPrompt && !isQueryOrQuestion && (/^(?:(?:aik|ek|ik|do|teen|1|2|3)\s+)?(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)(?:\s+(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|add|bhi|aur|mangwa\s*do|b|laga\s*do|dedo|de\s*do))*[\s.!?]*$/i.test(lower.trim()) ||
                                (/\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke)\b/i.test(lower.trim()) && !/\b(regular|reg|can|tin|liter|litre|1l|1\.5l)\b/i.test(lower)));
     if (isDrinkWithoutSize && userSessionId) {
         const drinkItem = {
@@ -3545,8 +3560,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Customer orders Fries with size directly (Zero Tokens) ──
+    const hasOtherItemsInFriesMsg = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|drink|drinks|cold\s*drink|soft\s*drink|pepsi|coke|next\s*cola|7up|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n') || /\b(?:aur|and|\+)\b/i.test(lower);
     const hasFriesNegation = /\b(?:nahi|nahin|na|mat|nhi|ki\s*jagah|balke|balky)\b/i.test(lower);
-    const isDirectFriesWithSize = !hasFriesNegation && /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
+    const isDirectFriesWithSize = !hasOtherItemsInFriesMsg && !hasFriesNegation && /\b(?:fries|fris|french\s*fries)\b/i.test(lower) && /\b(?:regular|reg|large|loaded)\b/i.test(lower) &&
         (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do)\b/i.test(lower) || wordCount <= 6);
     if (isDirectFriesWithSize && userSessionId) {
         try {
@@ -3608,7 +3624,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Fast Route: Customer orders Drink with size directly (Zero Tokens) ──
     const hasDrinkWord = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b/i.test(lower);
     const hasDrinkSizeWord = /\b(?:1\.5\s*liter|1\.5\s*litre|1\.5l|1\s*liter|1\s*litre|1l|regular|reg|can|tin|litre|liter|dedh\s*litre)\b/i.test(lower);
-    const hasOtherItemsInDrinkMsg = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|fries|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n');
+    const hasOtherItemsInDrinkMsg = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|fries|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n') || /\b(?:aur|and|\+)\b/i.test(lower);
     const isDirectDrinkWithSize = !hasOtherItemsInDrinkMsg && hasDrinkWord && hasDrinkSizeWord &&
         (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do|wali|wala)\b/i.test(lower) || wordCount <= 4);
     if (isDirectDrinkWithSize && userSessionId) {
@@ -3684,6 +3700,103 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             });
         } catch (err) {
             console.error('[FAST_ROUTE] Error adding direct drink with size:', err.message);
+        }
+    }
+
+    // ── Check Fast Route: Multi-Product Ordering (Zero Tokens) (e.g. "20x zinger burger aur 30x cold drinks 1.5 liter wali kr do") ──
+    const hasOrderingVerb = /\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|dedo|de\s*do|order\s*karo|order\s*krdo|order\s*dein|order\s*dain|add|laga\s*do|daal\s*do|wali|wala|kr\s*den)\b/i.test(lower);
+    const hasMultipleQtySignals = (lower.match(/\b\d+\s*x\b/gi) || []).length >= 2;
+    const hasMultiOrderSignals = (
+        /\b(?:aur|and|\+)\b/i.test(lower) ||
+        lower.includes('\n') ||
+        lower.includes(',') ||
+        hasMultipleQtySignals
+    ) && (hasOrderingVerb || hasMultipleQtySignals || wordCount <= 16);
+
+    if (hasMultiOrderSignals && userSessionId && !isQueryOrQuestion) {
+        try {
+            const { extractRequestedItems } = await import('./addonExtractionService.js');
+            const extractedMulti = extractRequestedItems(lower);
+            if (extractedMulti.hasMultiple || (extractedMulti.items.length > 0 && extractedMulti.hasUnresolvedVariations)) {
+                const { getActiveCart, addToCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+
+                // 1. Add all resolved items to cart
+                const addedSummaries = [];
+                for (const item of extractedMulti.items) {
+                    await addToCart({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        chatId,
+                        verifiedPhone: whatsappPhone,
+                        menuItemId: item.menuItemId || null,
+                        variantId: item.variantId || null,
+                        dealId: item.dealId || null,
+                        quantity: item.quantity || 1,
+                    });
+                    addedSummaries.push(`• ${item.quantity}x ${item.canonicalName || item.itemName} — Rs. ${Number(item.lineTotal).toLocaleString('en-PK')}`);
+                }
+
+                const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                const details = getSessionOrderDetails(userSessionId, cleanPhone);
+
+                // 2. If an item needs variation/size selection (e.g. 30x cold drinks without size)
+                if (extractedMulti.hasUnresolvedVariations && extractedMulti.unresolvedItems.length > 0) {
+                    const unresolved = extractedMulti.unresolvedItems[0];
+                    if (unresolved.itemType === 'drink') {
+                        const drinkItem = unresolved.itemObj || {
+                            id: 'item-34',
+                            name: 'Soft Drink',
+                            variants: [
+                                { id: 'v-34-1', name: 'Regular', price: 110 },
+                                { id: 'v-34-2', name: 'Can', price: 130 },
+                                { id: 'v-34-3', name: '1 Liter', price: 200 },
+                                { id: 'v-34-4', name: '1.5 Liter', price: 240 }
+                            ]
+                        };
+                        setLastDiscussedItem(userSessionId, drinkItem, null, cleanPhone, unresolved.quantity);
+
+                        let replyText = '';
+                        if (addedSummaries.length > 0) {
+                            replyText = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${addedSummaries.join('\n')}\n\n`;
+                            replyText += `Aur *${unresolved.quantity}x Cold Drinks* ke liye kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤`;
+                        } else {
+                            replyText = `Zaroor! *${unresolved.quantity}x Cold Drinks* ke liye kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤`;
+                        }
+                        return {
+                            handled: true,
+                            routeName: 'multi_product_pending_size',
+                            reply: replyText,
+                        };
+                    }
+                }
+
+                // 3. All items resolved!
+                clearLastDiscussedItem(userSessionId);
+
+                if (details.paymentMethod || details.extraItemsInquired || details.address) {
+                    details.extraItemsAnswered = true;
+                    details.extraItemsInquired = true;
+                    updateSessionOrderDetails(userSessionId, {
+                        extraItemsAnswered: true,
+                        extraItemsInquired: true,
+                    }, cleanPhone);
+                }
+
+                const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                const introMessage = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${addedSummaries.join('\n')}`;
+
+                return await getNextCheckoutStepResponse({
+                    details,
+                    whatsappPhone,
+                    cart: cartNow,
+                    cache,
+                    introMessage,
+                });
+            }
+        } catch (err) {
+            console.error('[FAST_ROUTE] Error processing multi-product order:', err.message);
         }
     }
 
