@@ -416,6 +416,16 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const normCleanQ = cleanQ.replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
     const normStrippedQ = strippedQ ? strippedQ.replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '') : '';
 
+    // 2a. Strict exact deal name or slug match first (e.g. cleanQ === "deal 4" matches deal named "Deal 4" exclusively, NOT "Cravey 2.0 Deal 4")
+    const strictExact = activeDeals.find(d => {
+        const dName = (d.name || '').trim().toLowerCase();
+        const dSlug = (d.slug || '').trim().toLowerCase();
+        return dName === cleanQ || dSlug === cleanQ || (strippedQ && (dName === strippedQ || dSlug === strippedQ));
+    });
+    if (strictExact) {
+        return buildDealResult(strictExact);
+    }
+
     // Exact deal name or slug match first (e.g. "Deal 1", "Zinger Deal 3", "SNACK Box 1", "Midnight 1", "Cravey Dual Zone 2")
     const exactDeal = activeDeals.find(d => {
         const dNorm = (d.name || '').toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
@@ -439,34 +449,49 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
 
     // 2b. Match 3 Zinger combo ("3 zinger burger wali deal", "3 zinger deal", "zinger meal for 3", "3 zinger meal", "zinger deal 3", "3 zingers deal")
     const rawToCheck = (query || '').toLowerCase();
-    const threeZingerMatch = /\b(?:3|teen|tin)\s*(?:x\s+)?(?:zinger)s?\s*(?:wali\s*)?(?:deal|meal)?\b/i.test(rawToCheck) ||
-        /\b(?:zinger)s?\s*(?:wali\s*)?(?:meal|deal)\s*(?:#|no\.?\s*)?(?:for\s*)?3\b/i.test(rawToCheck) ||
-        /\b(?:zinger)s?\s*(?:meal|deal)\s*(?:for\s*)?(?:3|teen|tin)\b/i.test(rawToCheck);
+    const threeZingerMatch = /\b(?:3|teen|tin)\s*(?:x\s+)?(?:zinger)\s*(?:burger)?s?\s*(?:wali\s+)?(?:deal|meal)\b/i.test(rawToCheck) ||
+        /\b(?:zinger)\s*(?:burger)?s?\s*(?:wali\s+)?(?:meal|deal)\s*(?:#|no\.?\s*)?(?:for\s*)?3\b/i.test(rawToCheck) ||
+        /\b(?:zinger)\s*(?:burger)?s?\s*(?:meal|deal)\s*(?:for\s*)?(?:3|teen|tin)\b/i.test(rawToCheck);
     if (threeZingerMatch) {
-        const zinger3Deal = activeDeals.find(d => 
-            /\bzinger\s*deal\s*#?3\b/i.test(d.name) ||
-            /\bdeal\s*#?5\b/i.test(d.name) ||
-            /3\s*x?\s*zinger/i.test(d.description || '') ||
-            (d.deal_items || []).some(di => di.quantity === 3 && /zinger/i.test(di.menu_item?.name || di.name || di.item_name || '')) ||
-            (d.items || []).some(di => di.quantity === 3 && /zinger/i.test(di.item_name || di.name || ''))
-        );
+        const zinger3Deal = activeDeals.find(d => {
+            const dName = (d.name || '').toLowerCase();
+            const itemsText = [
+                ...(d.deal_items || []).map(di => di.menu_item?.name || di.name || di.item_name || ''),
+                ...(d.items || []).map(it => it.item_name || it.name || it.menu_item?.name || '')
+            ].join(' ').toLowerCase();
+            const desc = (d.description || '').toLowerCase();
+            const combined = `${dName} ${itemsText} ${desc}`;
+            const hasZinger = /\b(?:zinger)\b/i.test(combined);
+            const hasPizza = /\b(?:pizza|piza|crust)\b/i.test(combined);
+            const count3 = /3\s*x?\s*zinger/i.test(combined) ||
+                (d.deal_items || []).some(di => di.quantity === 3 && /zinger/i.test(di.menu_item?.name || di.name || '')) ||
+                (d.items || []).some(di => di.quantity === 3 && /zinger/i.test(di.item_name || di.name || ''));
+            return hasZinger && !hasPizza && (count3 || /deal\s*#?3|deal\s*#?5/i.test(dName));
+        });
         if (zinger3Deal) {
             return buildDealResult(zinger3Deal);
         }
     }
 
-    // 2c. Match "4 zeggy burgr wali deal", "4 zegy burger deal", "4 burger wali deal", "4 burgers deal", "zegy meal for 4"
-    const fourBurgerMatch = /\b(?:4|char|chaar)\s*(?:x\s+)?(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?(?:deal|meal)?\b/i.test(rawToCheck) ||
-        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?deal\s*(?:#|no\.?\s*)?4\b/i.test(rawToCheck) ||
+    // 2c. Match 4 Zegy burger deal ("4 zeggy burger wali deal", "4 zegy burger deal", "4 burger wali deal", "4 burgers deal", "zegy meal for 4", "zeggy burger deal")
+    const fourBurgerMatch = /\b(?:4|char|chaar)\s*(?:x\s+)?(?:(?:zeggy|zegy|ziggy)\s*)?burgers?\s*(?:wali\s+)?(?:deal|meal)\b/i.test(rawToCheck) ||
+        /\b(?:4|char|chaar)\s*(?:x\s+)?(?:zeggy|zegy|ziggy)s?\s*(?:wali\s+)?(?:deal|meal)\b/i.test(rawToCheck) ||
+        /\b(?:zeggy|zegy|ziggy)\s*(?:burger)?s?\s*(?:wali\s+)?(?:deal|meal)\b/i.test(rawToCheck) ||
+        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s+)?(?:deal|meal)\s*(?:#|no\.?\s*)?4\b/i.test(rawToCheck) ||
         /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:meal|deal)\s*(?:for\s*)?(?:4|char|chaar)\b/i.test(rawToCheck);
     if (fourBurgerMatch) {
-        const deal4 = activeDeals.find(d => 
-            /\bdeal\s*#?4\b/i.test(d.name) ||
-            /\bzegy\s*deal\s*#?4\b/i.test(d.name) ||
-            /4\s*x?\s*(?:zegy|burger)/i.test(d.description || '') ||
-            (d.deal_items || []).some(di => di.quantity === 4 && /zegy/i.test(di.menu_item?.name || di.name || di.item_name || '')) ||
-            (d.items || []).some(di => di.quantity === 4 && /zegy/i.test(di.item_name || di.name || ''))
-        );
+        const deal4 = activeDeals.find(d => {
+            const dName = (d.name || '').toLowerCase();
+            const itemsText = [
+                ...(d.deal_items || []).map(di => di.menu_item?.name || di.name || di.item_name || ''),
+                ...(d.items || []).map(it => it.item_name || it.name || it.menu_item?.name || '')
+            ].join(' ').toLowerCase();
+            const desc = (d.description || '').toLowerCase();
+            const combined = `${dName} ${itemsText} ${desc}`;
+            const hasZegy = /\b(?:zeggy|zegy|ziggy)\b/i.test(combined);
+            const hasPizza = /\b(?:pizza|piza|crust)\b/i.test(combined);
+            return hasZegy && !hasPizza;
+        });
         if (deal4) {
             return buildDealResult(deal4);
         }
@@ -524,7 +549,11 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(cleanQ) || (strippedQ && /\b(?:burger|zinger|zegy)\b/i.test(strippedQ));
         const wantsPizza = /\b(?:pi[z]+a|piza|crust)\b/i.test(cleanQ) || (strippedQ && /\b(?:pi[z]+a|piza|crust)\b/i.test(strippedQ));
 
-        let candidateDeals = activeDeals.filter(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+        // Prioritize exact "Deal X" first (e.g. "Deal 4" over "Cravey 2.0 Deal 4")
+        let candidateDeals = activeDeals.filter(d => new RegExp(`^deal\\s*#?${dNum}$`, 'i').test((d.name || '').trim()));
+        if (candidateDeals.length === 0) {
+            candidateDeals = activeDeals.filter(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+        }
         if (wantsBurgerOrZinger && !wantsPizza) {
             const burgerOnly = candidateDeals.filter(d => {
                 const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();

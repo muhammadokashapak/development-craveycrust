@@ -219,8 +219,20 @@ export async function get_product_details(args = {}, context = {}) {
 export async function add_to_cart(args = {}, context = {}) {
     const { sessionKey, whatsappPhone, chatId, restId: ctxRestId } = context;
     const restId = ctxRestId || await getDefaultRestaurantId().catch(() => 'default');
-    const itemName = args.itemName || '';
-    const quantity = Math.max(1, parseInt(args.quantity, 10) || 1);
+    let itemName = args.itemName || '';
+    let quantity = Math.max(1, parseInt(args.quantity, 10) || 1);
+
+    // If itemName contains leading count (e.g. "4 zeggy burgers", "4 zegy burger") and args.quantity was 1
+    const leadingQtyMatch = itemName.match(/^(\d+)\s*(?:x\s+)?(.+)$/i) ||
+        itemName.match(/^(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch)\s*(?:x\s+)?(.+)$/i);
+    if (leadingQtyMatch && (!args.quantity || args.quantity === 1)) {
+        const numMap = { 'aik': 1, 'ek': 1, 'ik': 1, 'do': 2, 'doo': 2, 'teen': 3, 'tin': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5 };
+        const parsedQ = parseInt(leadingQtyMatch[1], 10) || numMap[leadingQtyMatch[1]?.toLowerCase()] || null;
+        if (parsedQ && parsedQ > 1) {
+            quantity = parsedQ;
+            itemName = leadingQtyMatch[2].trim();
+        }
+    }
 
     const resolved = await resolveMenuItemOrDeal(itemName, restId);
     // Check category-level request first (Rule B: Category-Level Product Requests)

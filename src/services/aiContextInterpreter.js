@@ -102,7 +102,8 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
      • Deal 4 = 4 Zegy Burgers
      • Deal 5 / Zinger Deal 3 = 3 Zinger Burgers + 1L Drink
    - "zinger meal for 3" / "3 zinger deal" / "zinger deal 3" / "3 zinger burger wali deal" refers to the 3-Zinger deal (Zinger Deal 3 / Deal 5). Call "add_to_cart" with "itemName": "Zinger Deal 3", NEVER Pizza Deal 3, and NEVER 1 single Zinger Burger!
-   - "4 zeggy burgers deal" / "4 burger deal" refers to Deal 4 (4 Zegy Burgers). Call "add_to_cart" with "itemName": "Deal 4".
+   - "4 zeggy burgers" / "4 zeggy burger" / "4 zegy burger" / "4 zeggy burgers kr dain" / "4 zeggy burgers deal":
+     Customer is ordering 4 Zegy Burgers! Call "add_to_cart" with "itemName": "Zegy Burger", "quantity": 4 (or "itemName": "Deal 4"). Cravey Crust Deal 4 is strictly 4 Zegy Burgers (Rs. 999), NEVER a pizza deal!
    - "Deal 3" / "Pizza deal 3" refers to Deal 3 (2 Large Pizzas). Call "add_to_cart" with "itemName": "Deal 3".
    - If customer orders both ("aik kam kro aik deal 3 kr do aur aik zinger meal for 3 kr do"), output TWO actions:
      "actions": [
