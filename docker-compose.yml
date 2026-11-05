@@ -65,7 +65,7 @@ services:
 
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.rule=Host(`${BOT_DOMAIN:-bot.craveycrust.com}`) || Host(`dev.craveycrust.com`)"
+      - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.rule=Host(`${BOT_DOMAIN:-bot.craveycrust.com}`)"
       - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.entrypoints=websecure"
       - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.tls=true"
       - "traefik.http.routers.${STACK_NAME:-whatsapp-bot}.tls.certresolver=mytlschallenge"
