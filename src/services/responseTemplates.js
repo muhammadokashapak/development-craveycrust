@@ -46,6 +46,10 @@ export const RESPONSE_TEMPLATES = {
         return `Theek hai! *${itemName}* cart se remove kar diya gaya hai. 👍\n\nNaya Total: Rs. ${Number(updatedTotal).toLocaleString('en-PK')}`;
     },
 
+    itemNotFoundInCart({ targetItem = 'item' }) {
+        return `Aap ke cart mein *${targetItem}* maujood nahi hai. Cart check karne ke liye "cart" likhein ya menu dekhne ke liye "menu" likhein. 😊`;
+    },
+
     // ── Step 1: Customer Name ──
     namePrompt() {
         return 'Order finalize karne ke liye baraye meherbani pehle apna *Naam* bata dein? 😊';

@@ -24,6 +24,7 @@ import {
     isPizzaDeal,
     getDealPizzaInfo,
     extractFlavoursFromText,
+    formatDealFlavourPrompt,
     formatSingleFlavourConfirmationPrompt,
     setPendingDealFlavour,
     clearPendingDealFlavour,
@@ -228,20 +229,25 @@ export async function add_to_cart(args = {}, context = {}) {
         const dealObj = resolved.deal;
         if (isPizzaDeal(dealObj)) {
             const pizzaInfo = getDealPizzaInfo(dealObj);
-            const extractedFlavours = args.flavours || extractFlavoursFromText(itemName, pizzaInfo.allowedFlavours);
+            const extractedFlavours = args.flavours || extractFlavoursFromText(itemName, pizzaInfo.pizzaCount);
             if (extractedFlavours.length < pizzaInfo.pizzaCount) {
                 setPendingDealFlavour(sessionKey, {
-                    dealId: dealObj.id,
-                    dealName: dealObj.name,
-                    pizzaCount: pizzaInfo.pizzaCount,
-                    allowedFlavours: pizzaInfo.allowedFlavours,
-                    selectedFlavours: extractedFlavours,
+                    deal: dealObj,
+                    quantity,
+                    pizzaInfo,
+                    firstFlavour: extractedFlavours[0] || null,
                 });
+                let flavourPrompt = '';
+                if (extractedFlavours.length === 0) {
+                    flavourPrompt = formatDealFlavourPrompt(dealObj, pizzaInfo);
+                } else {
+                    flavourPrompt = formatSingleFlavourConfirmationPrompt(extractedFlavours[0], pizzaInfo);
+                }
                 return {
                     success: true,
                     requiresFlavourSelection: true,
                     dealName: dealObj.name,
-                    reply: formatSingleFlavourConfirmationPrompt(pizzaInfo.allowedFlavours, extractedFlavours[0]),
+                    reply: flavourPrompt,
                 };
             }
         }

@@ -324,6 +324,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     // Strip leading integer quantity (e.g. "2 zinger burger" -> "zinger burger", "do ziggy burger" -> "ziggy burger")
     // Use negative lookahead to protect decimal sizes like "1.5 liter drink" and bottle volumes like "1 liter drink"
     let rawItemQ = query.trim().toLowerCase();
+    rawItemQ = rawItemQ.replace(/^(?:i\s*said|maine\s*kaha|mene\s*kaha|maine\s*bola|mene\s*bola|bhai\s*maine|yaar\s*maine|bhai|yaar)\s+/i, '').trim();
     rawItemQ = rawItemQ.replace(/^(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
     // Also strip trailing ordering verbs
     rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
@@ -376,6 +377,12 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         const dNorm = (d.name || '').toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
         const dSlug = (d.slug || '').toLowerCase().replace(/#|\.|\s+|-/g, '');
         const dName = (d.name || '').toLowerCase();
+
+        // Guard: If customer specifically asks for zinger or burger, do NOT match pure "Deal X" or pizza deals
+        const qHasBurgerOrZinger = /\b(?:zinger|zeggy|zegy|burger)\b/i.test(cleanQ);
+        const dIsPureDealOrPizza = /^deal\d+$/i.test(dNorm) || /pizza/i.test(dNorm);
+        if (qHasBurgerOrZinger && dIsPureDealOrPizza) return false;
+
         return dSlug === cleanQ ||
             dName === cleanQ ||
             dNorm === normCleanQ ||
@@ -397,37 +404,36 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         }
     }
 
-    // Specific Zinger Deal alias check (e.g. "zinger deal 3", "zinger deal 2", "zinger deal 4")
-    const zingerDealMatch = cleanQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
-        (strippedQ && strippedQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
+    // Specific Zinger Deal alias check (e.g. "zinger deal 3", "zinger deal 2", "zinger deal 4", "zinger meal for 3")
+    const zingerDealMatch = cleanQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-5])\b/i) ||
+        (strippedQ && strippedQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-5])\b/i));
     if (zingerDealMatch) {
         const zNum = zingerDealMatch[1];
         const zDeal = activeDeals.find(d => 
             new RegExp(`\\bzinger\\s*deal\\s*#?${zNum}\\b`, 'i').test(d.name) ||
-            new RegExp(`\\bdeal\\s*#?${zNum}\\b`, 'i').test(d.name) ||
-            new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${zNum}\\b`, 'i').test(d.name)
+            new RegExp(`\\bburger\\s*(?:deal|meal)\\s*(?:for\\s*)?#?${zNum}\\b`, 'i').test(d.name)
         );
         if (zDeal) {
             return buildDealResult(zDeal);
         }
     }
 
-    // Specific Burger Meal / Burger Deal alias check (e.g. "burger deal 3", "burger meal 2")
-    const burgerDealMatch = cleanQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
-        (strippedQ && strippedQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
+    // Specific Burger Meal / Burger Deal alias check (e.g. "burger deal 3", "burger meal 2", "burger meal for 3")
+    const burgerDealMatch = cleanQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-5])\b/i) ||
+        (strippedQ && strippedQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-5])\b/i));
     if (burgerDealMatch) {
         const bNum = burgerDealMatch[1];
         const bDeal = activeDeals.find(d => 
             new RegExp(`\\bburger\\s*deal\\s*#?${bNum}\\b`, 'i').test(d.name) ||
-            new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${bNum}\\b`, 'i').test(d.name) ||
-            (new RegExp(`\\bdeal\\s*#?${bNum}\\b`, 'i').test(d.name) && !/cravey\s*2\.?0/i.test(d.name))
+            new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?#?${bNum}\\b`, 'i').test(d.name)
         );
         if (bDeal) {
             return buildDealResult(bDeal);
         }
     }
 
-    const pizzaDealMatch = cleanQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-4])\b/i) ||
+    const pizzaDealMatch = cleanQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-4])\b/i) ||
+        (strippedQ && strippedQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*(?:for\s*)?([1-4])\b/i));
         (strippedQ && strippedQ.match(/\bpi[z]+a\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-4])\b/i));
     if (pizzaDealMatch) {
         const pNum = pizzaDealMatch[1];

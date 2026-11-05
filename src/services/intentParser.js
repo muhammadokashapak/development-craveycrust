@@ -4731,10 +4731,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const wantsPizza = /\b(?:pizza|piza)\b/i.test(lower);
 
             // Normalize burger / zinger / pizza deal aliases to match actual deal names
+            const isExplicitZingerDeal = /zinger/i.test(specificDealMatch[1]);
             const bMealMatch = queryNorm.match(/(?:burger|zinger)(?:deal|meal)(?:for)?([1-5])/);
             if (bMealMatch) {
                 const num = parseInt(bMealMatch[1], 10);
-                if (num >= 4) {
+                if (isExplicitZingerDeal) {
+                    queryNorm = `zingerdeal${num}`;
+                } else if (num >= 4) {
                     queryNorm = `deal${num}`;
                 } else {
                     queryNorm = `burgermealfor${num}`;

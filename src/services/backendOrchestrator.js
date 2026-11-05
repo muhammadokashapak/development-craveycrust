@@ -64,6 +64,7 @@ import {
     isPizzaDeal,
     getDealPizzaInfo,
     extractFlavoursFromText,
+    formatDealFlavourPrompt,
     formatSingleFlavourConfirmationPrompt,
     setPendingDealFlavour,
     getPendingDealFlavour,
@@ -553,16 +554,19 @@ export async function handleCustomerMessage({
                     // Check pizza deal flavours
                     if (isPizzaDeal(dealObj)) {
                         const pizzaInfo = getDealPizzaInfo(dealObj);
-                        const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.allowedFlavours);
+                        const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.pizzaCount);
                         if (extractedFlavours.length < pizzaInfo.pizzaCount) {
                             setPendingDealFlavour(canonicalKey, {
-                                dealId: dealObj.id,
-                                dealName: dealObj.name,
-                                pizzaCount: pizzaInfo.pizzaCount,
-                                allowedFlavours: pizzaInfo.allowedFlavours,
-                                selectedFlavours: extractedFlavours,
+                                deal: dealObj,
+                                quantity: entities.quantity || 1,
+                                pizzaInfo,
+                                firstFlavour: extractedFlavours[0] || null,
                             });
-                            backendReply = formatSingleFlavourConfirmationPrompt(pizzaInfo.allowedFlavours, extractedFlavours[0]);
+                            if (extractedFlavours.length === 0) {
+                                backendReply = formatDealFlavourPrompt(dealObj, pizzaInfo);
+                            } else {
+                                backendReply = formatSingleFlavourConfirmationPrompt(extractedFlavours[0], pizzaInfo);
+                            }
                             break;
                         }
                     }
