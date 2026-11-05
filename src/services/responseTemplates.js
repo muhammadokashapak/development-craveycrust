@@ -120,9 +120,10 @@ export const RESPONSE_TEMPLATES = {
 
     // ── Step 7 & 8: Order Confirmed ──
     orderConfirmed({ name, orderNumber, total, paymentLabel, address }) {
+        const numericTotal = Number.isFinite(Number(total)) ? Number(total) : 0;
         return `${name} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\n` +
             `*Order Number:* ${orderNumber}\n` +
-            `*Order Total:* Rs. ${Number(total).toLocaleString('en-PK')}\n` +
+            `*Order Total:* Rs. ${numericTotal.toLocaleString('en-PK')}\n` +
             `*Payment:* ${paymentLabel}\n` +
             `*Delivery Address:* ${address}\n\n` +
             `Aap ka order Cravey Crust ki team ko bhej diya gaya hai. Shukriya, aur mazay se khana enjoy karein! 🍕🔥`;

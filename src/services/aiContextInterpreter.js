@@ -111,6 +111,10 @@ CRITICAL SENTENCE UNDERSTANDING RULES:
      The backend tool will authoritatively check the menu and clearly report if it is not available.
 7. Order Confirmation:
    - "haan" / "confirm" / "theek hai book kardo": "actions": [{ "tool": "confirm_order", "args": {} }], "intent": "CONFIRM_ORDER"
+8. Delivery Address Update:
+   - "location change kr do Xortlogix, Ghauri VIP Block" / "address update kardo street 5" / "pata badal do":
+     Extract the updated address without resetting other customer details:
+     "actions": [{ "tool": "update_customer_details", "args": { "address": "Xortlogix, Ghauri VIP Block" } }], "intent": "UPDATE_CUSTOMER_DETAILS"
 
 OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {

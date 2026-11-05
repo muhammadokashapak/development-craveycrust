@@ -1232,6 +1232,10 @@ export async function getOrderByNumber({ restaurantId, orderNumber, orderId }) {
     return {
         id: order.id,
         orderNumber: order.order_number,
+        order_number: order.order_number,
+        total: Number(order.total),
+        subtotal: Number(order.subtotal),
+        deliveryFee: Number(order.delivery_fee),
         restaurantId: order.restaurant_id,
         customer: order.customer ? {
             id: order.customer.id,

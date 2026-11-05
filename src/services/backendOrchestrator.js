@@ -283,14 +283,18 @@ export async function handleCustomerMessage({
                 sessionDetails.phoneConfirmed = true;
             }
         }
-        if (sessionDetails.name && sessionDetails.phoneConfirmed && (!sessionDetails.address || extracted.address) && !updatePayload.address && !activeLocation) {
-            const candidate = cleanExtractedAddress(resolvedText);
-            const isNotAddr = /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(resolvedText.trim()) ||
-                /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(resolvedText) ||
-                /\b(?:address\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat)|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek\s*nahi|galat|ka\s*maza\s*nahi))\b/i.test(resolvedText);
-            if (candidate && candidate.length >= 3 && !isNotAddr && (!sessionDetails.address || candidate.toLowerCase() !== sessionDetails.address.toLowerCase())) {
-                updatePayload.address = candidate;
-                sessionDetails.address = candidate;
+        const candidateAddress = cleanExtractedAddress(resolvedText);
+        const hasChangeIntent = /\b(?:change|badal|update)\b/i.test(resolvedText);
+        const shouldUpdateAddress = (!sessionDetails.address || extracted.address || hasChangeIntent) && candidateAddress && candidateAddress.length >= 3;
+        if (sessionDetails.name && sessionDetails.phoneConfirmed && shouldUpdateAddress && !updatePayload.address && !activeLocation) {
+            const isPureChangeCommand = /^(?:location|address|pata)\s*(?:change|badal|update|kardo|krdo|kar\s*do|kr\s*do)?$/i.test(resolvedText.trim());
+            const isNotAddr = isPureChangeCommand || /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(resolvedText.trim()) ||
+                /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(resolvedText);
+            if (!isNotAddr && (!sessionDetails.address || candidateAddress.toLowerCase() !== sessionDetails.address.toLowerCase())) {
+                updatePayload.address = candidateAddress;
+                sessionDetails.address = candidateAddress;
+                updatePayload.summaryShown = false;
+                sessionDetails.summaryShown = false;
             }
         }
         if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(resolvedText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(resolvedText.toLowerCase())) {
@@ -391,8 +395,8 @@ export async function handleCustomerMessage({
 
                     const finalReply = RESPONSE_TEMPLATES.orderConfirmed({
                         name: sessionDetails.name,
-                        orderNumber: bookingResult.order.orderNumber,
-                        total: bookingResult.order.total,
+                        orderNumber: bookingResult.order.orderNumber || bookingResult.order.order_number,
+                        total: bookingResult.order.total ?? bookingResult.order.pricing?.total ?? 0,
                         paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
                         address: sessionDetails.address,
                     });

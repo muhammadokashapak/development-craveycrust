@@ -2217,8 +2217,9 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
                 }, whatsappPhone);
                 clearOrderSummarySnapshot(sessionKey);
 
-                const finalOrderNum = bookingResult.order.orderNumber;
-                const finalTotal = Number(bookingResult.order.total || 0).toLocaleString('en-PK');
+                const finalOrderNum = bookingResult.order.orderNumber || bookingResult.order.order_number;
+                const rawTotal = bookingResult.order.total ?? bookingResult.order.pricing?.total ?? 0;
+                const finalTotal = Number(rawTotal).toLocaleString('en-PK');
                 const paymentLabel = updatedDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa';
 
                 const confirmMsg = `${updatedDetails.name} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n` +

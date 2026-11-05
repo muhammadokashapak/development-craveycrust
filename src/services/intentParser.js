@@ -218,6 +218,7 @@ export function cleanExtractedAddress(text) {
     } while (cleaned !== prevLead);
 
     // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:", "pichly order ka address", etc.
+    cleaned = cleaned.replace(/^(?:location|address|pata|delivery\s*location|delivery\s*address)\s*(?:bhi\s*|b\s*)?(?:change|badal|update|badalna)?\s*(?:karna|krna|kar\s*do|kr\s*do|kardo|krdo|kr\s*dein|kar\s*dein|karden|kar\s*dain|kr\s*dain|dein|do)?\s*[:=-]?\s*/i, ' ');
     cleaned = cleaned.replace(/^(?:pichl[ae]y?|puran[ae]y?|last|previous|confirmed?)(?:\s+wal[ae]y?)?\s*(?:order|oder)?\s*(?:ka|mein|me|mai|pe|par|per)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)?\s*(?:badal\s*k[e]?|change\s*k[e]?|update\s*k[e]?|rakh\s*k[e]?|kar\s*k[e]?|kr\s*k[e]?)?\s*[:=-]?\s*/i, ' ');
     cleaned = cleaned.replace(/^(?:order|oder)\s*(?:ka|mein|me|mai|pe|par|per)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|location)?\s*(?:badal\s*k[e]?|change\s*k[e]?|update\s*k[e]?|rakh\s*k[e]?|kar\s*k[e]?|kr\s*k[e]?)?\s*[:=-]?\s*/i, ' ');
     cleaned = cleaned.replace(/^(?:mera|meri|apna|apni|hamara|humari)?\s*(?:delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|meri\s*location|apna\s*pata|pata|location|jagah)\s*(?:hai|h|he|hy)?\s*[:=-]?\s*/i, ' ');
@@ -5822,16 +5823,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Route: Address Change / Correction Request (Zero Tokens) ──
     const isAddressChangeRequest = /\b(?:(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?location|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:ka\s*)?(?:maza\s*nahi|achi\s*nahi|theek\s*nahi|galat|wrong|sahi\s*nahi))\b/i.test(lower);
-    if (isAddressChangeRequest && userSessionId) {
+    const candidateNewAddress = isAddressChangeRequest ? cleanExtractedAddress(raw) : null;
+
+    if (isAddressChangeRequest && !candidateNewAddress && userSessionId) {
         try {
             const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
             const currDetails = getSessionOrderDetails(userSessionId, cleanPhone);
-            updateSessionOrderDetails(userSessionId, { address: null, location: null }, cleanPhone);
+            updateSessionOrderDetails(userSessionId, { address: null, location: null, summaryShown: false, awaitingFinalConfirmation: false }, cleanPhone);
             return {
                 handled: true,
                 routeName: 'address_change_prompt',
-                reply: `Koi masla nahi ${currDetails?.name ? currDetails.name + ' bhai! ' : 'Ji! '}Delivery kahan karni hai? Baraye meherbani pehle apni *WhatsApp Location Pin* share karein 📍 (taake exact rider coordinates mil sakein).\n\nAgar pin share nahi kar sakte, to apna *mukammal address* (House/Street/Phase) likhein, ya qareeb ka koi mashhoor *Landmark* bata dein!`,
+                reply: `Koi masla nahi ${currDetails?.name ? currDetails.name + ' bhai! ' : 'Ji! '}Delivery kahan karni hai? Baraye meherbani apna naya address ya WhatsApp location pin bhej dein. 📍`,
             };
         } catch (_) {}
     }
@@ -5841,11 +5844,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         !/\b(?:menu|deals?|catalog|rate|price|timing|timings|hours|easypaisa|payment|cod|cancel|status)\b/i.test(lower) &&
         !/\b(?:kahan|kidhar|outlet|shop|restaurant|branch)\s*(?:hai|h|hy|hotay?)\b/i.test(lower);
 
-    const hasCustomerDeliveryLocation = !isAddressChangeRequest && Boolean(
+    const hasCustomerDeliveryLocation = Boolean(
         /maps\.google\.com|goo\.gl|maps\.app\.goo\.gl|lat=\s*-?\d+|lng=\s*-?\d+/i.test(raw) ||
         /^(?:customer\s*ne\s*location|location\s*pin|meri\s*location|mera\s*ad(?:d)?re(?:e)?s(?:s)?|delivery\s*ad(?:d)?re(?:e)?s(?:s)?|ad(?:d)?re(?:e)?s(?:s)?|pata|yahan\s*deliver|yahan\s*order|idr)/i.test(lower) ||
-        isStandaloneAreaName
-    ) && !/^(?:change|theek\s*nahi|galat|wrong|nahi|mat)/i.test(raw.replace(/^(?:location|address|pata|delivery\s*address)\s*[:=-]?\s*/i, '').trim());
+        isStandaloneAreaName ||
+        (isAddressChangeRequest && Boolean(candidateNewAddress))
+    ) && (!isAddressChangeRequest || Boolean(candidateNewAddress)) && !/^(?:change|theek\s*nahi|galat|wrong|nahi|mat)$/i.test(raw.replace(/^(?:location|address|pata|delivery\s*address)\s*[:=-]?\s*/i, '').trim());
 
     // If customer shared location pin/link/address during active session, capture it
     if (hasCustomerDeliveryLocation && userSessionId) {

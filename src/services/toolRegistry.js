@@ -555,18 +555,21 @@ export async function confirm_order(args = {}, context = {}) {
             extraItemsAnswered: false,
         }, whatsappPhone);
 
+        const safeOrderNum = bookingResult.order.orderNumber || bookingResult.order.order_number;
+        const safeTotal = bookingResult.order.total ?? bookingResult.order.pricing?.total ?? 0;
+
         const reply = RESPONSE_TEMPLATES.orderConfirmed({
             name: sessionDetails.name,
-            orderNumber: bookingResult.order.orderNumber,
-            total: bookingResult.order.total,
+            orderNumber: safeOrderNum,
+            total: safeTotal,
             paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
             address: sessionDetails.address,
         });
 
         return {
             success: true,
-            orderNumber: bookingResult.order.orderNumber,
-            total: bookingResult.order.total,
+            orderNumber: safeOrderNum,
+            total: safeTotal,
             reply,
         };
     }
