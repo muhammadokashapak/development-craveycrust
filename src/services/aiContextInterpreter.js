@@ -132,6 +132,17 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
    - "location change kr do Xortlogix, Ghauri VIP Block" / "address update kardo street 5" / "pata badal do":
      Extract the updated address without resetting other customer details:
      "actions": [{ "tool": "update_customer_details", "args": { "address": "Xortlogix, Ghauri VIP Block" } }], "intent": "UPDATE_CUSTOMER_DETAILS"
+9. Cart Item Removal (Direct Execution):
+   - When customer says "Behari kebab remove kr dain" / "Zinger burger hata do" / "Deal 3 nikal do" / "Cold drink remove krdo":
+     Customer is requesting removal of an item from cart!
+     Call "remove_from_cart" with "itemName": "<item name requested, e.g. 'Behari Kebab Pizza' or 'Behari kebab'>".
+     Never ask what they want to remove when they already named the item!
+10. Follow-up Size Specification for Drinks / Items:
+   - When the assistant previously asked for drink size (e.g. "Soft Drink ka kaunsa size add karun — Regular, Can, 1 Liter, ya 1.5 Liter?")
+     and customer replies "Can kr dain 10" / "Cans kr dain" / "10 cans" / "1.5 liter kr do":
+     Customer is specifying the size and quantity for Soft Drink!
+     Call "add_to_cart" with "itemName": "Soft Drink", "variant": "Can", "quantity": 10 (or parsed count).
+     Do NOT ask for size again! Do NOT loop or argue! Add directly to cart.
 
 OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {

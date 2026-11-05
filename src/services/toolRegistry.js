@@ -11,7 +11,8 @@
  */
 
 import { getCatalogCache } from './catalogCacheService.js';
-import { resolveMenuItemOrDeal, getActiveDeals } from './menuService.js';
+import { resolveMenuItemOrDeal, getActiveDeals, getActiveMenu } from './menuService.js';
+import { FALLBACK_MENU_ITEMS } from './fallbackCatalog.js';
 import { addItemToCart, getActiveCart, calculateCartTotals } from './cartService.js';
 import { resolveCartItemForRemoval, executeCartItemRemoval } from './cartItemResolver.js';
 import { getSessionOrderDetails, updateSessionOrderDetails, markMenuSent, markDealsSent } from './sessionService.js';
@@ -234,9 +235,63 @@ export async function add_to_cart(args = {}, context = {}) {
         }
     }
 
+    // If itemName contains trailing count (e.g. "Can kr dain 10", "Zinger burger 2", "Regular fries 3") and args.quantity was 1
+    const isNumberedComboOrDeal = /\b(?:deal|meal|snack\s*box|snackbox|snakbox|midnight|dual\s*zone|zone|cravey)\b/i.test(itemName);
+    if (!isNumberedComboOrDeal) {
+        const trailingQtyMatch = itemName.match(/\s+(\d+)$/) ||
+            itemName.match(/\s+(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch)$/i);
+        if (trailingQtyMatch && (!args.quantity || args.quantity === 1)) {
+            const numMap = { 'aik': 1, 'ek': 1, 'ik': 1, 'do': 2, 'doo': 2, 'teen': 3, 'tin': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5 };
+            const parsedQ = parseInt(trailingQtyMatch[1], 10) || numMap[trailingQtyMatch[1]?.toLowerCase()] || null;
+            if (parsedQ && parsedQ > 1) {
+                quantity = parsedQ;
+                itemName = itemName.replace(trailingQtyMatch[0], '').trim();
+            }
+        }
+    }
+
     const resolved = await resolveMenuItemOrDeal(itemName, restId);
     // Check category-level request first (Rule B: Category-Level Product Requests)
     if (resolved && resolved.status === 'CATEGORY_REQUESTED') {
+        const explicitSize = args.size || args.variant || args.variantName || null;
+        if (explicitSize) {
+            const allItems = (await getActiveMenu(restId)).flatMap(c => c.menu_items || []);
+            let targetItem = null;
+            if (resolved.categoryName === 'Drinks') {
+                targetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name)) ||
+                    FALLBACK_MENU_ITEMS.find(i => i.slug === 'soft-drink');
+            } else if (resolved.categoryName === 'Fries') {
+                targetItem = allItems.find(i => i.slug === 'fries' || /fries/i.test(i.name)) ||
+                    FALLBACK_MENU_ITEMS.find(i => i.slug === 'fries');
+            }
+            if (targetItem) {
+                const matchedVariant = matchVariant(targetItem.variants, explicitSize);
+                if (matchedVariant) {
+                    await addItemToCart({
+                        sessionKey,
+                        restaurantId: restId,
+                        chatId,
+                        verifiedPhone: whatsappPhone,
+                        menuItemId: targetItem.id,
+                        variantId: matchedVariant.id,
+                        quantity,
+                    });
+                    return {
+                        success: true,
+                        itemName: targetItem.name,
+                        size: matchedVariant.name,
+                        quantity,
+                        price: matchedVariant.price,
+                        reply: RESPONSE_TEMPLATES.itemAdded({
+                            itemName: `${targetItem.name} (${matchedVariant.name})`,
+                            quantity,
+                            price: matchedVariant.price,
+                            nextStepPrompt: 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊',
+                        }),
+                    };
+                }
+            }
+        }
         return {
             success: true,
             isCategoryGuidance: true,

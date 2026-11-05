@@ -177,6 +177,70 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         };
     }
 
+    // ── 4b. Direct Item / Flavor Matching against items currently in Cart ──
+    // e.g. "behari kebab remove kr dain", "chicken tikka hata do", "supreme pizza nikal do", "frenzy fries remove krdo"
+    const cleanItemQuery = lower
+        .replace(/\b(?:remove|hata|hatayein|hatao|nikal|nikalo|nikalein|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
+        .replace(/\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden)\b/gi, '')
+        .replace(/\b(?:bhai|yaar|ji|jee|plz|please|meherbani|shukriya|cart\s*se|order\s*se|se|main\s*se|mein\s*se|bhi|aur|to|mera|meri|mujhe|mujay|apne)\b/gi, '')
+        .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    if (cleanItemQuery.length >= 3) {
+        const directMatches = cart.items.filter(i => {
+            const iName = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
+            const vName = (i.menu_variant?.name || '').toLowerCase();
+            const notes = (i.notes || '').toLowerCase();
+            const slug = (i.menu_item?.slug || i.deal?.slug || '').toLowerCase();
+            const combined = `${iName} ${vName} ${notes} ${slug}`.toLowerCase();
+
+            // 1. Direct substring in item name or notes
+            if (combined.includes(cleanItemQuery) || cleanItemQuery.includes(iName)) {
+                return true;
+            }
+
+            // 2. All words in cleanItemQuery match combined text
+            const qWords = cleanItemQuery.split(/\s+/).filter(w => w.length >= 3);
+            if (qWords.length > 0 && qWords.every(w => combined.includes(w))) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if (directMatches.length === 1) {
+            return {
+                status: 'MATCH_FOUND',
+                item: directMatches[0],
+                qtyToRemove: qtyToRemove || 1,
+            };
+        } else if (directMatches.length > 1) {
+            // Check if one item has a closer/more specific match
+            const exactNameMatch = directMatches.filter(i => {
+                const iName = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
+                return iName.includes(cleanItemQuery);
+            });
+            if (exactNameMatch.length === 1) {
+                return {
+                    status: 'MATCH_FOUND',
+                    item: exactNameMatch[0],
+                    qtyToRemove: qtyToRemove || 1,
+                };
+            }
+            const listText = directMatches.map(it => {
+                const n = it.deal ? it.deal.name : (it.menu_item?.name || 'Item');
+                const v = it.menu_variant?.name ? ` (${it.menu_variant.name})` : '';
+                return `• ${it.quantity}x ${n}${v}`;
+            }).join('\n');
+            return {
+                status: 'AMBIGUOUS',
+                candidates: directMatches,
+                clarificationMessage: `Aap ke cart mein multiple matching items hain:\n${listText}\n\nBaraye meherbani batayein ke aap ko kaunsa item remove karna hai?`,
+            };
+        }
+    }
+
     // ── 5. Standalone Product Matching (Separate from Deals) ──
     // Standalone items in cart (NOT bundled inside deals)
     const standaloneItems = cart.items.filter(i => !i.deal && !i.deal_id);

@@ -276,7 +276,7 @@ export function extractSizeFromQuery(query) {
     // Check size regex with word boundaries
     const is1_5L = /\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter)\b/i.test(q);
     const is1L = !is1_5L && /\b(?:1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l)\b/i.test(q);
-    const isCan = /\b(?:can|tin\s*pack)\b/i.test(q);
+    const isCan = /\b(?:cans?|canes?|tin\s*pack|tins?)\b/i.test(q);
     const isParty = /\b(?:party\s*size|partysize|party|family)\b/i.test(q);
     const isLarge = !isParty && /\b(?:large|lrg|bada|bara)\b/i.test(q);
     const isMedium = !isParty && /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
@@ -295,7 +295,7 @@ export function extractSizeFromQuery(query) {
 
     // Strip size keywords and common ordering verbs to extract item name
     let clean = q
-        .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin\s*pack|party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
+        .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|cans?|canes?|tin\s*pack|tins?|party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
         .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|mangwani|order|bhai|wala|wali|size|add|kro|karo|dikhao|dekhao)\b/gi, ' ')
         .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
@@ -344,11 +344,12 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     }
 
     // 1b. Check if query is a general category request (Rule B: Category-Level Product Requests)
-    const isCategoryPizza = /^(?:pi[z]+as?|piza|pizzas)$/i.test(cleanQ) || (strippedQ && /^(?:pi[z]+as?|piza|pizzas)$/i.test(strippedQ));
-    const isCategoryBurger = /^(?:burgers?|burger)$/i.test(cleanQ) || (strippedQ && /^(?:burgers?|burger)$/i.test(strippedQ));
-    const isCategoryFries = /^(?:fries|frenzy\s*fries)$/i.test(cleanQ) || (strippedQ && /^(?:fries|frenzy\s*fries)$/i.test(strippedQ));
-    const isCategoryDrink = /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(cleanQ) || (strippedQ && /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(strippedQ));
-    const isCategoryWings = /^(?:wings?|chicken\s*wings?)$/i.test(cleanQ) || (strippedQ && /^(?:wings?|chicken\s*wings?)$/i.test(strippedQ));
+    // Only treat as general category request if NO size was specified by user!
+    const isCategoryPizza = !extractedSize && /^(?:pi[z]+as?|piza|pizzas)$/i.test(cleanQ);
+    const isCategoryBurger = !extractedSize && /^(?:burgers?|burger)$/i.test(cleanQ);
+    const isCategoryFries = !extractedSize && /^(?:fries|frenzy\s*fries)$/i.test(cleanQ);
+    const isCategoryDrink = !extractedSize && /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(cleanQ);
+    const isCategoryWings = !extractedSize && /^(?:wings?|chicken\s*wings?)$/i.test(cleanQ);
 
     if (isCategoryPizza) {
         return {
@@ -386,8 +387,27 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         };
     }
 
-    // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small")
+    // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small", "can", "cans")
     if (extractedSize && !strippedQ) {
+        // If size is drink-specific (Can, 1 Liter, 1.5 Liter), resolve directly to Soft Drink item with that variant!
+        if (/^(?:Can|1 Liter|1\.5 Liter)$/i.test(extractedSize)) {
+            const allItems = (await getActiveMenu(restId)).flatMap(c => c.menu_items || []);
+            const drinkItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name)) ||
+                FALLBACK_MENU_ITEMS.find(i => i.slug === 'soft-drink');
+            if (drinkItem) {
+                const v = (drinkItem.variants || []).find(v => v.name.toLowerCase() === extractedSize.toLowerCase()) ||
+                    matchVariant(drinkItem.variants, extractedSize);
+                return {
+                    status: 'EXACT_MATCH',
+                    type: 'ITEM',
+                    item: drinkItem,
+                    hasVariants: true,
+                    variants: drinkItem.variants || [],
+                    matchedVariant: v || drinkItem.variants?.[0],
+                    extractedSize,
+                };
+            }
+        }
         return {
             status: 'SIZE_SPECIFIED',
             size: extractedSize,
@@ -621,7 +641,8 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isOvenBakedWings = /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(cleanQ) || (strippedQ && /\b(?:oven\s*baked\s*wings?|baked\s*wings?)\b/i.test(strippedQ));
     const isBehariRoll = /\b(?:behari|bihari|behri)\s*roll\b/i.test(cleanQ) || (strippedQ && /\b(?:behari|bihari|behri)\s*roll\b/i.test(strippedQ));
     const isPeriPeri = /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(cleanQ) || (strippedQ && /\b(?:peri\s*peri|pari\s*pari|pari-pari|peri-peri)\b/i.test(strippedQ));
-    const isDrink = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
+    const isCanDrink = /\b(?:cans?|canes?|tin\s*pack|tins?)\b/i.test(cleanQ) || (strippedQ && /\b(?:cans?|canes?|tin\s*pack|tins?)\b/i.test(strippedQ));
+    const isDrink = isCanDrink || /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(cleanQ) || (strippedQ && /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke|coca\s*cola|sprite|7up|seven\s*up|mirinda|dew|mountain\s*dew|next\s*cola|marinda|fanta)\b/i.test(strippedQ));
     const isSupreme = /\b(?:supreme|superem|suprem|suprime)\b/i.test(cleanQ) || (strippedQ && /\b(?:supreme|superem|suprem|suprime)\b/i.test(strippedQ));
     const isTikka = /\b(?:tikka|tika|tikaa|chikn\s*tikka)\b/i.test(cleanQ) || (strippedQ && /\b(?:tikka|tika|tikaa)\b/i.test(strippedQ));
     const isFajita = /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(cleanQ) || (strippedQ && /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(strippedQ));
@@ -658,6 +679,9 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         aliasTargetItem = allItems.find(i => i.slug === 'peri-peri' || /peri\s*peri/i.test(i.name));
     } else if (isDrink && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name));
+        if (aliasTargetItem && isCanDrink && !extractedSize) {
+            extractedSize = 'Can';
+        }
     } else if (isSupreme && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-supreme' || /chicken\s*supreme/i.test(i.name));
     } else if (isTikka && !hasDealWord) {

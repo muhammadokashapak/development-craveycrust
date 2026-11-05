@@ -567,6 +567,35 @@ export async function handleCustomerMessage({
                 const resolved = await resolveMenuItemOrDeal(query, restId);
 
                 if (resolved && resolved.status === 'CATEGORY_REQUESTED') {
+                    const explicitSize = entities.size || (resolvedText.match(/\b(cans?|tin|1\.5\s*liter|1\s*liter|regular)\b/i)?.[1]);
+                    if (explicitSize && resolved.categoryName === 'Drinks') {
+                        const { FALLBACK_MENU_ITEMS } = await import('./fallbackCatalog.js');
+                        const allItems = (await getActiveMenu(restId)).flatMap(c => c.menu_items || []);
+                        const softDrink = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name)) ||
+                            FALLBACK_MENU_ITEMS.find(i => i.slug === 'soft-drink');
+                        if (softDrink) {
+                            const matchedV = matchVariant(softDrink.variants, explicitSize);
+                            if (matchedV) {
+                                await addItemToCart({
+                                    sessionKey: canonicalKey,
+                                    restaurantId: restId,
+                                    chatId: jid,
+                                    verifiedPhone: whatsappPhone,
+                                    menuItemId: softDrink.id,
+                                    variantId: matchedV.id,
+                                    quantity: entities.quantity || 1,
+                                });
+                                const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+                                backendReply = RESPONSE_TEMPLATES.itemAdded({
+                                    itemName: `${softDrink.name} (${matchedV.name})`,
+                                    quantity: entities.quantity || 1,
+                                    price: matchedV.price,
+                                    nextStepPrompt: nextPrompt,
+                                });
+                                break;
+                            }
+                        }
+                    }
                     backendReply = resolved.reply;
                     break;
                 }
