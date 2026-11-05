@@ -107,6 +107,8 @@ export function sanitizeOutput(text) {
         .replace(/<invoke\b[^>]*>[\s\S]*?<\/invoke>/gi, '')
         .replace(/<｜DSML｜[^>]*>[\s\S]*?<\/｜DSML｜[^>]*>/gi, '')
         .replace(/<[^>]+>/g, '')
+        .replace(/\b(?:aap\s*ka\s*)?(?:swagat|sawagat)\s*hai!?/gi, 'aap ko Khush Aamdeed!')
+        .replace(/\b(?:swagat|sawagat)\b/gi, 'Khush Aamdeed')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }

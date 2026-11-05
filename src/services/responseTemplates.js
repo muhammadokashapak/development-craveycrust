@@ -169,7 +169,7 @@ export const RESPONSE_TEMPLATES = {
     },
 
     greeting({ storeName = 'Cravey Crust' }) {
-        return `Assalam-o-Alaikum! 🍕 Cravey Crust mein aap ka welcome hai.\n\n` +
+        return `Assalam-o-Alaikum! 🍕 Cravey Crust mein aap ko Khush Aamdeed!\n\n` +
             `Aap aaj kya order karna chahenge?\n` +
             `• Tamam deals dekhne ke liye *"deals"* likhein.\n` +
             `• Mukammal menu dekhne ke liye *"menu"* likhein.\n\n` +
