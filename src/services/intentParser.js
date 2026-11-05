@@ -1794,13 +1794,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         };
                     }
                     const isAtFinalReview = Boolean(details.name && details.phoneConfirmed && (details.address || details.location) && details.paymentMethod);
-                    const lines = removeRes.updatedCart.items.map(i => {
-                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                        const fText = i.notes ? ` (${i.notes})` : '';
-                        const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
-                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
-                    }).join('\n');
+                    const lines = (removeRes.pricing?.breakdown?.items?.length || removeRes.pricing?.breakdown?.deals?.length)
+                        ? [
+                            ...(removeRes.pricing.breakdown.items || []).map(it => {
+                                const v = it.variantName ? ` (${it.variantName})` : '';
+                                return `• ${it.quantity}x ${it.name}${v} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`;
+                            }),
+                            ...(removeRes.pricing.breakdown.deals || []).map(d => {
+                                const notes = d.notes ? ` (${d.notes})` : '';
+                                return `• ${d.quantity}x ${d.name}${notes} — Rs. ${Number(d.lineTotal).toLocaleString('en-PK')}`;
+                            })
+                        ].join('\n')
+                        : removeRes.updatedCart.items.map(i => {
+                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                            const fText = i.notes ? ` (${i.notes})` : '';
+                            const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
+                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                            return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                        }).join('\n');
                     if (isAtFinalReview) {
                         updateSessionOrderDetails(userSessionId, {
                             orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
@@ -3076,13 +3087,24 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         };
                     }
                     const isAtFinalReview = Boolean(details.name && details.phoneConfirmed && (details.address || details.location) && details.paymentMethod);
-                    const lines = removeRes.updatedCart.items.map(i => {
-                        const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-                        const fText = i.notes ? ` (${i.notes})` : '';
-                        const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
-                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
-                    }).join('\n');
+                    const lines = (removeRes.pricing?.breakdown?.items?.length || removeRes.pricing?.breakdown?.deals?.length)
+                        ? [
+                            ...(removeRes.pricing.breakdown.items || []).map(it => {
+                                const v = it.variantName ? ` (${it.variantName})` : '';
+                                return `• ${it.quantity}x ${it.name}${v} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`;
+                            }),
+                            ...(removeRes.pricing.breakdown.deals || []).map(d => {
+                                const notes = d.notes ? ` (${d.notes})` : '';
+                                return `• ${d.quantity}x ${d.name}${notes} — Rs. ${Number(d.lineTotal).toLocaleString('en-PK')}`;
+                            })
+                        ].join('\n')
+                        : removeRes.updatedCart.items.map(i => {
+                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                            const fText = i.notes ? ` (${i.notes})` : '';
+                            const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
+                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                            return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                        }).join('\n');
                     if (isAtFinalReview) {
                         updateSessionOrderDetails(userSessionId, {
                             orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
@@ -4132,10 +4154,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
                         const v = i.menu_variant ? ` (${i.menu_variant.name})` : '';
                         const fText = i.notes ? ` (${i.notes})` : '';
-                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                        return `• ${i.quantity}x ${n}${v}${fText} — Rs. ${p}`;
+                        const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                        return `• ${i.quantity}x ${n}${v}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
                     }).join('\n');
-                    const rawSubtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity, 0);
+                    const rawSubtotal = cart.items.reduce((s, i) => s + Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity, 0);
                     billText = `Ji, aap ke cart ka subtotal *Rs. ${rawSubtotal.toLocaleString('en-PK')}* bana hai.`;
                 }
 

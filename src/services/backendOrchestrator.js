@@ -337,12 +337,14 @@ export async function handleCustomerMessage({
 
         // Build active cart text representation
         let activeCartSummary = '';
+        let activeCartOnlyLines = '';
         if (hasCartItems && cartTotals?.items) {
-            const lines = cartTotals.items.map(it => `• ${it.quantity}x ${it.name}${it.variantName ? ` (${it.variantName})` : ''} — Rs. ${it.lineTotal}`);
+            const lines = cartTotals.items.map(it => `• ${it.quantity}x ${it.name}${it.variantName ? ` (${it.variantName})` : ''} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`);
             (cartTotals.deals || []).forEach(d => {
-                lines.push(`• ${d.quantity}x ${d.name}${d.notes ? ` (${d.notes})` : ''} — Rs. ${d.lineTotal || d.totalPrice}`);
+                lines.push(`• ${d.quantity}x ${d.name}${d.notes ? ` (${d.notes})` : ''} — Rs. ${Number(d.lineTotal || d.totalPrice).toLocaleString('en-PK')}`);
             });
-            activeCartSummary = `${lines.join('\n')}\nSubtotal: Rs. ${cartTotals.subtotal}`;
+            activeCartOnlyLines = lines.join('\n');
+            activeCartSummary = `${activeCartOnlyLines}\nSubtotal: Rs. ${Number(cartTotals.subtotal).toLocaleString('en-PK')}`;
         }
 
         // Determine current order stage
@@ -757,7 +759,7 @@ export async function handleCustomerMessage({
                 } else {
                     const freshTotals = await calculateCartTotals({ sessionKey: canonicalKey, restaurantId: restId });
                     backendReply = RESPONSE_TEMPLATES.cartSummary({
-                        cartLines: activeCartSummary,
+                        cartLines: activeCartOnlyLines || activeCartSummary,
                         subtotal: freshTotals.subtotal,
                         deliveryFee: freshTotals.deliveryFee,
                         total: freshTotals.total,

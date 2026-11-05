@@ -1015,7 +1015,18 @@ const autoReplies = {
 // and sequential ordering for consecutive messages to the same user.
 const _jidSendQueues = new Map();
 const _jidLastSentTime = new Map();
+const _lidToPhoneMap = new Map();
 const TYPING_DELAY_MS = 0; // Immediate response (no artificial pause)
+
+function registerLidPhone(lidJid, phone) {
+    if (!lidJid || !phone) return;
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    if (!cleanPhone) return;
+    const phoneJid = `${cleanPhone}@s.whatsapp.net`;
+    const cleanLid = String(lidJid).replace(/:[0-9]+@/, '@');
+    _lidToPhoneMap.set(cleanLid, phoneJid);
+    _lidToPhoneMap.set(lidJid, phoneJid);
+}
 
 function getPacingKey(jid) {
     if (!jid || typeof jid !== 'string') return null;
@@ -1117,6 +1128,29 @@ async function startSession(session, options = {}) {
             try {
                 result = await origSendMessage(...args);
             } catch (err) {
+                const errMsg = err?.message || String(err || '');
+                const isSessionErr = errMsg.includes('No sessions') || errMsg.includes('SessionError') || errMsg.includes('Bad MAC');
+                const cleanTarget = typeof targetJid === 'string' ? targetJid.replace(/:[0-9]+@/, '@') : targetJid;
+                const fallbackPhoneJid = isSessionErr && (String(cleanTarget).endsWith('@lid') || String(targetJid).endsWith('@lid'))
+                    ? (_lidToPhoneMap.get(cleanTarget) || _lidToPhoneMap.get(targetJid))
+                    : null;
+
+                if (fallbackPhoneJid && fallbackPhoneJid !== targetJid) {
+                    console.warn(`[SEND] LID send failed to ${targetJid} (${errMsg}), redirecting to phone JID ${fallbackPhoneJid}...`);
+                    try {
+                        const safeOptions = { ...(options || {}) };
+                        delete safeOptions.quoted;
+                        result = await origSendMessage(fallbackPhoneJid, content, safeOptions);
+                        if (result && result.key && result.message) {
+                            const storeKey = `${result.key.remoteJid}_${result.key.id}`;
+                            global.messageCache.set(storeKey, result);
+                        }
+                        return result;
+                    } catch (fbErr) {
+                        console.error(`[SEND] Fallback to ${fallbackPhoneJid} failed:`, fbErr.message);
+                    }
+                }
+
                 // If send failed due to quoted stanza incompatibility (common with @lid or voice notes), retry cleanly without quoted
                 if (options && options.quoted) {
                     console.warn(`[SEND] Quoted send failed to ${targetJid} (${err.message}), retrying direct plain send...`);
@@ -1125,6 +1159,18 @@ async function startSession(session, options = {}) {
                     try {
                         result = await origSendMessage(targetJid, content, safeOptions);
                     } catch (retryErr) {
+                        const retryMsg = retryErr?.message || String(retryErr || '');
+                        if (fallbackPhoneJid && (retryMsg.includes('No sessions') || retryMsg.includes('SessionError'))) {
+                            console.warn(`[SEND] Retrying plain send to fallback phone JID ${fallbackPhoneJid}...`);
+                            result = await origSendMessage(fallbackPhoneJid, content, safeOptions).catch(() => null);
+                            if (result) {
+                                if (result.key && result.message) {
+                                    const storeKey = `${result.key.remoteJid}_${result.key.id}`;
+                                    global.messageCache.set(storeKey, result);
+                                }
+                                return result;
+                            }
+                        }
                         const fallbackText = content?.caption || content?.text;
                         if (fallbackText) {
                             console.warn(`[SEND] Secondary send failed, retrying plain text to ${targetJid}...`);
@@ -1648,6 +1694,9 @@ async function handleMessage(sock, msg, session) {
             // ── Route to Standalone AI Agent (Fast routes + AI + Token logging) ──
             const identity = resolveSenderIdentity(sock, msg, session);
             const customerPhone = identity?.phone || identity?.whatsappPhone || senderNum;
+            if (customerPhone && (jid.endsWith('@lid') || jid.includes('@lid'))) {
+                registerLidPhone(jid, customerPhone);
+            }
             const liveDetails = getSessionOrderDetails(jid, customerPhone);
             let customerName = (liveDetails?.nameExplicit ? liveDetails.name : null) || liveDetails?.name || null;
             console.log(`[AI] Processing message from ${customerPhone} (${jid}), name: ${customerName || 'N/A'}`);
@@ -2186,7 +2235,7 @@ initAllSessions().catch(err => {
 // ─── Graceful Shutdown ───────────────────────────────────
 process.on('uncaughtException', (err) => {
     const msg = err?.stack || err?.message || String(err || '');
-    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions')) {
+    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions') || msg.includes('No sessions') || msg.includes('SessionError')) {
         return;
     }
     console.error('Uncaught Exception:', err);
@@ -2194,7 +2243,7 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason) => {
     const msg = reason?.stack || reason?.message || String(reason || '');
-    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions')) {
+    if (msg.includes('Bad MAC') || msg.includes('Failed to decrypt message') || msg.includes('No matching sessions') || msg.includes('No sessions') || msg.includes('SessionError')) {
         return;
     }
     console.error('Unhandled Rejection:', reason);

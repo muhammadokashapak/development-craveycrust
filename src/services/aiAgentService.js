@@ -1491,9 +1491,10 @@ export function verifyOutput(aiText, optsOrToolResults) {
                         if (activeCart?.items && activeCart.items.length > 0) {
                             const lines = activeCart.items.map(i => {
                                 const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                                const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
                                 const fText = i.notes ? ` (${i.notes})` : '';
-                                const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.unit_price ?? 0) * i.quantity;
-                                return `• ${i.quantity}x ${n}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                                const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                                return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
                             }).join('\n');
                             return `Zabardast! Item aap ke cart mein add kar diya gaya hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n\n💰 *Subtotal:* Rs. ${verifiedSubtotal.toLocaleString('en-PK')}\n\nOrder book karne ke liye baraye meherbani apna *Naam* bata dein? 😊`;
                         }

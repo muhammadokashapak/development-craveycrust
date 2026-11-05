@@ -14,7 +14,31 @@ const NUM_MAP = {
     '3': 3, 'teen': 3, 'tin': 3, 'three': 3,
     '4': 4, 'char': 4, 'chaar': 4, 'four': 4,
     '5': 5, 'paanch': 5, 'panch': 5, 'five': 5,
+    '6': 6, 'che': 6, 'chey': 6, 'chay': 6, 'six': 6,
+    '7': 7, 'saat': 7, 'sat': 7, 'seven': 7,
+    '8': 8, 'aath': 8, 'ath': 8, 'eight': 8,
+    '9': 9, 'nau': 9, 'no': 9, 'nine': 9,
+    '10': 10, 'das': 10, 'dus': 10, 'ten': 10,
+    '15': 15, 'pandrah': 15, 'fifteen': 15,
+    '20': 20, 'bees': 20, 'twenty': 20,
 };
+
+/**
+ * Normalizes text variations in spelling and plurals (Roman Urdu / English)
+ */
+function normalizeQuery(str) {
+    return (str || '')
+        .toLowerCase()
+        .replace(/\bzeggy\b/g, 'zegy')
+        .replace(/\bziggy\b/g, 'zegy')
+        .replace(/\bburgers\b/g, 'burger')
+        .replace(/\bdrinks\b/g, 'drink')
+        .replace(/\bpizzas\b/g, 'pizza')
+        .replace(/\bfries\b/g, 'fries')
+        .replace(/\bwings\b/g, 'wing')
+        .replace(/\bnuggets\b/g, 'nugget')
+        .replace(/\brolls\b/g, 'roll');
+}
 
 /**
  * Detect explicit removal / deletion intent across Roman Urdu, Urdu and English
@@ -65,7 +89,8 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         return { status: 'EMPTY_CART' };
     }
 
-    const lower = (text || '').trim().toLowerCase();
+    const rawLower = (text || '').trim().toLowerCase();
+    const lower = normalizeQuery(rawLower);
 
     // ── 1. Check for Deal Component Restriction (e.g. "deal ki drink remove kr do") ──
     const isDealComponentTarget = /\b(?:deal|deal\s*#?\d+|package|combo)\s*(?:ki|k|wali|mai\s*se|se)?\s*(?:drink|pepsi|coke|burger|fries|wings)\b/i.test(lower) ||
@@ -84,11 +109,11 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
 
     // ── 2. Extract Requested Quantity ──
     let qtyToRemove = null;
-    const qtyMatch = lower.match(/\b(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?/i);
+    const qtyMatch = lower.match(/\b(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*(?:x\s+)?/i);
     if (qtyMatch) {
         qtyToRemove = NUM_MAP[qtyMatch[1].toLowerCase()] || parseInt(qtyMatch[1], 10) || null;
     } else {
-        const postQty = lower.match(/\b(?:remove|hata|nikal|delete)\s*(?:kr\s*do|kardo)?\s*(\d+|ak|aik|ek|ik|one)\b/i);
+        const postQty = lower.match(/\b(?:remove|hata|nikal|delete)\s*(?:kr\s*do|kardo)?\s*(\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\b/i);
         if (postQty) {
             qtyToRemove = NUM_MAP[postQty[1].toLowerCase()] || parseInt(postQty[1], 10) || null;
         }
@@ -102,13 +127,15 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
 
         if (candidates.length > 0) {
             // Check if user answered with a size / variant (e.g. "1.5 liter", "1 liter", "regular", "can")
-            const variantQueryMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|tin|small|medium|party)\b/i);
+            const variantQueryMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
             if (variantQueryMatch) {
                 let vQuery = variantQueryMatch[1].replace(/\s+/g, ' ');
                 if (vQuery === '1.5l') vQuery = '1.5 liter';
                 if (vQuery === '1l') vQuery = '1 liter';
                 if (vQuery === 'reg') vQuery = 'regular';
                 if (vQuery === 'bari') vQuery = 'large';
+                if (vQuery === 'cans') vQuery = 'can';
+                if (vQuery === 'tins') vQuery = 'tin';
                 const matchedByVariant = candidates.filter(i => {
                     const vName = (i.menu_variant?.name || '').toLowerCase();
                     const notes = (i.notes || '').toLowerCase();
@@ -119,30 +146,49 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
                     return {
                         status: 'MATCH_FOUND',
                         item: matchedByVariant[0],
-                        qtyToRemove: qtyToRemove || 1,
+                        qtyToRemove: qtyToRemove || null,
                     };
                 }
             }
 
-            // Check if user named product directly (e.g. "soft drink")
+            // Check if user named product directly (e.g. "5 zeggy burgers", "zegy burger", "soft drink")
+            const cleanClarification = lower
+                .replace(/\b(?:acha|achha|accha|theek|thek|sahi|ok|okay|ab|aur|bas|sirf|plz|please|bhai|yaar|yar|ji|jee|janab|sunen|suno|meherbani|shukriya)\b/gi, '')
+                .replace(/\b(?:remove|hata|hatayein|hatao|hatado|nikal|nikalo|nikalein|nikaldo|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
+                .replace(/\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden)\b/gi, '')
+                .replace(/\b(?:cart\s*se|order\s*se|se|main\s*se|mein\s*se|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|wali)\b/gi, '')
+                .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*(?:x\s+)?/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
             const matchedDirectly = candidates.filter(i => {
-                const itName = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
-                return itName.includes(lower) || lower.includes(itName) ||
-                    (lower.includes('drink') && (itName.includes('drink') || itName.includes('pepsi') || itName.includes('coke')));
+                const itName = normalizeQuery(i.menu_item?.name || i.deal?.name || '');
+                const itSlug = normalizeQuery(i.menu_item?.slug || i.deal?.slug || '');
+                const itNotes = normalizeQuery(i.notes || '');
+                const combined = `${itName} ${itSlug} ${itNotes}`;
+                if (cleanClarification && (combined.includes(cleanClarification) || cleanClarification.includes(itName))) {
+                    return true;
+                }
+                if (cleanClarification.includes('drink') && (itName.includes('drink') || itName.includes('pepsi') || itName.includes('coke'))) {
+                    return true;
+                }
+                if (cleanClarification.includes('burger') && (itName.includes('burger') || itName.includes('zinger') || itName.includes('zegy'))) {
+                    return true;
+                }
+                return false;
             });
 
             if (matchedDirectly.length === 1) {
                 return {
                     status: 'MATCH_FOUND',
                     item: matchedDirectly[0],
-                    qtyToRemove: qtyToRemove || 1,
+                    qtyToRemove: qtyToRemove || null,
                 };
             } else if (matchedDirectly.length > 1) {
-                // If user said "soft drink" and there are multiple soft drinks, ask for size
                 return {
                     status: 'AMBIGUOUS',
                     candidates: matchedDirectly,
-                    clarificationMessage: `Aap ke cart mein multiple sizes ki Soft Drinks hain. Baraye meherbani size batayein (maslan: *1 Liter* ya *1.5 Liter*)?`,
+                    clarificationMessage: `Aap ke cart mein multiple matching items hain. Baraye meherbani batayein ke aap ko kaunsa item hatana hai?`,
                 };
             }
         }
@@ -168,7 +214,7 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
             return {
                 status: 'MATCH_FOUND',
                 item: matchingDeals[0],
-                qtyToRemove: qtyToRemove || 1,
+                qtyToRemove: qtyToRemove || null,
             };
         }
         return {
@@ -178,21 +224,22 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     }
 
     // ── 4b. Direct Item / Flavor Matching against items currently in Cart ──
-    // e.g. "behari kebab remove kr dain", "chicken tikka hata do", "supreme pizza nikal do", "frenzy fries remove krdo"
+    // e.g. "acha 5x zeggy burgers remove kr do", "behari kebab remove kr dain", "chicken tikka hata do"
     const cleanItemQuery = lower
-        .replace(/\b(?:remove|hata|hatayein|hatao|nikal|nikalo|nikalein|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
+        .replace(/\b(?:acha|achha|accha|theek|thek|sahi|ok|okay|ab|aur|bas|sirf|plz|please|bhai|yaar|yar|ji|jee|janab|sunen|suno|meherbani|shukriya)\b/gi, '')
+        .replace(/\b(?:remove|hata|hatayein|hatao|hatado|nikal|nikalo|nikalein|nikaldo|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
         .replace(/\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden)\b/gi, '')
-        .replace(/\b(?:bhai|yaar|ji|jee|plz|please|meherbani|shukriya|cart\s*se|order\s*se|se|main\s*se|mein\s*se|bhi|aur|to|mera|meri|mujhe|mujay|apne)\b/gi, '')
-        .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s*(?:x\s+)?/gi, '')
+        .replace(/\b(?:cart\s*se|order\s*se|se|main\s*se|mein\s*se|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|wali)\b/gi, '')
+        .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*(?:x\s+)?/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
 
     if (cleanItemQuery.length >= 3) {
         const directMatches = cart.items.filter(i => {
-            const iName = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
-            const vName = (i.menu_variant?.name || '').toLowerCase();
-            const notes = (i.notes || '').toLowerCase();
-            const slug = (i.menu_item?.slug || i.deal?.slug || '').toLowerCase();
+            const iName = normalizeQuery(i.menu_item?.name || i.deal?.name || '');
+            const vName = normalizeQuery(i.menu_variant?.name || '');
+            const notes = normalizeQuery(i.notes || '');
+            const slug = normalizeQuery(i.menu_item?.slug || i.deal?.slug || '');
             const combined = `${iName} ${vName} ${notes} ${slug}`.toLowerCase();
 
             // 1. Direct substring in item name or notes
@@ -213,19 +260,19 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
             return {
                 status: 'MATCH_FOUND',
                 item: directMatches[0],
-                qtyToRemove: qtyToRemove || 1,
+                qtyToRemove: qtyToRemove || null,
             };
         } else if (directMatches.length > 1) {
             // Check if one item has a closer/more specific match
             const exactNameMatch = directMatches.filter(i => {
-                const iName = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
+                const iName = normalizeQuery(i.menu_item?.name || i.deal?.name || '');
                 return iName.includes(cleanItemQuery);
             });
             if (exactNameMatch.length === 1) {
                 return {
                     status: 'MATCH_FOUND',
                     item: exactNameMatch[0],
-                    qtyToRemove: qtyToRemove || 1,
+                    qtyToRemove: qtyToRemove || null,
                 };
             }
             const listText = directMatches.map(it => {
@@ -246,15 +293,15 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     const standaloneItems = cart.items.filter(i => !i.deal && !i.deal_id);
 
     // Detect Drink Keyword
-    const isDrinkQuery = /\b(drinks?|soft\s*drinks?|cold\s*drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|fanta|mirinda|water|tin|can)\b/i.test(lower);
-    const isBurgerQuery = /\b(burger|zinger|ziggy|zegy|chicken\s*burger|crispy\s*burger)\b/i.test(lower);
-    const isFriesQuery = /\b(fries|loaded\s*fries)\b/i.test(lower);
-    const isPizzaQuery = /\b(pizza)\b/i.test(lower);
-    const isWingsQuery = /\b(wings?|hot\s*wings|oven\s*baked)\b/i.test(lower);
-    const isRollQuery = /\b(roll|behari\s*roll)\b/i.test(lower);
-    const isPastaQuery = /\b(pasta|alfredo)\b/i.test(lower);
+    const isDrinkQuery = /\b(drinks?|soft\s*drinks?|cold\s*drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|fanta|mirinda|water|tins?|cans?)\b/i.test(lower);
+    const isBurgerQuery = /\b(burgers?|zingers?|ziggy|zegy|zeggy|chicken\s*burgers?|crispy\s*burgers?)\b/i.test(lower);
+    const isFriesQuery = /\b(fries?|loaded\s*fries?)\b/i.test(lower);
+    const isPizzaQuery = /\b(pizzas?)\b/i.test(lower);
+    const isWingsQuery = /\b(wings?|hot\s*wings?|oven\s*baked)\b/i.test(lower);
+    const isRollQuery = /\b(rolls?|behari\s*rolls?)\b/i.test(lower);
+    const isPastaQuery = /\b(pastas?|alfredo)\b/i.test(lower);
     const isNuggetsQuery = /\b(nuggets?)\b/i.test(lower);
-    const isSnackboxQuery = /\b(snackbox|snack\s*box|half\s*box|platter|box)\b/i.test(lower);
+    const isSnackboxQuery = /\b(snackbox(es)?|snack\s*box(es)?|half\s*box(es)?|platters?|box(es)?)\b/i.test(lower);
 
     let matchingStandalone = [];
 
@@ -269,7 +316,7 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     } else if (isBurgerQuery) {
         matchingStandalone = standaloneItems.filter(i => {
             const n = (i.menu_item?.name || i.notes || '').toLowerCase();
-            return n.includes('burger') || n.includes('zinger') || n.includes('ziggy');
+            return n.includes('burger') || n.includes('zinger') || n.includes('ziggy') || n.includes('zegy') || n.includes('zeggy');
         });
     } else if (isFriesQuery) {
         matchingStandalone = standaloneItems.filter(i => {
@@ -309,13 +356,15 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     }
 
     // If a variant/size was mentioned (e.g. "1.5 liter", "regular", "large"), refine filter
-    const variantMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|tin|small|medium|party)\b/i);
+    const variantMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
     if (variantMatch && matchingStandalone.length > 0) {
         let vQuery = variantMatch[1].replace(/\s+/g, ' ');
         if (vQuery === '1.5l') vQuery = '1.5 liter';
         if (vQuery === '1l') vQuery = '1 liter';
         if (vQuery === 'reg') vQuery = 'regular';
         if (vQuery === 'bari') vQuery = 'large';
+        if (vQuery === 'cans') vQuery = 'can';
+        if (vQuery === 'tins') vQuery = 'tin';
         const vFiltered = matchingStandalone.filter(i => {
             const vName = (i.menu_variant?.name || '').toLowerCase();
             const notes = (i.notes || '').toLowerCase();
@@ -332,7 +381,7 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         return {
             status: 'MATCH_FOUND',
             item: matchingStandalone[0],
-            qtyToRemove: qtyToRemove || 1,
+            qtyToRemove: qtyToRemove || null,
         };
     }
 
@@ -384,7 +433,7 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         return {
             status: 'MATCH_FOUND',
             item: latest,
-            qtyToRemove: qtyToRemove || 1,
+            qtyToRemove: qtyToRemove || null,
         };
     }
 
@@ -402,8 +451,9 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
  */
 export async function executeCartItemRemoval({ sessionKey, restaurantId, resolution, cart }) {
     const targetItem = resolution.item;
-    const qtyToRemove = resolution.qtyToRemove || 1;
     const currentQty = targetItem.quantity || 1;
+    const qtySpecified = resolution.qtyToRemove != null && !isNaN(resolution.qtyToRemove);
+    const qtyToRemove = qtySpecified ? Number(resolution.qtyToRemove) : currentQty;
 
     const baseName = targetItem.deal ? targetItem.deal.name : (targetItem.menu_item?.name || 'Item');
     const varName = targetItem.menu_variant?.name ? ` (${targetItem.menu_variant.name})` : '';
@@ -411,7 +461,7 @@ export async function executeCartItemRemoval({ sessionKey, restaurantId, resolut
 
     let removedQtyText = '';
 
-    if (qtyToRemove < currentQty) {
+    if (qtySpecified && qtyToRemove < currentQty) {
         const newQty = currentQty - qtyToRemove;
         removedQtyText = qtyToRemove > 1 ? `${qtyToRemove}x ` : '';
         await updateCartItem({

@@ -531,14 +531,14 @@ export async function remove_from_cart(args = {}, context = {}) {
     }
 
     const resolution = resolveCartItemForRemoval({
-        messageText: args.itemName || '',
-        activeCart,
+        cart: activeCart,
+        text: args.itemName || '',
     });
 
     if (resolution.status === 'MATCH_FOUND') {
         const removalResult = await executeCartItemRemoval({
             cart: activeCart,
-            match: resolution,
+            resolution,
             sessionKey,
             restaurantId: restId,
         });
@@ -546,21 +546,28 @@ export async function remove_from_cart(args = {}, context = {}) {
         const freshTotals = await calculateCartTotals({ sessionKey, restaurantId: restId });
         return {
             success: true,
-            itemName: removalResult.itemName,
-            newQuantity: removalResult.newQuantity,
+            itemName: removalResult.removedItemName,
+            removedQtyText: removalResult.removedQtyText,
             updatedTotal: freshTotals.total,
             reply: RESPONSE_TEMPLATES.itemRemoved({
-                itemName: removalResult.itemName,
+                itemName: `${removalResult.removedQtyText}${removalResult.removedItemName}`,
                 updatedTotal: freshTotals.total,
             }),
         };
     }
 
-    if (resolution.status === 'CLARIFICATION_NEEDED') {
+    if (resolution.status === 'AMBIGUOUS' || resolution.status === 'CLARIFICATION_NEEDED') {
         return {
             success: false,
             clarificationNeeded: true,
             reply: resolution.clarificationMessage,
+        };
+    }
+
+    if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
+        return {
+            success: false,
+            reply: resolution.message,
         };
     }
 
@@ -589,12 +596,25 @@ export async function get_cart(args = {}, context = {}) {
     }
 
     const freshTotals = await calculateCartTotals({ sessionKey, restaurantId: restId });
-    const cartLines = (activeCart.items || []).map(i => {
-        const title = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-        const sizeStr = i.variant?.name ? ` (${i.variant.name})` : '';
-        const price = Number(i.unit_price || 0) * i.quantity;
-        return `• ${i.quantity}x ${title}${sizeStr} — Rs. ${price.toLocaleString('en-PK')}`;
-    }).join('\n');
+    const cartLines = (freshTotals?.items && (freshTotals.items.length > 0 || (freshTotals.deals && freshTotals.deals.length > 0)))
+        ? [
+            ...freshTotals.items.map(it => {
+                const varStr = it.variantName ? ` (${it.variantName})` : '';
+                return `• ${it.quantity}x ${it.name}${varStr} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`;
+            }),
+            ...(freshTotals.deals || []).map(d => {
+                const notesStr = d.notes ? ` (${d.notes})` : '';
+                return `• ${d.quantity}x ${d.name}${notesStr} — Rs. ${Number(d.lineTotal || d.totalPrice).toLocaleString('en-PK')}`;
+            })
+        ].join('\n')
+        : (activeCart.items || []).map(i => {
+            const title = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+            const sizeName = i.menu_variant?.name || i.variant?.name || '';
+            const sizeStr = sizeName ? ` (${sizeName})` : '';
+            const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0);
+            const price = unitPrice * i.quantity;
+            return `• ${i.quantity}x ${title}${sizeStr} — Rs. ${price.toLocaleString('en-PK')}`;
+        }).join('\n');
 
     return {
         success: true,
