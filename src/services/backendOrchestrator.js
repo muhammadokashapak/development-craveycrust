@@ -544,11 +544,55 @@ export async function handleCustomerMessage({
         const intent = context.intent;
         const entities = context.entities || {};
 
-        if (!backendReply && context.conversational_reply && (intent === 'GREETING' || intent === 'GENERAL_CONVERSATION' || intent === 'ACKNOWLEDGEMENT')) {
+        if (!backendReply && context.conversational_reply && (
+            intent === 'GREETING' ||
+            intent === 'GENERAL_CONVERSATION' ||
+            intent === 'ACKNOWLEDGEMENT' ||
+            intent === 'PERSONA_QUERY' ||
+            intent === 'CLARIFICATION_QUERY' ||
+            intent === 'CUSTOM_DEAL_REQUEST' ||
+            intent === 'CHEAPEST_DEALS_QUERY' ||
+            intent === 'CHEAPEST_ITEMS_QUERY'
+        )) {
             backendReply = context.conversational_reply;
         }
 
         if (!backendReply) switch (intent) {
+            case 'CUSTOM_DEAL_REQUEST': {
+                backendReply = RESPONSE_TEMPLATES.customDealNotPossible();
+                backendImageUrl = null;
+                backendImageUrls = [];
+                break;
+            }
+
+            case 'CHEAPEST_DEALS_QUERY': {
+                backendReply = RESPONSE_TEMPLATES.cheapestDealsList();
+                backendImageUrl = null;
+                backendImageUrls = [];
+                break;
+            }
+
+            case 'CHEAPEST_ITEMS_QUERY': {
+                backendReply = RESPONSE_TEMPLATES.cheapestItemsList();
+                backendImageUrl = null;
+                backendImageUrls = [];
+                break;
+            }
+
+            case 'PERSONA_QUERY': {
+                backendReply = RESPONSE_TEMPLATES.personaIdentity();
+                backendImageUrl = null;
+                backendImageUrls = [];
+                break;
+            }
+
+            case 'CLARIFICATION_QUERY': {
+                backendReply = RESPONSE_TEMPLATES.genericClarification();
+                backendImageUrl = null;
+                backendImageUrls = [];
+                break;
+            }
+
             case 'CONFIRM_ORDER': {
                 if (!hasCartItems) {
                     backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
@@ -987,15 +1031,33 @@ export async function handleCustomerMessage({
             }
 
             default: {
+                const lowerText = (resolvedText || '').toLowerCase().trim();
+                const isCustomDeal = (
+                    /\b(?:custom(?:\s*ized)?\s*deals?|deal\s*customi[sz]e|apni\s*(?:marzi|taraf)\s*ki\s*deal|deal\s*bana\s*(?:do|skte|saktay|sakty|dain|dein|skta|sakte|den)|deal\s*(?:change|badal)\s*(?:kr|kar|ho)\s*(?:skti|sakti|do|saktay|sakty)|deal\s*mein\s*.*(?:ki\s*jagah|badle))\b/i.test(lowerText) ||
+                    (/\b(?:custom|customize|customized)\b/i.test(lowerText) && /\b(?:deal|deals|package|combo)\b/i.test(lowerText)) ||
+                    (/\b(?:kia|kya|can\s*you)\b/i.test(lowerText) && /\b(?:deal|deals)\b/i.test(lowerText) && /\b(?:bana\s*(?:skta|saktay|sakty|sakte|do|dein|dain|den)|create|make)\b/i.test(lowerText))
+                );
+                const isPersonalOrOffTopic = /\b(?:wife|biwi|shadi|shaadi|husband|shoher|gf|girlfriend|bf|boyfriend|children|bachay|bache|family|khala|chachi|age|umar|tum\s*kon\s*ho|aap\s*kon\s*ho|who\s*are\s*you|who\s*made\s*you|insan\s*ho|robot\s*ho|bot\s*ho|kahan\s*rehte\s*ho|where\s*do\s*you\s*live|tumhara\s*naam\s*kya\s*hai|apka\s*naam\s*kya\s*hai)\b/i.test(lowerText);
+                const isClarification = /^(?:what|kya|kia|wat|hein|hain|ji|\?)[\s.!?]*$/i.test(lowerText);
+                const isPriceOrBudget = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|sastai|saste|sasty|sastay|kam\s*(?:rate|price|qeemat|pese|paise|peso|paiso)|low\s*(?:level|price|rate)|budget)\b/i.test(lowerText);
+                const isCheapestDeals = isPriceOrBudget && /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lowerText);
+                const isCheapest = isPriceOrBudget && !isCheapestDeals;
                 const isZinger = /\b(?:zinger|zingr)\b/i.test(resolvedText);
                 const isBurger = !isZinger && /\b(?:burger|burgers)\b/i.test(resolvedText);
                 const isPizza = /\b(?:pi[z]+as?)\b/i.test(resolvedText);
-                const isCheapest = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|kam\s*(?:rate|price|qeemat|pese|paise)|low\s*(?:level|price|rate))\b/i.test(resolvedText);
                 const isBest = /\b(?:best|famous|mashhoor|top|special|top-selling|favorite|favourite|sab\s*se\s*acha|sb\s*se\s*acha|achi|achha|zabardast|recommend|recommendation)\b/i.test(resolvedText);
-                const isAskingProductOrMenu = isZinger || isBurger || isPizza || isCheapest || isBest ||
+                const isAskingProductOrMenu = isZinger || isBurger || isPizza || isCheapest || isBest || isCheapestDeals ||
                     /\b(?:wings|fries|deal|deals|menu|khana|item|items|price|rate|options|batao|btao|batoo|kon|konsa|konse)\b/i.test(resolvedText);
 
-                if (isCheapest) {
+                if (isCustomDeal) {
+                    backendReply = RESPONSE_TEMPLATES.customDealNotPossible();
+                } else if (isCheapestDeals) {
+                    backendReply = RESPONSE_TEMPLATES.cheapestDealsList();
+                } else if (isPersonalOrOffTopic) {
+                    backendReply = RESPONSE_TEMPLATES.personaIdentity();
+                } else if (isClarification) {
+                    backendReply = RESPONSE_TEMPLATES.genericClarification();
+                } else if (isCheapest) {
                     backendReply = RESPONSE_TEMPLATES.cheapestItemsList();
                 } else if (isBest) {
                     backendReply = RESPONSE_TEMPLATES.bestItemsList();

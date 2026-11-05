@@ -5295,8 +5295,54 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
+    // ── Check Fast Route: Custom Deal Refusal (Zero Tokens, Pure Text, Zero Images) ──
+    const isCustomDealRequest = (
+        /\b(?:custom(?:\s*ized)?\s*deals?|deal\s*customi[sz]e|apni\s*(?:marzi|taraf)\s*ki\s*deal|deal\s*bana\s*(?:do|skte|saktay|sakty|dain|dein|skta|sakte|den)|deal\s*(?:change|badal)\s*(?:kr|kar|ho)\s*(?:skti|sakti|do|saktay|sakty)|deal\s*mein\s*.*(?:ki\s*jagah|badle))\b/i.test(lower) ||
+        (/\b(?:custom|customize|customized)\b/i.test(lower) && /\b(?:deal|deals|package|combo)\b/i.test(lower)) ||
+        (/\b(?:kia|kya|can\s*you)\b/i.test(lower) && /\b(?:deal|deals)\b/i.test(lower) && /\b(?:bana\s*(?:skta|saktay|sakty|sakte|do|dein|dain|den)|create|make)\b/i.test(lower))
+    );
+
+    if (isCustomDealRequest && wordCount <= 20) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'custom_deal_not_possible',
+            reply: RESPONSE_TEMPLATES.customDealNotPossible(),
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
+
+    // ── Check Fast Route: Personal / Irrelevant / Off-Topic / Persona Identity (Zero Tokens, Pure Text, Zero Images) ──
+    const isPersonalOrOffTopic = /\b(?:wife|biwi|shadi|shaadi|husband|shoher|gf|girlfriend|bf|boyfriend|children|bachay|bache|family|khala|chachi|age|umar|tum\s*kon\s*ho|aap\s*kon\s*ho|who\s*are\s*you|who\s*made\s*you|insan\s*ho|robot\s*ho|bot\s*ho|kahan\s*rehte\s*ho|where\s*do\s*you\s*live|tumhara\s*naam\s*kya\s*hai|apka\s*naam\s*kya\s*hai)\b/i.test(lower);
+
+    if (isPersonalOrOffTopic && wordCount <= 14) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'persona_identity',
+            reply: RESPONSE_TEMPLATES.personaIdentity(),
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
+
+    const isStandaloneClarificationQuery = /^(?:what|kya|kia|wat|hein|hain|ji|\?)[\s.!?]*$/i.test(lower.trim());
+    if (isStandaloneClarificationQuery) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'generic_clarification_help',
+            reply: RESPONSE_TEMPLATES.genericClarification(),
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
+
+    const isPriceOrBudgetFilter = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|sastai|saste|sasty|sastay|kam\s*(?:rate|price|qeemat|pese|paise|peso|paiso)|low\s*(?:level|price|rate)|budget)\b/i.test(lower);
+
     // ── Check Fast Route: Both Menu AND Deals Request (Send Menu completely first, then Deals) ──
-    const isBothMenuAndDeals = (
+    const isBothMenuAndDeals = !isPriceOrBudgetFilter && (
         (/\b(?:menu|manu|menue|mainu|card|catalog|catlog|rate\s*list|food\s*list)\b/i.test(lower) && /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lower)) ||
         /\b(?:menu\s*(?:aur|and|or|&|\+)\s*deals?|deals?\s*(?:aur|and|or|&|\+)\s*menu)\b/i.test(lower) ||
         /\b(?:dono\s*(?:dikhao|dekhao|bhejo|send|share|dein|do|chahiye)|menu\s*bhi\s*aur\s*deals?\s*bhi|deals?\s*bhi\s*aur\s*menu\s*bhi)\b/i.test(lower)
@@ -5353,10 +5399,26 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
-    // ── Check Fast Route: Cheapest / Lowest Price Menu Inquiry (Zero Tokens) ──
-    const isCheapestInquiry = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|kam\s*(?:rate|price|qeemat|pese|paise)|low\s*(?:level|price|rate))\b/i.test(lower) &&
-        /\b(?:item|items|cheez|food|burger|pizza|khana|dish|bato|batao|bataiye|dikhao|bhejo|konsa|konsi|konse|hai|h|hy)\b/i.test(lower) &&
-        !hasLeadingOrderQuantity;
+    // ── Check Fast Route: Cheapest Deals Inquiry (Zero Tokens, Pure Text, Zero Images) ──
+    const isCheapestDealInquiry = isPriceOrBudgetFilter &&
+        /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lower) &&
+        !hasLeadingOrderQuantity && !hasCartOrOrderAction;
+
+    if (isCheapestDealInquiry && wordCount <= 18) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'cheapest_deals_list',
+            reply: RESPONSE_TEMPLATES.cheapestDealsList(),
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
+
+    // ── Check Fast Route: Cheapest / Lowest Price Menu Inquiry (Zero Tokens, Pure Text, Zero Images) ──
+    const isCheapestInquiry = isPriceOrBudgetFilter &&
+        (/\b(?:item|items|cheez|cheezein|chezen|food|burger|pizza|khana|dish|bato|batao|bataiye|dikhao|bhejo|konsa|konsi|konse|hai|h|hy)\b/i.test(lower) || wordCount <= 6) &&
+        !hasLeadingOrderQuantity && !hasCartOrOrderAction;
 
     if (isCheapestInquiry && wordCount <= 18) {
         const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
@@ -5364,6 +5426,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             handled: true,
             routeName: 'cheapest_menu_items',
             reply: RESPONSE_TEMPLATES.cheapestItemsList(),
+            imageUrls: [],
+            imageUrl: null,
         };
     }
 
@@ -5592,7 +5656,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const isSpecificCategoryAsk = (isBurger && !isPizza) || (isPizza && !isBurger);
 
                 // Tier 1: General deals ask without specific category filter -> send deal images
-                if (targetDealsImages.length > 0 && !isSpecificCategoryAsk && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation) {
+                if (targetDealsImages.length > 0 && !isSpecificCategoryAsk && (isExplicitDealsAsk || !dealsAlreadySent) && !isSpecificRecommendation && !isPriceOrBudgetFilter && !isCustomDealRequest) {
                     if (userSessionId) markDealsSent(userSessionId, cleanPhone);
                     const currDetails = userSessionId ? getSessionOrderDetails(userSessionId, cleanPhone) : null;
                     const dealsCaption = 'Cravey Crust ki taraf se mazedaar deals haazir hain! 🍕🔥\n\nIn mein se kaunsi deal aap ke liye cart mein add karun? 😊';

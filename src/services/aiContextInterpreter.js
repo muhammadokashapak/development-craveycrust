@@ -14,6 +14,7 @@
 import { routeLLM } from './llmRouter.js';
 import { classifyCustomerIntent, INTENTS } from './intentRouter.js';
 import { getActivePromptTemplate } from '../config/systemPrompt.js';
+import { RESPONSE_TEMPLATES } from './responseTemplates.js';
 
 // ── Strict Intent Categories ──────────────────────────────────
 export const INTENT_CATEGORIES = {
@@ -47,13 +48,18 @@ export const INTENT_CATEGORIES = {
     CANCEL_ORDER: 'CANCEL_ORDER',
     REQUEST_ORDER_MODIFICATION: 'REQUEST_ORDER_MODIFICATION',
 
-    // Conversational
+    // Conversational & Persona
     GREETING: 'GREETING',
     ACKNOWLEDGEMENT: 'ACKNOWLEDGEMENT',
     CLARIFICATION_RESPONSE: 'CLARIFICATION_RESPONSE',
     CORRECTION: 'CORRECTION',
     REFER_TO_PREVIOUS_INFORMATION: 'REFER_TO_PREVIOUS_INFORMATION',
     GENERAL_CONVERSATION: 'GENERAL_CONVERSATION',
+    CUSTOM_DEAL_REQUEST: 'CUSTOM_DEAL_REQUEST',
+    CHEAPEST_DEALS_QUERY: 'CHEAPEST_DEALS_QUERY',
+    CHEAPEST_ITEMS_QUERY: 'CHEAPEST_ITEMS_QUERY',
+    PERSONA_QUERY: 'PERSONA_QUERY',
+    CLARIFICATION_QUERY: 'CLARIFICATION_QUERY',
 
     // Unknown
     UNKNOWN_INTENT: 'UNKNOWN_INTENT',
@@ -151,6 +157,21 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
        { "tool": "add_to_cart", "args": { "itemName": "Soft Drink", "size": "1.5 Liter", "quantity": 30 } }
      ]
      NEVER drop, ignore, or skip any item requested by the customer!
+12. Custom Deal Refusal (Strict Rule):
+   - When a customer asks for a custom deal, e.g. "Apka kia mera liye custom deal bana skta ho?", "custom deal bana do", "apni marzi ki deal bana do", "deal customize ho sakti hai", "can you make a custom deal":
+   - Custom deals are NOT supported. Do NOT call get_deals or get_menu, and do NOT send any flyers or images!
+   - Return "actions": [], "intent": "CUSTOM_DEAL_REQUEST", "conversational_reply": "Maazrat! Cravey Crust mein custom deals banana possible nahi hai. 😔\\n\\nHamare paas sirf menu aur flyer mein mojood official fixed deals available hain.\\n\\n• Agar aap official deals dekhna chahte hain to *\"deals\"* likhein.\\n• Agar aap apni pasand ke items alag se mangwana chahein to bas un ke naam bata dein! 😊"
+13. Cheapest Deals vs. Cheapest Items Queries (Pure Text Only, Zero Images):
+   - When a customer asks for cheapest deals / sasti deal, e.g. "menue ma sa koi sastai deal batao", "sasti si deal batao", "koi sasti deal hai", "sab se sasti deal konsi hai":
+   - Return "actions": [{ "tool": "get_product_details", "args": { "queryType": "cheapest_deals" } }], "intent": "CHEAPEST_DEALS_QUERY"
+   - Do NOT send catalog flyers or images! Must be answered strictly in text with the cheapest deals list.
+   - When a customer asks for cheapest items, e.g. "sasty items batao", "sab se sasta item kya hai":
+   - Return "actions": [{ "tool": "get_product_details", "args": { "queryType": "cheapest" } }], "intent": "CHEAPEST_ITEMS_QUERY"
+14. Persona Identity & Off-Topic Questions:
+   - When a customer asks personal or out-of-scope questions, e.g. "What's your wife name", "biwi ka naam kya hai", "shaadi kab hui", "who are you", "tum kon ho", "aap kon ho", "robot ho ya insan":
+   - Return "actions": [], "intent": "PERSONA_QUERY", "conversational_reply": "Main Cravey Crust ka AI ordering assistant Kashii hoon! 😊\\n\\nMera kaam aap ko Cravey Crust ke mazedaar pizzas, crispy burgers aur deals order karne mein madad karna hai. 🍕🍔\\n\\nAap aaj kya order karna chahenge?\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
+   - When customer says standalone "What", "kya", "kia", "hein", "?":
+   - Return "actions": [], "intent": "CLARIFICATION_QUERY", "conversational_reply": "Ji! Agar aap ko menu, deals ya kisi item ke bare mein maloomat chahiye ya order karna ho to bataein, main aap ki madad ke liye haazir hoon! 😊\\n\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
 
 OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {
@@ -241,8 +262,86 @@ function parseAndValidateJson(raw) {
 function fallbackDeterministicInterpretation(text, sessionDetails, orderStage) {
     const lower = (text || '').toLowerCase().trim();
 
+    // 0a. Check Custom Deal Refusal
+    const isCustomDeal = (
+        /\b(?:custom(?:\s*ized)?\s*deals?|deal\s*customi[sz]e|apni\s*(?:marzi|taraf)\s*ki\s*deal|deal\s*bana\s*(?:do|skte|saktay|sakty|dain|dein|skta|sakte|den)|deal\s*(?:change|badal)\s*(?:kr|kar|ho)\s*(?:skti|sakti|do|saktay|sakty)|deal\s*mein\s*.*(?:ki\s*jagah|badle))\b/i.test(lower) ||
+        (/\b(?:custom|customize|customized)\b/i.test(lower) && /\b(?:deal|deals|package|combo)\b/i.test(lower)) ||
+        (/\b(?:kia|kya|can\s*you)\b/i.test(lower) && /\b(?:deal|deals)\b/i.test(lower) && /\b(?:bana\s*(?:skta|saktay|sakty|sakte|do|dein|dain|den)|create|make)\b/i.test(lower))
+    );
+    if (isCustomDeal) {
+        return {
+            reasoning: 'Fallback detected custom deal request (not supported)',
+            intent: 'CUSTOM_DEAL_REQUEST',
+            confidence: 0.98,
+            actions: [],
+            conversational_reply: RESPONSE_TEMPLATES.customDealNotPossible(),
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 0b. Check Persona / Off-topic / Clarification
+    const isPersonalOrOffTopic = /\b(?:wife|biwi|shadi|shaadi|husband|shoher|gf|girlfriend|bf|boyfriend|children|bachay|bache|family|khala|chachi|age|umar|tum\s*kon\s*ho|aap\s*kon\s*ho|who\s*are\s*you|who\s*made\s*you|insan\s*ho|robot\s*ho|bot\s*ho|kahan\s*rehte\s*ho|where\s*do\s*you\s*live|tumhara\s*naam\s*kya\s*hai|apka\s*naam\s*kya\s*hai)\b/i.test(lower);
+    if (isPersonalOrOffTopic) {
+        return {
+            reasoning: 'Fallback detected persona identity / off-topic inquiry',
+            intent: 'PERSONA_QUERY',
+            confidence: 0.98,
+            actions: [],
+            conversational_reply: RESPONSE_TEMPLATES.personaIdentity(),
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+    if (/^(?:what|kya|kia|wat|hein|hain|ji|\?)[\s.!?]*$/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected standalone clarification inquiry',
+            intent: 'CLARIFICATION_QUERY',
+            confidence: 0.95,
+            actions: [],
+            conversational_reply: RESPONSE_TEMPLATES.genericClarification(),
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 0c. Check Budget / Cheapest Inquiries
+    const isPriceOrBudget = /\b(?:lowest(?:\s*level)?(?:\s*price)?|cheapest|cheap|sasta|sasti|sastai|saste|sasty|sastay|kam\s*(?:rate|price|qeemat|pese|paise|peso|paiso)|low\s*(?:level|price|rate)|budget)\b/i.test(lower);
+    if (isPriceOrBudget && /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected cheapest deals inquiry',
+            intent: 'CHEAPEST_DEALS_QUERY',
+            confidence: 0.95,
+            actions: [{ tool: 'get_product_details', args: { queryType: 'cheapest_deals' } }],
+            conversational_reply: RESPONSE_TEMPLATES.cheapestDealsList(),
+            referenced_entity: { type: 'deal', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+    if (isPriceOrBudget && /\b(?:item|items|cheez|cheezein|chezen|food|burger|pizza|khana|dish)\b/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected cheapest items inquiry',
+            intent: 'CHEAPEST_ITEMS_QUERY',
+            confidence: 0.95,
+            actions: [{ tool: 'get_product_details', args: { queryType: 'cheapest' } }],
+            conversational_reply: RESPONSE_TEMPLATES.cheapestItemsList(),
+            referenced_entity: { type: 'item', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
     // 1. Check for Both Menu & Deals
-    const isBoth = (
+    const isBoth = !isPriceOrBudget && (
         (/\b(?:menu|manu|card|catalog)\b/i.test(lower) && /\b(?:deals?|combos?)\b/i.test(lower)) ||
         /\b(?:menu\s*(?:aur|and|or|&|\+)\s*deals?|deals?\s*(?:aur|and|or|&|\+)\s*menu|dono)\b/i.test(lower)
     );

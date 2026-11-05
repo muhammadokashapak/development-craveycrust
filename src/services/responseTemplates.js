@@ -169,11 +169,51 @@ export const RESPONSE_TEMPLATES = {
     },
 
     greeting({ storeName = 'Cravey Crust' }) {
-        return `Khushamdeed! 🍕 Cravey Crust mein aap ka swagat hai.\n\n` +
+        return `Assalam-o-Alaikum! 🍕 Cravey Crust mein aap ka welcome hai.\n\n` +
             `Aap aaj kya order karna chahenge?\n` +
             `• Tamam deals dekhne ke liye *"deals"* likhein.\n` +
             `• Mukammal menu dekhne ke liye *"menu"* likhein.\n\n` +
             `Humari mazedaar pizzas aur crispy burgers aap ke muntazir hain! 😊`;
+    },
+
+    customDealNotPossible() {
+        return `Maazrat! Cravey Crust mein custom deals banana possible nahi hai. 😔\n\n` +
+            `Hamare paas sirf menu aur flyer mein mojood official fixed deals available hain.\n\n` +
+            `• Agar aap official deals dekhna chahte hain to *"deals"* likhein.\n` +
+            `• Agar aap apni pasand ke items alag se mangwana chahein to bas un ke naam bata dein! 😊`;
+    },
+
+    cheapestDealsList() {
+        return `Cravey Crust ki sab se sasti aur budget-friendly deals yeh hain: 🏷️🔥\n\n` +
+            `• *Burger Meal For 1* — Rs. 599\n` +
+            `   _1x Zinger Burger + Regular Fries + Regular Soft Drink_\n\n` +
+            `• *Pizza Meal For 1* — Rs. 599\n` +
+            `   _1x Small Classic Pizza + Regular Soft Drink_\n\n` +
+            `• *SNACK Box 1 / 2* — Rs. 799\n` +
+            `   _Chicken Pieces & Fries Combo_\n\n` +
+            `• *Midnight 2* — Rs. 899\n` +
+            `   _1x Zinger Burger + 1x Chicken Piece + Regular Drink_\n\n` +
+            `• *Deal 4* — Rs. 999\n` +
+            `   _4x Juicy Zegy Burgers_\n\n` +
+            `• *Deal 1* — Rs. 1,099\n` +
+            `   _2x Small Pizzas + 2x Regular Drinks_\n\n` +
+            `• *Zinger Deal 1* — Rs. 950\n` +
+            `   _2x Zinger Burgers + 1L Soft Drink_\n\n` +
+            `Aap in mein se kaunsi deal order karna chahenge? 😊`;
+    },
+
+    personaIdentity() {
+        return `Main Cravey Crust ka AI ordering assistant Kashii hoon! 😊\n\n` +
+            `Mera kaam aap ko Cravey Crust ke mazedaar pizzas, crispy burgers aur deals order karne mein madad karna hai. 🍕🍔\n\n` +
+            `Aap aaj kya order karna chahenge?\n` +
+            `• Deals dekhne ke liye *"deals"* likhein.\n` +
+            `• Menu dekhne ke liye *"menu"* likhein.`;
+    },
+
+    genericClarification() {
+        return `Ji! Agar aap ko menu, deals ya kisi item ke bare mein maloomat chahiye ya order karna ho to bataein, main aap ki madad ke liye haazir hoon! 😊\n\n` +
+            `• Deals dekhne ke liye *"deals"* likhein.\n` +
+            `• Menu dekhne ke liye *"menu"* likhein.`;
     },
 
     clarification({ reason = 'Baraye meherbani thori wazahat kar dein.' }) {

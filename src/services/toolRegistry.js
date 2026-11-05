@@ -170,7 +170,14 @@ export async function get_product_details(args = {}, context = {}) {
     const queryType = args.queryType?.toLowerCase();
     const query = args.query?.toLowerCase() || '';
 
-    if (queryType === 'cheapest' || /\b(?:lowest|cheapest|sasti|kam\s*rate|low\s*price)\b/i.test(query)) {
+    if (queryType === 'cheapest_deals' || (queryType === 'cheapest' && /\bdeals?\b/i.test(query)) || (/\b(?:lowest|cheapest|sasta|sasti|sastai|saste|sasty|sastay|kam\s*rate|low\s*price|budget)\b/i.test(query) && /\b(?:deal|deals|combo|combos)\b/i.test(query))) {
+        return {
+            success: true,
+            type: 'CHEAPEST_DEALS',
+            reply: RESPONSE_TEMPLATES.cheapestDealsList(),
+        };
+    }
+    if (queryType === 'cheapest' || /\b(?:lowest|cheapest|sasta|sasti|sastai|saste|sasty|sastay|kam\s*rate|low\s*price)\b/i.test(query)) {
         return {
             success: true,
             type: 'CHEAPEST_ITEMS',
