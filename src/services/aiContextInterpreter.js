@@ -130,6 +130,8 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
 6. Informational Questions vs. Adding Items:
    - "Deal 3 mein drink included hai ya nahi?" / "is deal mein kya kya hai": Customer is ASKING INFORMATION, NOT ordering!
      "actions": [{ "tool": "get_deal_details", "args": { "dealName": "Deal 3" } }], "intent": "DEAL_QUERY"
+   - "Fries konsi hain" / "Good fries b hain" / "kon kon se burgers hain" / "zinger options": Customer is asking for options in a food category, NOT whole menu flyer!
+     "actions": [{ "tool": "get_product_details", "args": { "query": "fries" } }], "intent": "PRODUCT_QUERY"
    - NEVER call add_to_cart for questions about a deal or item!
 7. Greetings and Small Talk:
    - When the customer says "Hello", "Hi", "Salam", "AOA", "Burger Raja", "Kashii", "Kaise ho":

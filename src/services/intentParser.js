@@ -3789,7 +3789,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const newVariantId = isLoaded ? 'v-3-1' : 'v-1-2'; // Large (or Loaded)
             const newItemId = isLoaded ? 'item-3' : 'item-1';
             const newVariantName = isLoaded ? 'Loaded' : 'Large';
-            const newPrice = isLoaded ? 450 : 320;
+            const newPrice = isLoaded ? 699 : 320;
 
             // 1. Remove any existing Regular Fries
             const existingReg = (cart?.items || []).find(i => 
@@ -3852,7 +3852,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const variantId = isLoaded ? 'v-3-1' : (isLarge ? 'v-1-2' : 'v-1-1');
             const itemId = isLoaded ? 'item-3' : 'item-1';
             const itemName = isLoaded ? 'Loaded Fries' : 'Fries';
-            const price = isLoaded ? 450 : (isLarge ? 320 : 220);
+            const price = isLoaded ? 699 : (isLarge ? 320 : 220);
 
             let qty = 1;
             const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s+)?(?:regular\s+|large\s+|loaded\s+)?fries\b/i);
@@ -5758,6 +5758,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             handled: true,
             routeName: 'pizza_flavours_list',
             reply: RESPONSE_TEMPLATES.pizzaFlavoursList(),
+        };
+    }
+
+    // Fries inquiry: "Fries konsi hain", "apke pas fries hain", "good fries b hain", "fries options"
+    const isFriesInquiry = /\b(?:fries|fris|french\s*fries)\b/i.test(lower) &&
+        (isOptionsInquiry || /\b(?:bhi|b|good|achi|achhi|kya|kia|konsi|konse|kon|hain|hai)\b/i.test(lower)) &&
+        !hasLeadingOrderQuantity && !hasExplicitOrderVerb;
+    if (isFriesInquiry && wordCount <= 16) {
+        const { RESPONSE_TEMPLATES } = await import('./responseTemplates.js');
+        return {
+            handled: true,
+            routeName: 'fries_options_list',
+            reply: RESPONSE_TEMPLATES.friesOptionsList(),
         };
     }
 

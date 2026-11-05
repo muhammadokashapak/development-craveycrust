@@ -261,6 +261,16 @@ export const RESPONSE_TEMPLATES = {
             `In mein se aap ke liye kaunsi item add karoon? 😊`;
     },
 
+    // ── Fries Options ──
+    friesOptionsList() {
+        return `Cravey Crust ke paas fries mein yeh mazedaar options mojood hain: 🍟🔥\n\n` +
+            `• *Regular Fries (Regular)* — Rs. 220\n` +
+            `• *Regular Fries (Large)* — Rs. 320\n` +
+            `• *Frenzy Loaded Fries (Standard)* — Rs. 699\n` +
+            `   _Crispy fries topped with chicken chunks, melted cheese, black olives & signature sauces_\n\n` +
+            `Aap in mein se kaunsi fries order karna chahenge? 😊`;
+    },
+
     // ── Zinger Options ──
     zingerOptionsList() {
         return `Cravey Crust ke pas zinger aur burgers mein yeh mazedaar options hain: 🍔🔥\n\n` +

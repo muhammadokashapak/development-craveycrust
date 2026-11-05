@@ -1023,6 +1023,7 @@ export async function handleCustomerMessage({
                 const isZinger = /\b(?:zinger|zingr)\b/i.test(resolvedText);
                 const isBurger = !isZinger && /\b(?:burger|burgers)\b/i.test(resolvedText);
                 const isPizza = /\b(?:pi[z]+as?)\b/i.test(resolvedText);
+                const isFries = /\b(?:fries|fris|french\s*fries)\b/i.test(resolvedText);
 
                 if (isCheapest) {
                     backendReply = RESPONSE_TEMPLATES.cheapestItemsList();
@@ -1034,6 +1035,8 @@ export async function handleCustomerMessage({
                     backendReply = RESPONSE_TEMPLATES.burgerOptionsList();
                 } else if (isPizza) {
                     backendReply = RESPONSE_TEMPLATES.pizzaFlavoursList();
+                } else if (isFries) {
+                    backendReply = RESPONSE_TEMPLATES.friesOptionsList();
                 } else {
                     backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
                 }
@@ -1062,8 +1065,9 @@ export async function handleCustomerMessage({
                 const isZinger = /\b(?:zinger|zingr)\b/i.test(resolvedText);
                 const isBurger = !isZinger && /\b(?:burger|burgers)\b/i.test(resolvedText);
                 const isPizza = /\b(?:pi[z]+as?)\b/i.test(resolvedText);
+                const isFries = /\b(?:fries|fris|french\s*fries)\b/i.test(resolvedText);
                 const isBest = /\b(?:best|famous|mashhoor|top|special|top-selling|favorite|favourite|sab\s*se\s*acha|sb\s*se\s*acha|achi|achha|zabardast|recommend|recommendation)\b/i.test(resolvedText);
-                const isAskingProductOrMenu = isZinger || isBurger || isPizza || isCheapest || isBest || isCheapestDeals ||
+                const isAskingProductOrMenu = isZinger || isBurger || isPizza || isFries || isCheapest || isBest || isCheapestDeals ||
                     /\b(?:wings|fries|deal|deals|menu|khana|item|items|price|rate|options|batao|btao|batoo|kon|konsa|konse)\b/i.test(resolvedText);
 
                 if (isFrustrated) {
@@ -1088,6 +1092,8 @@ export async function handleCustomerMessage({
                     backendReply = RESPONSE_TEMPLATES.burgerOptionsList();
                 } else if (isPizza) {
                     backendReply = RESPONSE_TEMPLATES.pizzaFlavoursList();
+                } else if (isFries) {
+                    backendReply = RESPONSE_TEMPLATES.friesOptionsList();
                 } else if (hasCartItems && sessionDetails.awaitingFinalConfirmation && !sessionDetails.name) {
                     backendReply = RESPONSE_TEMPLATES.namePrompt();
                 } else if (hasCartItems && !sessionDetails.name && !isAskingProductOrMenu) {
