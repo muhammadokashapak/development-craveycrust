@@ -66,8 +66,8 @@ export const INTENT_CATEGORIES = {
     AMBIGUOUS_INTENT: 'AMBIGUOUS_INTENT',
 };
 
-export function getSystemPrompt() {
-    const customPrompt = getActivePromptTemplate();
+export function getSystemPrompt(storeName = 'Cravey Crust') {
+    const customPrompt = getActivePromptTemplate().replace(/\{\{storeName\}\}|\$\{storeName\}/g, storeName || 'Cravey Crust');
 
     return `${customPrompt}
 
@@ -132,7 +132,7 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
      "actions": [{ "tool": "get_deal_details", "args": { "dealName": "Deal 3" } }], "intent": "DEAL_QUERY"
    - NEVER call add_to_cart for questions about a deal or item!
 7. Greetings and Small Talk:
-   - When the customer says "Hello", "Hi", "Salam", "AOA", "Kashii", "Kaise ho":
+   - When the customer says "Hello", "Hi", "Salam", "AOA", "Burger Raja", "Kashii", "Kaise ho":
      Return "actions": [], "intent": "GREETING", "conversational_reply": "<friendly greeting in Roman Urdu strictly following the personality, identity, and instructions configured in the System Prompt above>"
 8. Delivery Address Update:
    - "location change kr do Xortlogix, Ghauri VIP Block" / "address update kardo street 5" / "pata badal do":
@@ -169,7 +169,7 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
    - Return "actions": [{ "tool": "get_product_details", "args": { "queryType": "cheapest" } }], "intent": "CHEAPEST_ITEMS_QUERY"
 14. Persona Identity & Off-Topic Questions:
    - When a customer asks personal or out-of-scope questions, e.g. "What's your wife name", "biwi ka naam kya hai", "shaadi kab hui", "who are you", "tum kon ho", "aap kon ho", "robot ho ya insan":
-   - Return "actions": [], "intent": "PERSONA_QUERY", "conversational_reply": "Main Cravey Crust ka AI ordering assistant Kashii hoon! 😊\\n\\nMera kaam aap ko Cravey Crust ke mazedaar pizzas, crispy burgers aur deals order karne mein madad karna hai. 🍕🍔\\n\\nAap aaj kya order karna chahenge?\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
+   - Return "actions": [], "intent": "PERSONA_QUERY", "conversational_reply": "Main Cravey Crust ka AI ordering assistant Burger Raja hoon! 😊\\n\\nMera kaam aap ko Cravey Crust ke mazedaar pizzas, crispy burgers aur deals order karne mein madad karna hai. 🍕🍔\\n\\nAap aaj kya order karna chahenge?\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
    - When customer says standalone "What", "kya", "kia", "hein", "?":
    - Return "actions": [], "intent": "CLARIFICATION_QUERY", "conversational_reply": "Ji! Agar aap ko menu, deals ya kisi item ke bare mein maloomat chahiye ya order karna ho to bataein, main aap ki madad ke liye haazir hoon! 😊\\n\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
 

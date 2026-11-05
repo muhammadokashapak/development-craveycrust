@@ -2027,7 +2027,7 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
     const rememberedDetails = await getRememberedCustomerDetails(sessionKey, whatsappPhone);
 
     // Pre-fill returning customer details ONLY if not already explicitly provided in this session
-    // Explicit customer input (e.g. Aslam, Kashii) MUST NEVER be overwritten by past profile!
+    // Explicit customer input (e.g. Aslam, Burger Raja) MUST NEVER be overwritten by past profile!
     if (rememberedDetails?.name) {
         if (!sessionDetails.savedName) sessionDetails.savedName = rememberedDetails.name;
         if (!sessionDetails.name) {

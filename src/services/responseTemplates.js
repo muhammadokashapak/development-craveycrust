@@ -203,7 +203,7 @@ export const RESPONSE_TEMPLATES = {
     },
 
     personaIdentity() {
-        return `Main Cravey Crust ka AI ordering assistant Kashii hoon! 😊\n\n` +
+        return `Main Cravey Crust ka AI ordering assistant Burger Raja hoon! 😊\n\n` +
             `Mera kaam aap ko Cravey Crust ke mazedaar pizzas, crispy burgers aur deals order karne mein madad karna hai. 🍕🍔\n\n` +
             `Aap aaj kya order karna chahenge?\n` +
             `• Deals dekhne ke liye *"deals"* likhein.\n` +
