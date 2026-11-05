@@ -271,8 +271,20 @@ export function cleanExtractedAddress(text) {
 // Comprehensive delivery location indicator regex covering all official delivery areas
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar)\b/i;
 
-// Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|chahye|chaiye|chahie|chahey|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|change|badal|update|kuch|koi|sab|sari|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|tikka|tika|tikkaa|tandori|tandoori|fajita|faita|fejita|fajeeta|fajeta|supreme|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|good|great|nice|fine|best|cool|super|bad|poor|awesome|perfect|wonderful|excellent|welldone|well|wese|waise|chalo|chal|yar|yaar|sahih|acha|achha|accha|shukriya|thanks|thank|thx|ty|plz|pls|please|choti|chota|bari|bara|darmiyan|darmiyani|loaded|spicy|sift|suft|sofe|tin|ltr|wala|wali|wale|hogy|hogya|hogaye|hogayein|same\s*one|same\s*number|wahi\s*number|isi\s*number)\b/i;
+// Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors, abusive slang)
+export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|chahye|chaiye|chahie|chahey|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|change|badal|update|kuch|koi|sab|sari|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|tikka|tika|tikkaa|tandori|tandoori|fajita|faita|fejita|fajeeta|fajeta|supreme|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|good|great|nice|fine|best|cool|super|bad|poor|awesome|perfect|wonderful|excellent|welldone|well|wese|waise|chalo|chal|yar|yaar|sahih|acha|achha|accha|shukriya|thanks|thank|thx|ty|plz|pls|please|choti|chota|bari|bara|darmiyan|darmiyani|loaded|spicy|sift|suft|sofe|tin|ltr|wala|wali|wale|hogy|hogya|hogaye|hogayein|same\s*one|same\s*number|wahi\s*number|isi\s*number|bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|gandu|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|madarchod|behenchod|bhenchod|fuck|fucking|fucker|shit|bitch|bastard|asshole|dick|dickhead)\b/i;
+
+export function isAbusiveOrProfane(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.toLowerCase().trim();
+    return /\b(bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|chutye|gandu|gand|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|sala|saala|madarchod|madar\s*chod|behenchod|behen\s*chod|bhenchod|maa\s*ki|teri\s*maa|fuck|fucking|fucker|shit|bitch|bastard|asshole|dick|dickhead)\b/i.test(clean);
+}
+
+export function isCustomerFrustrated(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.toLowerCase().trim();
+    return /\b(?:masti\s*(?:kr|kar)\s*rh[ae]y|mazaq\s*(?:bana|kr|kar)|sahi\s*(?:jawab|batao|se)|kya\s*kar\s*rah[ae]y|ye\s*kya\s*(?:hai|tariqa)|bakwas|pagal\s*ho|andhe\s*ho|samajh\s*nahi\s*aa\s*rahi|dhang\s*se|stop\s*joking|are\s*you\s*serious|stupid\s*bot)\b/i.test(clean);
+}
 
 /**
  * Check if candidate string contains any food item, flavor, topping or size.
@@ -1628,7 +1640,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const words = lower.split(/\s+/).filter(Boolean);
     const wordCount = words.length;
 
-    // Food order action: customer wants to ADD or ORDER specific food items (should not be intercepted by menu/info views)
+    // Food order action & query indicators
     const hasLeadingOrderQuantity = /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(?:small|medium|large|party(?:\s*size)?|reg|regular)?\s*(?:pizza|burger|deal|meal|zinger|ziggy|zegy|zeggy|roll|wings?|hot\s*wings|fries|loaded\s*fries|nuggets?|pasta|shawarma|wrap|box|platter|calzone|chicken|piece|pcs?)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s+(?:hot\s*wings|wings?|loaded\s*fries|fries|zinger|ziggy|zegy|zeggy|burger|pizza|roll|pasta|nuggets?|box|platter)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?(?:small|medium|large|party|reg|regular)?\s*[a-z]+/i.test(lower);
@@ -1638,12 +1650,42 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const isCatalogViewingRequest = /\b(?:menu|deals?|card|cards|flyer|flyers|catalog|catlog|rate\s*list|food\s*list|pics?|pictures?|photos?)\b/i.test(lower) &&
         !hasLeadingOrderQuantity && !hasFoodItemName && !/\b(?:add|cart|order\s*\d+|deal\s*#?\d)\b/i.test(lower);
 
-    const hasCartOrOrderAction = !isCatalogViewingRequest && (hasLeadingOrderQuantity ||
+    const hasExplicitOrderVerb = /\b(?:add|order|mangwa|bhejo|daal\s*do|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain)\b/i.test(lower);
+
+    const isPriceInquiry = (
+        /\b(?:price|prices|pricess|rates?|rate|qeemat|charges?|cost|kitne\s*k[aie]|kitnay\s*k[aie]|kitna\s*k[aie]|pese|paise)\b/i.test(lower) ||
+        /^(?:price|prices|pricess|rates?|qeemat)[\s.!?]*$/i.test(lower) ||
+        (/\b(?:part[yei]?\s*size|prty\s*size|large|medium|small)\b/i.test(lower) && (/\?$/.test(raw) || /\b(?:kya|kia|kitna|kitne)\b/i.test(lower)))
+    ) && !hasLeadingOrderQuantity && !hasExplicitOrderVerb;
+
+    const hasCartOrOrderAction = !isCatalogViewingRequest && !isPriceInquiry && (hasLeadingOrderQuantity ||
         hasFoodItemName ||
         /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
         /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|dedo|de\s*do|order\s*karo|order\s*krdo|order\s*dein|order\s*dain)\b/i.test(lower) ||
         /^(?:add|order)\s+(?!show|status|dikhao|dekhao|check|track|kahan|kidhar|kia|kya|details?|info|history|list|confirm|cancel|delete|update|badal)(?:\d+|aik|ek|do|teen|char|paanch|[a-z]+)/i.test(lower) ||
         /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower));
+
+    // ── Check Fast Route: Frustrated / Dissatisfied Customer Feedback ──
+    if (isCustomerFrustrated(lower) && wordCount <= 12) {
+        return {
+            handled: true,
+            routeName: 'customer_frustration_apology',
+            reply: 'Maazrat chahte hain agar meri baat se koi masla hua! Main aap ki sahi madad karna chahta hoon. 😊\n\nBaraye meherbani batayein aap ko kis item ya pizza size ki price chahiye, ya aap kya order karna chahte hain? Main foran check karke bata deta hoon!',
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
+
+    // ── Check Fast Route: Profanity / Abusive Language Boundary (Zero Tokens, Zero Images) ──
+    if (isAbusiveOrProfane(lower) && wordCount <= 8 && !hasCartOrOrderAction) {
+        return {
+            handled: true,
+            routeName: 'abusive_language_boundary',
+            reply: 'Maazrat! Baraye meherbani tameez ke daire mein baat karein. Agar aap ko Cravey Crust se kuch order karna hai ya menu/deals ki maloomat chahiye to bataein, main aap ki madad kar sakta hoon! 😊',
+            imageUrls: [],
+            imageUrl: null,
+        };
+    }
 
     // ── 1. Handover / Complaint / Real Person Request ──
     const isFoodOrDealContext = /\b(?:deals?|meals?|offers?|packages?|combos?|pizza|burger|fries|food|khana|menu|catalog|items?|order|serving|servings|person\s*deal|person\s*meal|bando\s*ki\s*deal|bando\s*k\s*liye|bandon\s*k\s*liye)\b/i.test(lower) ||
@@ -1887,6 +1929,244 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         }
     }
 
+    // ── Check Fast Route: Universal Price & Size Inquiry (Zero Tokens, Pure Text, Zero Images) ──
+    const isAskingPriceOrSize = (
+        isPriceInquiry ||
+        /\b(?:price|prices|pricess|rates?|rate|qeemat|charges?|cost|kitne\s*k[aie]|kitnay\s*k[aie]|kitna\s*k[aie]|pese|paise)\b/i.test(lower) ||
+        /^(?:price|prices|pricess|rates?|qeemat)[\s.!?]*$/i.test(lower) ||
+        (/\b(?:part[yei]?\s*size|prty\s*size|large|medium|small)\b/i.test(lower) && /\?$/.test(raw)) ||
+        (/\b(?:kya|kia|kitna|kitne)\b/i.test(lower) && /\b(?:part[yei]?\s*size|prty\s*size|large|medium|small)\b/i.test(lower))
+    ) && !hasLeadingOrderQuantity && !hasCartOrOrderAction;
+
+    if (isAskingPriceOrSize && wordCount <= 16) {
+        // 1. Standalone price query
+        if (/^(?:price|prices|pricess|rates?|qeemat|charges?|cost)[\s.!?]*$/i.test(lower)) {
+            return {
+                handled: true,
+                routeName: 'standalone_price_help',
+                reply: 'Cravey Crust ke kisi bhi pizza, burger, fries, drink ya deal ki price maloom karne ke liye bas item ka naam aur size bata dein (jaise *\'Zinger Burger\'*, *\'Chicken Tikka Large\'*, ya *\'Party Size Pizza\'*). 😊\n\n• Mukammal menu dekhne ke liye *"menu"* likhein.\n• Tamam deals dekhne ke liye *"deals"* likhein.',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+
+        const isParty = /\b(?:part[yei]?\s*size|prty\s*size|partysize|prtysize|party|prty)\b/i.test(lower);
+        const isLarge = !isParty && /\b(?:large|lrg|larg|bada|bara|barha)\b/i.test(lower);
+        const isMedium = !isParty && /\b(?:medium|med|medum|darmiyan|darmiyana)\b/i.test(lower);
+        const isSmall = !isParty && /\b(?:small|smal|chota|chhota|choti)\b/i.test(lower);
+
+        const isClassic = /\b(?:classic|clasic)\b/i.test(lower);
+        const isPremium = /\b(?:premium|primium)\b/i.test(lower);
+        const hasPizzaWord = /\b(?:pi[z]+as?|piza|pizzas)\b/i.test(lower);
+
+        if (isClassic) {
+            if (isParty) {
+                return {
+                    handled: true,
+                    routeName: 'price_classic_pizza_party',
+                    reply: 'Cravey Crust ke *Classic Pizzas (Party Size - 16")* ki price *Rs. 2,499* hai! 🍕\n\nIs category mein yeh mazedaar flavours shamil hain:\n• Chicken Tikka\n• Chicken Fajita\n• Chicken Supreme\n• Chicken Tandori\n• Cheese Lover\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isLarge) {
+                return {
+                    handled: true,
+                    routeName: 'price_classic_pizza_large',
+                    reply: 'Cravey Crust ke *Classic Pizzas (Large Size - 13")* ki price *Rs. 1,599* hai! 🍕\n\nFlavours: Chicken Tikka, Fajita, Supreme, Tandori, Cheese Lover.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isMedium) {
+                return {
+                    handled: true,
+                    routeName: 'price_classic_pizza_medium',
+                    reply: 'Cravey Crust ke *Classic Pizzas (Medium Size - 10")* ki price *Rs. 1,199* hai! 🍕\n\nFlavours: Chicken Tikka, Fajita, Supreme, Tandori, Cheese Lover.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isSmall) {
+                return {
+                    handled: true,
+                    routeName: 'price_classic_pizza_small',
+                    reply: 'Cravey Crust ke *Classic Pizzas (Small Size - 7")* ki price *Rs. 599* hai! 🍕\n\nFlavours: Chicken Tikka, Fajita, Supreme, Tandori, Cheese Lover.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            return {
+                handled: true,
+                routeName: 'price_classic_pizza_all_sizes',
+                reply: 'Cravey Crust ke *Classic Pizzas* ke tamam sizes aur un ki prices yeh hain: 🍕\n\n• *Small (7")* — Rs. 599\n• *Medium (10")* — Rs. 1,199\n• *Large (13")* — Rs. 1,599\n• *Party Size (16")* — Rs. 2,499\n\n*Classic Flavours:* Chicken Tikka, Chicken Fajita, Chicken Supreme, Chicken Tandori, Cheese Lover.\n\nAap kaunsa flavour aur size order karna chahenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+
+        if (isPremium) {
+            if (isParty) {
+                return {
+                    handled: true,
+                    routeName: 'price_premium_pizza_party',
+                    reply: 'Cravey Crust ke *Premium Pizzas (Party Size - 16")* ki price *Rs. 2,799* hai! 🍕👑\n*(Stuffed Crust Party Size: Rs. 2,999)*\n\nIs category mein yeh premium flavours shamil hain:\n• Chicken Extreme\n• Peri Peri Pizza\n• Behari Kebab Pizza\n• Crown Crust\n• Stuffed Crust\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isLarge) {
+                return {
+                    handled: true,
+                    routeName: 'price_premium_pizza_large',
+                    reply: 'Cravey Crust ke *Premium Pizzas (Large Size - 13")* ki price *Rs. 1,799* hai! 🍕👑\n*(Stuffed Crust Large: Rs. 1,999)*\n\nFlavours: Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isMedium) {
+                return {
+                    handled: true,
+                    routeName: 'price_premium_pizza_medium',
+                    reply: 'Cravey Crust ke *Premium Pizzas (Medium Size - 10")* ki price *Rs. 1,399* hai! 🍕👑\n*(Stuffed Crust Medium: Rs. 1,499)*\n\nFlavours: Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (isSmall) {
+                return {
+                    handled: true,
+                    routeName: 'price_premium_pizza_small',
+                    reply: 'Cravey Crust ke *Premium Pizzas (Small Size - 7")* ki price *Rs. 699* hai! 🍕👑\n\nFlavours: Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust.\n\nOrder karne ke liye apna pasandida flavour bata dein! 😊',
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            return {
+                handled: true,
+                routeName: 'price_premium_pizza_all_sizes',
+                reply: 'Cravey Crust ke *Premium Pizzas* ke tamam sizes aur prices yeh hain: 🍕👑\n\n• *Small (7")* — Rs. 699\n• *Medium (10")* — Rs. 1,399\n• *Large (13")* — Rs. 1,799\n• *Party Size (16")* — Rs. 2,799\n*(Stuffed Crust: Medium Rs. 1,499 | Large Rs. 1,999 | Party Size Rs. 2,999)*\n\n*Premium Flavours:* Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, Stuffed Crust.\n\nAap kaunsa flavour aur size order karna chahenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+
+        if (hasPizzaWord && isParty) {
+            return {
+                handled: true,
+                routeName: 'price_general_pizza_party',
+                reply: 'Cravey Crust ke *16" Party Size Pizzas* ki prices yeh hain: 🍕\n\n• *Classic Party Size (16")* — Rs. 2,499\n   _(Chicken Tikka, Fajita, Supreme, Tandori, Cheese Lover)_\n\n• *Premium Party Size (16")* — Rs. 2,799\n   _(Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust)_\n\n• *Stuffed Crust Party Size (16")* — Rs. 2,999\n\nKaunsa flavour aap ke liye ready karoon? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+        if (hasPizzaWord && isLarge) {
+            return {
+                handled: true,
+                routeName: 'price_general_pizza_large',
+                reply: 'Cravey Crust ke *13" Large Pizzas* ki prices yeh hain: 🍕\n\n• *Classic Large (13")* — Rs. 1,599\n• *Premium Large (13")* — Rs. 1,799\n*(Stuffed Crust Large: Rs. 1,999)*\n\nKaunsa flavour order karna chahenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+        if (hasPizzaWord && isMedium) {
+            return {
+                handled: true,
+                routeName: 'price_general_pizza_medium',
+                reply: 'Cravey Crust ke *10" Medium Pizzas* ki prices yeh hain: 🍕\n\n• *Classic Medium (10")* — Rs. 1,199\n• *Premium Medium (10")* — Rs. 1,399\n*(Stuffed Crust Medium: Rs. 1,499)*\n\nKaunsa flavour order karna chahenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+        if (hasPizzaWord && isSmall) {
+            return {
+                handled: true,
+                routeName: 'price_general_pizza_small',
+                reply: 'Cravey Crust ke *7" Small Pizzas* ki prices yeh hain: 🍕\n\n• *Classic Small (7")* — Rs. 599\n• *Premium Small (7")* — Rs. 699\n\nKaunsa flavour order karna chahenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+        if (hasPizzaWord && (lower.includes('size') || lower.includes('price') || lower.includes('rate'))) {
+            return {
+                handled: true,
+                routeName: 'price_general_pizza_all',
+                reply: 'Cravey Crust ke Pizzas ke tamam sizes aur prices yeh hain: 🍕\n\n🍕 *Classic Pizzas:*\n• Small (7") — Rs. 599\n• Medium (10") — Rs. 1,199\n• Large (13") — Rs. 1,599\n• Party Size (16") — Rs. 2,499\n\n👑 *Premium Pizzas:*\n• Small (7") — Rs. 699\n• Medium (10") — Rs. 1,399\n• Large (13") — Rs. 1,799\n• Party Size (16") — Rs. 2,799\n\nAap kaunsa pizza flavour aur size pasand karenge? 😊',
+                imageUrls: [],
+                imageUrl: null,
+            };
+        }
+
+        // Specific Item or Deal resolution
+        const cleanSearch = lower
+            .replace(/\b(?:ki|ka|ke|kya|kia|hai|h|hy|hain|hen|batao|btao|bataiye|dikhao|bhejo|mujhe|mujay|price|prices|pricess|rates?|rate|qeemat|charges?|cost|kitne|kitnay|kitna)\b/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        if (cleanSearch) {
+            const { resolveMenuItemOrDeal } = await import('./menuService.js');
+            const resolved = await resolveMenuItemOrDeal(cleanSearch);
+            if (resolved && resolved.status === 'CATEGORY_REQUESTED' && resolved.reply) {
+                return {
+                    handled: true,
+                    routeName: 'price_category_requested',
+                    reply: resolved.reply,
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+
+            if (resolved && (resolved.type === 'ITEM' || resolved.item)) {
+                const item = resolved.item;
+                const nonStandardVariants = (item.variants || []).filter(v => v.name && v.name.toLowerCase() !== 'standard');
+                if (nonStandardVariants.length > 1) {
+                    let targetVariant = null;
+                    if (isParty) targetVariant = item.variants.find(v => /party/i.test(v.name));
+                    else if (isLarge) targetVariant = item.variants.find(v => /large/i.test(v.name));
+                    else if (isMedium) targetVariant = item.variants.find(v => /medium/i.test(v.name));
+                    else if (isSmall) targetVariant = item.variants.find(v => /small/i.test(v.name));
+                    else targetVariant = resolved.matchedVariant;
+
+                    if (targetVariant) {
+                        return {
+                            handled: true,
+                            routeName: 'price_item_specific_variant',
+                            reply: `*${item.name} (${targetVariant.name})* ki price *Rs. ${targetVariant.price.toLocaleString('en-PK')}* hai! 🍕\n\nKya main yeh aap ke cart mein add kar doon? 😊`,
+                            imageUrls: [],
+                            imageUrl: null,
+                        };
+                    }
+                    const vLines = nonStandardVariants.map(v => `• *${v.name}* — Rs. ${v.price.toLocaleString('en-PK')}`).join('\n');
+                    return {
+                        handled: true,
+                        routeName: 'price_item_all_variants',
+                        reply: `*${item.name}* ke tamam sizes aur prices yeh hain: 🍕\n\n${vLines}\n\nAap kaunsa size order karna chahenge? 😊`,
+                        imageUrls: [],
+                        imageUrl: null,
+                    };
+                }
+                const singlePrice = item.variants?.[0]?.price || item.base_price;
+                return {
+                    handled: true,
+                    routeName: 'price_single_item',
+                    reply: `*${item.name}* ki price *Rs. ${Number(singlePrice).toLocaleString('en-PK')}* hai! 🍔\n\nKya main yeh aap ke cart mein add kar doon? 😊`,
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+            if (resolved && (resolved.type === 'DEAL' || resolved.deal)) {
+                const deal = resolved.deal;
+                const desc = deal.description ? `\n_${deal.description}_\n` : '';
+                return {
+                    handled: true,
+                    routeName: 'price_deal',
+                    reply: `*${deal.name}* ki price *Rs. ${Number(deal.deal_price).toLocaleString('en-PK')}* hai! 🔥${desc}\nKya main yeh deal aap ke cart mein add kar doon? 😊`,
+                    imageUrls: [],
+                    imageUrl: null,
+                };
+            }
+        }
+    }
 
     // Unified customer target order lookup helper for fast routes (Prisma DB + in-memory fallback)
     async function lookupCustomerTargetOrder(textInput = lower) {

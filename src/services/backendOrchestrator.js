@@ -894,7 +894,22 @@ export async function handleCustomerMessage({
             }
 
             case 'PROVIDE_NAME': {
-                const name = entities.customer_name || resolvedText.trim();
+                const name = (entities.customer_name || resolvedText.trim());
+                const isAbusive = /\b(bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|gandu|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|madarchod|behenchod|bhenchod|fuck|shit|bitch|bastard|asshole)\b/i.test(name) ||
+                    /\b(bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|gandu|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|madarchod|behenchod|bhenchod|fuck|shit|bitch|bastard|asshole)\b/i.test(resolvedText);
+
+                if (isAbusive) {
+                    backendReply = 'Maazrat! Baraye meherbani tameez ke daire mein baat karein. Agar aap ko Cravey Crust se kuch order karna hai ya menu/deals ki maloomat chahiye to bataein, main aap ki madad kar sakta hoon! 😊';
+                    break;
+                }
+
+                // If not in checkout and not an explicit "mera naam X hai" statement
+                const isExplicitNameDeclaration = /\b(?:(?:meara|mera|apna)\s+(?:naam|name|nam)|my\s+name\s+is|name\s+is|naam\s+hai|name\s+hai)\b/i.test(resolvedText);
+                if (!hasCartItems && !isExplicitNameDeclaration) {
+                    backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
+                    break;
+                }
+
                 updateSessionOrderDetails(canonicalKey, { name, nameExplicit: true }, whatsappPhone);
                 backendReply = RESPONSE_TEMPLATES.nameConfirmed({
                     name,
@@ -1032,6 +1047,8 @@ export async function handleCustomerMessage({
 
             default: {
                 const lowerText = (resolvedText || '').toLowerCase().trim();
+                const isFrustrated = /\b(?:masti\s*(?:kr|kar)\s*rh[ae]y|mazaq\s*(?:bana|kr|kar)|sahi\s*(?:jawab|batao|se)|kya\s*kar\s*rah[ae]y|ye\s*kya\s*(?:hai|tariqa)|bakwas|pagal\s*ho|andhe\s*ho|samajh\s*nahi\s*aa\s*rahi|dhang\s*se|stop\s*joking|are\s*you\s*serious|stupid\s*bot)\b/i.test(lowerText);
+                const isAbusive = /\b(bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|chutye|gandu|gand|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|sala|saala|madarchod|madar\s*chod|behenchod|behen\s*chod|bhenchod|maa\s*ki|teri\s*maa|fuck|fucking|fucker|shit|bitch|bastard|asshole|dick|dickhead)\b/i.test(lowerText);
                 const isCustomDeal = (
                     /\b(?:custom(?:\s*ized)?\s*deals?|deal\s*customi[sz]e|apni\s*(?:marzi|taraf)\s*ki\s*deal|deal\s*bana\s*(?:do|skte|saktay|sakty|dain|dein|skta|sakte|den)|deal\s*(?:change|badal)\s*(?:kr|kar|ho)\s*(?:skti|sakti|do|saktay|sakty)|deal\s*mein\s*.*(?:ki\s*jagah|badle))\b/i.test(lowerText) ||
                     (/\b(?:custom|customize|customized)\b/i.test(lowerText) && /\b(?:deal|deals|package|combo)\b/i.test(lowerText)) ||
@@ -1049,7 +1066,11 @@ export async function handleCustomerMessage({
                 const isAskingProductOrMenu = isZinger || isBurger || isPizza || isCheapest || isBest || isCheapestDeals ||
                     /\b(?:wings|fries|deal|deals|menu|khana|item|items|price|rate|options|batao|btao|batoo|kon|konsa|konse)\b/i.test(resolvedText);
 
-                if (isCustomDeal) {
+                if (isFrustrated) {
+                    backendReply = 'Maazrat chahte hain agar meri baat se koi masla hua! Main aap ki sahi madad karna chahta hoon. 😊\n\nBaraye meherbani batayein aap ko kis item ya pizza size ki price chahiye, ya aap kya order karna chahte hain? Main foran check karke bata deta hoon!';
+                } else if (isAbusive) {
+                    backendReply = 'Maazrat! Baraye meherbani tameez ke daire mein baat karein. Agar aap ko Cravey Crust se kuch order karna hai ya menu/deals ki maloomat chahiye to bataein, main aap ki madad kar sakta hoon! 😊';
+                } else if (isCustomDeal) {
                     backendReply = RESPONSE_TEMPLATES.customDealNotPossible();
                 } else if (isCheapestDeals) {
                     backendReply = RESPONSE_TEMPLATES.cheapestDealsList();

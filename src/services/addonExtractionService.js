@@ -312,7 +312,7 @@ export function extractRequestedItems(text, activeCart = null) {
     }
 
     // 5. Detect Standalone Pizzas (supports both [flavor] [size] and [size] [flavor])
-    const pizzaRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(small|medium|large|party\s*size|party)\s+)?(?:chicken\s+)?(fajita|tikka|supreme|cheese\s*lover|tando?ori|extreme|peri\s*peri|behari(?:\s*kebab)?|crown\s*crust)(?:\s+pizza)?(?:\s+(small|medium|large|party\s*size|party))?\b/gi;
+    const pizzaRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty)\s+)?(?:chicken\s+)?(fajita|tikka|supreme|cheese\s*lover|tando?or[ie]?|extreme|peri\s*peri|behari(?:\s*kebab)?|crown\s*crust)(?:\s+pizza)?(?:\s+(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty))?\b/gi;
     let pMatch;
     while ((pMatch = pizzaRegex.exec(lower)) !== null) {
         if (isItemPartOfDeal(pMatch[3], pMatch.index)) continue;
@@ -323,10 +323,10 @@ export function extractRequestedItems(text, activeCart = null) {
         if (!size) {
             if (lower.includes('large') || lower.includes('bari')) size = 'large';
             else if (lower.includes('medium') || lower.includes('darmiyani')) size = 'medium';
-            else if (lower.includes('party')) size = 'party size';
+            else if (lower.includes('party') || lower.includes('prty') || lower.includes('part size')) size = 'party size';
             else if (lower.includes('small') || lower.includes('choti')) size = 'small';
         }
-        const normalizedSize = size ? (size.includes('party') ? 'Party Size' : size.charAt(0).toUpperCase() + size.slice(1)) : 'Large';
+        const normalizedSize = size ? (size.includes('party') || size.includes('prty') || size.includes('part') ? 'Party Size' : size.charAt(0).toUpperCase() + size.slice(1)) : 'Large';
 
         const rawFlav = pMatch[3].trim().toLowerCase();
         const flavMap = {

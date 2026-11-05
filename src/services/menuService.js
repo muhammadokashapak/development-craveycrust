@@ -277,10 +277,10 @@ export function extractSizeFromQuery(query) {
     const is1_5L = /\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter)\b/i.test(q);
     const is1L = !is1_5L && /\b(?:1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l)\b/i.test(q);
     const isCan = /\b(?:cans?|canes?|tin\s*pack|tins?)\b/i.test(q);
-    const isParty = /\b(?:party\s*size|partysize|party|family)\b/i.test(q);
-    const isLarge = !isParty && /\b(?:large|lrg|bada|bara)\b/i.test(q);
-    const isMedium = !isParty && /\b(?:medium|med|darmiyan|darmiyana)\b/i.test(q);
-    const isSmall = /\b(?:small|chota|chhota)\b/i.test(q);
+    const isParty = /\b(?:part[yei]?\s*size|prty\s*size|partysize|prtysize|party|prty|family)\b/i.test(q);
+    const isLarge = !isParty && /\b(?:large|lrg|larg|bada|bara|barha)\b/i.test(q);
+    const isMedium = !isParty && /\b(?:medium|med|medum|darmiyan|darmiyana|darmiyani)\b/i.test(q);
+    const isSmall = !isParty && /\b(?:small|smal|chota|chhota|choti)\b/i.test(q);
     const isRegular = /\b(?:regular|reg)\b/i.test(q);
 
     let size = null;
@@ -295,8 +295,8 @@ export function extractSizeFromQuery(query) {
 
     // Strip size keywords and common ordering verbs to extract item name
     let clean = q
-        .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|cans?|canes?|tin\s*pack|tins?|party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
-        .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|mangwani|order|bhai|wala|wali|size|add|kro|karo|dikhao|dekhao)\b/gi, ' ')
+        .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|cans?|canes?|tin\s*pack|tins?|part[yei]?\s*size|prty\s*size|partysize|prtysize|party|prty|family|large|lrg|larg|bada|bara|barha|medium|med|medum|darmiyan|darmiyana|darmiyani|small|smal|chota|chhota|choti|regular|reg)\b/gi, ' ')
+        .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|mangwani|order|bhai|wala|wali|size|add|kro|karo|dikhao|dekhao|price|prices|pricess|rates?|rate|qeemat|charges?|cost|kitne|kitnay|kitna)\b/gi, ' ')
         .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -647,7 +647,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isTikka = /\b(?:tikka|tika|tikaa|chikn\s*tikka)\b/i.test(cleanQ) || (strippedQ && /\b(?:tikka|tika|tikaa)\b/i.test(strippedQ));
     const isFajita = /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(cleanQ) || (strippedQ && /\b(?:fajita|fejita|fajeeta|fajeta|faita)\b/i.test(strippedQ));
     const isCheeseLover = /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(cleanQ) || (strippedQ && /\b(?:cheese\s*lover|cheez\s*lover)\b/i.test(strippedQ));
-    const isTandori = /\b(?:tandoori|tandori)\b/i.test(cleanQ) || (strippedQ && /\b(?:tandoori|tandori)\b/i.test(strippedQ));
+    const isTandori = /\b(?:tandoori|tandori|tandoor|tandor)\b/i.test(cleanQ) || (strippedQ && /\b(?:tandoori|tandori|tandoor|tandor)\b/i.test(strippedQ));
     const isExtreme = /\b(?:chicken\s*extreme|extrme)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*extreme|extrme)\b/i.test(strippedQ));
     const isSnackBox = /\b(?:snack\s*box|snackbox|snak\s*box|junior\s*chicken|junior\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:snack\s*box|snackbox|snak\s*box|junior\s*chicken|junior\s*box)\b/i.test(strippedQ));
     const isHappyBox = /\b(?:happy\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:happy\s*box)\b/i.test(strippedQ));
