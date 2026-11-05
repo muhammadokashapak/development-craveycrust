@@ -3131,6 +3131,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Route: Cart Item Flavour Update (Zero Tokens, e.g. "Pizza Tikka kena hi", "Pizza Tikka lena hai", "flavour tikka kardo") ──
+    const hasRemovalWord = /\b(?:remove|nikal|hata|delete)\b/i.test(lower);
     const extractedFlavours = extractFlavoursFromText(lower);
     const isFlavourChangeSignal = extractedFlavours.length > 0 &&
         !hasRemovalWord &&
@@ -3942,16 +3943,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const matchedVariant = matchVariant(item.variants, lower);
 
                 if (matchedVariant) {
-                    await addItemToCart({
-                        sessionKey: userSessionId,
-                        restaurantId: cache.restId,
-                        chatId,
-                        verifiedPhone: whatsappPhone,
-                        menuItemId: item.id,
-                        variantId: matchedVariant.id,
-                        quantity: 1,
-                    });
-                    _lastDiscussedItemBySession.delete(userSessionId);
+                    const { updateCartItem } = await import('./cartService.js');
+                    const cartBefore = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                    const existingItemInCart = (cartBefore?.items || []).find(it => it.menu_item_id === item.id);
 
                     const itemName = item.name;
                     const variantName = matchedVariant.name;
@@ -3961,6 +3955,30 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const globalDiscount = await getGlobalDiscountSettings(cache.restId).catch(() => null);
                     const disc = calculateDiscount(matchedVariant.price, matchedVariant.discount_percent ?? item.discount_percent, matchedVariant.discount_fixed ?? item.discount_fixed, globalDiscount);
                     const pDisplay = disc.hasDiscount ? `~Rs. ${price}~ Rs. ${disc.discountedPrice}` : `Rs. ${price}`;
+
+                    let introMsg = '';
+                    if (existingItemInCart) {
+                        // Rule D: Modify existing item in-place, never create a duplicate!
+                        await updateCartItem({
+                            sessionKey: userSessionId,
+                            cartItemId: existingItemInCart.id,
+                            variantId: matchedVariant.id,
+                        });
+                        introMsg = `Theek hai! *${itemName} (${variantName})* ka size update kar diya gaya hai! ✅ (${pDisplay})`;
+                    } else {
+                        await addItemToCart({
+                            sessionKey: userSessionId,
+                            restaurantId: cache.restId,
+                            chatId,
+                            verifiedPhone: whatsappPhone,
+                            menuItemId: item.id,
+                            variantId: matchedVariant.id,
+                            quantity: 1,
+                        });
+                        introMsg = `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (${pDisplay})`;
+                    }
+
+                    _lastDiscussedItemBySession.set(userSessionId, { item, variant: matchedVariant, timestamp: Date.now() });
 
                     const { getSessionOrderDetails } = await import('./sessionService.js');
                     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
@@ -3972,7 +3990,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         whatsappPhone,
                         cart: cartNow,
                         cache,
-                        introMessage: `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (${pDisplay})`,
+                        introMessage: introMsg,
                     });
                 }
             } catch (err) {
@@ -5072,28 +5090,6 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         };
     }
 
-    // ── Early Greeting Routing (Zero Tokens, prioritized before deals/menu) ──
-    if (FAST_GREETING_REGEX.test(lower)) {
-        try {
-            const cache = await getCatalogCache();
-            const rawStore = cache.storeName || '';
-            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
-
-            let salutation = 'Assalam o Alaikum!';
-            if (/^(?:hi+|hello+|hey+|helo+|hellow+)\b/i.test(lower)) {
-                salutation = 'Hello!';
-            } else if (/salam|assalam|aoa/i.test(lower)) {
-                salutation = 'Walaikum Assalam!';
-            }
-
-            return {
-                handled: true,
-                routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed! Main *${store}* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye *'menu'* ya deals dekhne ke liye *'deals'* likhein! 😊`,
-            };
-        } catch (_) {}
-    }
-
     // ── Early Standalone Affirmative with Active Cart (Zero Tokens, advances checkout) ──
     const isStandaloneAffirmativeEarly = /^(?:(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|sahi|theek|thk)\s+)?(?:g|jee?|ji|haan?|han|hn|yes|yep|theek\s*hai?|theek\s*hy|thk\s*hai?|thk\s*hy|ok|okay|acha|achha|done|bilkul|zaroor|confirm|yahi|yehi|wahi|isi)[\s.!?]*$/i.test(lower.trim());
     if (isStandaloneAffirmativeEarly && wordCount <= 4 && userSessionId) {
@@ -6072,34 +6068,6 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 reply: paymentReply,
             };
         } catch (_) {}
-    }
-
-    // ── 9. Quick Reply: Greeting (Dynamic Store Name & Language-Aware Persona) ──
-    if (FAST_GREETING_REGEX.test(lower)) {
-        try {
-            const cache = await getCatalogCache();
-            const rawStore = cache.storeName || '';
-            const store = (!rawStore || /store\s*admin|admin|default/i.test(rawStore)) ? 'Cravey Crust' : rawStore;
-
-            let salutation = 'Assalam o Alaikum!';
-            if (/^(?:hi+|hello+|hey+|helo+|hellow+)\b/i.test(lower)) {
-                salutation = 'Hello!';
-            } else if (/salam|assalam|aoa/i.test(lower)) {
-                salutation = 'Walaikum Assalam!';
-            }
-
-            return {
-                handled: true,
-                routeName: 'quick_reply',
-                reply: `${salutation} *${store}* mein khush aamdeed! Main *${store}* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye *'menu'* ya deals dekhne ke liye *'deals'* likhein! 😊_`,
-            };
-        } catch (_) {
-            return {
-                handled: true,
-                routeName: 'quick_reply',
-                reply: 'Hello! *Cravey Crust* mein khush aamdeed! Main *Cravey Crust* ka AI assistant hoon. Kahiye, aaj aap ke liye kya order ready karoon? Hamara menu dekhne ke liye \'menu\' ya deals dekhne ke liye \'deals\' likhein! 😊',
-            };
-        }
     }
 
     // ── 10. Quick Reply: Chitchat (Dynamic Store Name) ──

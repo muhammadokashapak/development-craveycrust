@@ -30,6 +30,7 @@ import {
     clearPendingDealFlavour,
 } from './dealFlavourService.js';
 import { matchVariant } from './cartService.js';
+import { setLastDiscussedItem, getLastDiscussedItem } from './intentParser.js';
 
 /**
  * 1. get_menu({ category?: string })
@@ -222,6 +223,16 @@ export async function add_to_cart(args = {}, context = {}) {
     const quantity = Math.max(1, parseInt(args.quantity, 10) || 1);
 
     const resolved = await resolveMenuItemOrDeal(itemName, restId);
+    // Check category-level request first (Rule B: Category-Level Product Requests)
+    if (resolved && resolved.status === 'CATEGORY_REQUESTED') {
+        return {
+            success: true,
+            isCategoryGuidance: true,
+            categoryName: resolved.categoryName,
+            reply: resolved.reply,
+        };
+    }
+
     const isDeal = resolved && (resolved.type === 'DEAL' || resolved.type === 'deal' || Boolean(resolved.deal));
     const isItem = resolved && (resolved.type === 'ITEM' || resolved.type === 'item' || resolved.type === 'MENU_ITEM' || resolved.type === 'menu_item' || Boolean(resolved.item));
 
@@ -278,9 +289,25 @@ export async function add_to_cart(args = {}, context = {}) {
 
     if (isItem) {
         const itemObj = resolved.item;
+        const variants = itemObj.variants || [];
+        const hasMultipleSizes = variants.length > 1 && variants.some(v => /small|medium|large|liter|litre|can/i.test(v.name));
+        const explicitSize = args.size || resolved.extractedSize || (matchVariant(variants, itemName)?.name);
+
+        // Rule C: Mandatory Product Variations (e.g. "Chicken Tandori pizza add kro" -> ask "Small, Medium ya Large?")
+        if (hasMultipleSizes && !explicitSize) {
+            setLastDiscussedItem(sessionKey, itemObj, null, whatsappPhone);
+            const sizeOptionsStr = variants.map(v => `*${v.name}*`).join(', ');
+            return {
+                success: true,
+                requiresSizeSelection: true,
+                itemName: itemObj.name,
+                reply: `Zabardast choice! *${itemObj.name}* ke liye kaunsa size add karun — ${sizeOptionsStr}? 😊`,
+            };
+        }
+
         let chosenVariant = null;
-        if ((itemObj.variants || []).length > 0) {
-            chosenVariant = matchVariant(itemObj.variants, args.size || itemName) || itemObj.variants[0];
+        if (variants.length > 0) {
+            chosenVariant = matchVariant(variants, explicitSize || args.size || itemName) || variants[0];
         }
 
         await addItemToCart({
@@ -292,6 +319,9 @@ export async function add_to_cart(args = {}, context = {}) {
             variantId: chosenVariant?.id,
             quantity,
         });
+
+        // Set last discussed item with resolved variant for contextual corrections (Rule F)
+        setLastDiscussedItem(sessionKey, itemObj, chosenVariant, whatsappPhone);
 
         const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
         return {
@@ -320,6 +350,92 @@ export async function add_to_cart(args = {}, context = {}) {
         notFound: true,
         itemName: cleanItemName,
         reply: RESPONSE_TEMPLATES.itemNotInMenu({ itemName: cleanItemName }),
+    };
+}
+
+/**
+ * 6. update_cart_item({ cartItemId?: string, itemName?: string, newSize?: string, newQuantity?: number, notes?: string })
+ * Authoritatively updates an existing item in the active cart (e.g. changing size from Small to Large or changing quantity).
+ * Strictly prevents adding unwanted duplicate items (Rule D & E).
+ */
+export async function update_cart_item(args = {}, context = {}) {
+    const { sessionKey, chatId, restId: ctxRestId, whatsappPhone } = context;
+    const restId = ctxRestId || await getDefaultRestaurantId().catch(() => 'default');
+    const activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+
+    if (!activeCart?.items || activeCart.items.length === 0) {
+        return {
+            success: false,
+            emptyCart: true,
+            reply: RESPONSE_TEMPLATES.emptyCartConfirmGuard(),
+        };
+    }
+
+    let target = null;
+    if (args.cartItemId) {
+        target = activeCart.items.find(i => i.id === args.cartItemId);
+    }
+    if (!target && args.itemName) {
+        const cleanTarget = args.itemName.toLowerCase().trim();
+        target = activeCart.items.find(i => {
+            const name = (i.menu_item?.name || i.deal?.name || '').toLowerCase();
+            return name.includes(cleanTarget) || cleanTarget.includes(name);
+        });
+    }
+    if (!target) {
+        const lastEntry = getLastDiscussedItem(sessionKey, whatsappPhone);
+        if (lastEntry?.item?.id) {
+            target = activeCart.items.find(i => i.menu_item_id === lastEntry.item.id);
+        }
+        if (!target) {
+            target = activeCart.items[activeCart.items.length - 1];
+        }
+    }
+
+    if (!target) {
+        return {
+            success: false,
+            reply: 'Cart mein koi item update karne ke liye nahi mila. 😊',
+        };
+    }
+
+    const { updateCartItem } = await import('./cartService.js');
+    let updatedVariantName = null;
+
+    if (args.newSize && target.menu_item) {
+        const variants = target.menu_item.variants || [];
+        const newVar = matchVariant(variants, args.newSize);
+        if (newVar) {
+            await updateCartItem({
+                sessionKey,
+                cartItemId: target.id,
+                variantId: newVar.id,
+            });
+            updatedVariantName = newVar.name;
+        }
+    }
+
+    if (args.newQuantity !== undefined) {
+        const q = Math.max(1, parseInt(args.newQuantity, 10) || 1);
+        await updateCartItem({
+            sessionKey,
+            cartItemId: target.id,
+            quantity: q,
+        });
+    }
+
+    const freshTotals = await calculateCartTotals({ sessionKey, restaurantId: restId });
+    const itemName = target.deal ? target.deal.name : (target.menu_item?.name || 'Item');
+    const sizeStr = updatedVariantName ? ` (${updatedVariantName})` : (target.menu_variant?.name ? ` (${target.menu_variant.name})` : '');
+
+    return {
+        success: true,
+        cartItemId: target.id,
+        itemName,
+        newSize: updatedVariantName,
+        newQuantity: args.newQuantity || target.quantity,
+        updatedTotal: freshTotals.total,
+        reply: `Theek hai! *${itemName}${sizeStr}* ko update kar diya gaya hai. ✅\n\nNaya Total: *Rs. ${freshTotals.total.toLocaleString()}*\n\nKya aap order finalize karein ya mazeed kuch shamil karna chahte hain? 😊`,
     };
 }
 
@@ -659,6 +775,8 @@ export async function executeRegisteredTool(toolName, args = {}, context = {}) {
             return await get_product_details(args, context);
         case 'add_to_cart':
             return await add_to_cart(args, context);
+        case 'update_cart_item':
+            return await update_cart_item(args, context);
         case 'remove_from_cart':
             return await remove_from_cart(args, context);
         case 'get_cart':

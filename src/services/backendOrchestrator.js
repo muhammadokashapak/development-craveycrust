@@ -527,6 +527,10 @@ export async function handleCustomerMessage({
         const intent = context.intent;
         const entities = context.entities || {};
 
+        if (!backendReply && context.conversational_reply && (intent === 'GREETING' || intent === 'GENERAL_CONVERSATION' || intent === 'ACKNOWLEDGEMENT')) {
+            backendReply = context.conversational_reply;
+        }
+
         if (!backendReply) switch (intent) {
             case 'CONFIRM_ORDER': {
                 if (!hasCartItems) {
@@ -547,9 +551,26 @@ export async function handleCustomerMessage({
                 break;
             }
 
+            case 'UPDATE_ITEM': {
+                const { update_cart_item } = await import('./toolRegistry.js');
+                const updRes = await update_cart_item({
+                    itemName: entities.product_name,
+                    newSize: entities.size || resolvedText,
+                    newQuantity: entities.quantity,
+                }, toolContext);
+                backendReply = updRes.reply;
+                break;
+            }
+
             case 'ADD_ITEM': {
                 const query = entities.product_name || context.referenced_entity?.name || resolvedText;
                 const resolved = await resolveMenuItemOrDeal(query, restId);
+
+                if (resolved && resolved.status === 'CATEGORY_REQUESTED') {
+                    backendReply = resolved.reply;
+                    break;
+                }
+
                 const isDeal = resolved && (resolved.type === 'DEAL' || resolved.type === 'deal' || Boolean(resolved.deal));
                 const isItem = resolved && (resolved.type === 'ITEM' || resolved.type === 'item' || resolved.type === 'MENU_ITEM' || resolved.type === 'menu_item' || Boolean(resolved.item));
 
@@ -591,9 +612,21 @@ export async function handleCustomerMessage({
                     });
                 } else if (isItem) {
                     const itemObj = resolved.item;
+                    const variants = itemObj.variants || [];
+                    const hasMultipleSizes = variants.length > 1 && variants.some(v => /small|medium|large|liter|litre|can/i.test(v.name));
+                    const explicitSize = entities.size || resolved.extractedSize || (matchVariant(variants, resolvedText)?.name);
+
+                    // Rule C: Mandatory Product Variations (e.g. "Chicken Tandori pizza add kro" -> ask "Small, Medium ya Large?")
+                    if (hasMultipleSizes && !explicitSize) {
+                        setLastDiscussedItem(canonicalKey, itemObj, null, whatsappPhone);
+                        const sizeOptionsStr = variants.map(v => `*${v.name}*`).join(', ');
+                        backendReply = `Zabardast choice! *${itemObj.name}* ke liye kaunsa size add karun — ${sizeOptionsStr}? 😊`;
+                        break;
+                    }
+
                     let chosenVariant = null;
-                    if ((itemObj.variants || []).length > 0) {
-                        chosenVariant = matchVariant(itemObj.variants, entities.size || resolvedText) || itemObj.variants[0];
+                    if (variants.length > 0) {
+                        chosenVariant = matchVariant(variants, explicitSize || entities.size || resolvedText) || variants[0];
                     }
                     await addItemToCart({
                         sessionKey: canonicalKey,
@@ -604,12 +637,14 @@ export async function handleCustomerMessage({
                         variantId: chosenVariant?.id,
                         quantity: entities.quantity || 1,
                     });
+                    setLastDiscussedItem(canonicalKey, itemObj, chosenVariant, whatsappPhone);
+
                     const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
                     backendReply = RESPONSE_TEMPLATES.itemAdded({
                         itemName: itemObj.name,
                         quantity: entities.quantity || 1,
                         size: chosenVariant?.name,
-                        price: chosenVariant?.price || itemObj.base_price,
+                        price: Number(chosenVariant?.price || itemObj.base_price),
                         nextStepPrompt: nextPrompt,
                     });
                 } else {
@@ -848,7 +883,7 @@ export async function handleCustomerMessage({
             }
 
             case 'GREETING': {
-                backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
+                backendReply = context.conversational_reply || RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
                 break;
             }
 

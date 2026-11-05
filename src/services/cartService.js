@@ -818,7 +818,7 @@ export async function addItemToCart({ sessionKey, restaurantId, menuItemId, vari
 /**
  * Update cart item quantity or notes
  */
-export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }) {
+export async function updateCartItem({ sessionKey, cartItemId, quantity, notes, variantId }) {
     const prisma = getDbClient();
     if (!prisma) {
         const cart = await getActiveCart({ sessionKey });
@@ -827,6 +827,13 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
             const err = new Error('Cart item not found');
             err.code = 'CART_ITEM_NOT_FOUND';
             throw err;
+        }
+        if (variantId !== undefined) {
+            cart.items[itemIdx].menu_variant_id = variantId;
+            if (cart.items[itemIdx].menu_item?.variants) {
+                const newVar = cart.items[itemIdx].menu_item.variants.find(v => v.id === variantId);
+                if (newVar) cart.items[itemIdx].menu_variant = newVar;
+            }
         }
         if (quantity !== undefined) {
             const num = Number(quantity);
@@ -861,6 +868,11 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
         throw err;
     }
 
+    const updateData = {};
+    if (variantId !== undefined) {
+        updateData.menu_variant_id = variantId;
+    }
+
     if (quantity !== undefined) {
         const num = Number(quantity);
         if (isNaN(num) || !Number.isInteger(num) || num < 0 || num > 50) {
@@ -874,17 +886,16 @@ export async function updateCartItem({ sessionKey, cartItemId, quantity, notes }
             await touchSession(sessionKey);
             return getActiveCart({ sessionKey });
         }
-        await prisma.cartItem.update({
-            where: { id: cartItemId },
-            data: {
-                quantity: qty,
-                notes: notes !== undefined ? notes : item.notes,
-            },
-        });
+        updateData.quantity = qty;
+        if (notes !== undefined) updateData.notes = notes;
     } else if (notes !== undefined) {
+        updateData.notes = notes;
+    }
+
+    if (Object.keys(updateData).length > 0) {
         await prisma.cartItem.update({
             where: { id: cartItemId },
-            data: { notes },
+            data: updateData,
         });
     }
 

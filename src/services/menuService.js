@@ -296,7 +296,7 @@ export function extractSizeFromQuery(query) {
     // Strip size keywords and common ordering verbs to extract item name
     let clean = q
         .replace(/\b(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin\s*pack|party\s*size|partysize|party|family|large|lrg|bada|bara|medium|med|darmiyan|darmiyana|small|chota|chhota|regular|reg)\b/gi, ' ')
-        .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|order|bhai|wala|wali|size)\b/gi, ' ')
+        .replace(/\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|chahiye|mangwana|mangwani|order|bhai|wala|wali|size|add|kro|karo|dikhao|dekhao)\b/gi, ' ')
         .replace(/^(?:sahi|shai|ek|aik|yar|yaar|\d+)\s+/gi, ' ')
         .replace(/\s+/g, ' ')
         .trim();
@@ -326,8 +326,9 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     let rawItemQ = query.trim().toLowerCase();
     rawItemQ = rawItemQ.replace(/^(?:i\s*said|maine\s*kaha|mene\s*kaha|maine\s*bola|mene\s*bola|bhai\s*maine|yaar\s*maine|bhai|yaar)\s+/i, '').trim();
     rawItemQ = rawItemQ.replace(/^(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
-    // Also strip trailing ordering verbs
-    rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
+    // Also strip trailing ordering verbs, particles like "bhi", "to", etc.
+    rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|mangwana|mangwani\s*(?:hai|hain)?|dikhao|dekhao|batao|btao|bhejo|bhej\s*do|daal\s*do|add(?:\s*(?:karo|kro|kar\s*do|kr\s*do|krdo|kardo))?)[\s.!?]*$/i, '').trim();
+    rawItemQ = rawItemQ.replace(/\b(?:bhi|b|to|toh)\b/gi, '').replace(/\s+/g, ' ').trim();
     // Guard: Only strip trailing item quantity if the query does NOT match a known numbered combo/deal
     // (e.g. snackbox 1/2, midnight 1/2, dual zone 1/2/3, 2.0 deal 4/5/6, zinger deal 1-4)
     const isNumberedComboOrDeal = /\b(?:deal|meal|snack\s*box|snackbox|snakbox|midnight|dual\s*zone|zone|cravey)\b/i.test(rawItemQ);
@@ -340,6 +341,49 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|pasta|daal|roti|naan|saag|anda|egg|shami|chapli|beef|fish|mutton|qeema)\b/i;
     if (UNSUPPORTED_CUISINES.test(cleanQ)) {
         return { match: null, status: 'NOT_FOUND', message: 'Cravey Crust sirf pizzas, burgers, fries aur drinks offer karta hai.' };
+    }
+
+    // 1b. Check if query is a general category request (Rule B: Category-Level Product Requests)
+    const isCategoryPizza = /^(?:pi[z]+as?|piza|pizzas)$/i.test(cleanQ) || (strippedQ && /^(?:pi[z]+as?|piza|pizzas)$/i.test(strippedQ));
+    const isCategoryBurger = /^(?:burgers?|burger)$/i.test(cleanQ) || (strippedQ && /^(?:burgers?|burger)$/i.test(strippedQ));
+    const isCategoryFries = /^(?:fries|frenzy\s*fries)$/i.test(cleanQ) || (strippedQ && /^(?:fries|frenzy\s*fries)$/i.test(strippedQ));
+    const isCategoryDrink = /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(cleanQ) || (strippedQ && /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(strippedQ));
+    const isCategoryWings = /^(?:wings?|chicken\s*wings?)$/i.test(cleanQ) || (strippedQ && /^(?:wings?|chicken\s*wings?)$/i.test(strippedQ));
+
+    if (isCategoryPizza) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Pizzas',
+            reply: 'Hamare paas mazedaar pizzas mojood hain: *Chicken Tikka*, *Chicken Fajita*, *Chicken Supreme*, *Cheese Lover*, *Chicken Tandori*, aur *Peri Peri*. Aap kaunsa flavour aur size (Small, Medium, Large) pasand karenge? 😊',
+        };
+    }
+    if (isCategoryBurger) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Burgers',
+            reply: 'Hamare paas *Zinger Burger* (Rs. 499), *Zegy Burger* (Rs. 399), aur *Chicken Burger* (Rs. 349) mojood hain. Aap kaunsa burger order karna chahenge? 😊',
+        };
+    }
+    if (isCategoryFries) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Fries',
+            reply: 'Hamare paas *Regular Fries* (Rs. 220) aur *Frenzy Loaded Fries* (Rs. 699) mojood hain. Aap kaunsi fries add karwana chahenge? 😊',
+        };
+    }
+    if (isCategoryDrink) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Drinks',
+            reply: 'Hamare paas Cold Drinks mein *1.5 Litre* (Rs. 250), *1 Litre* (Rs. 180), aur *Cans* (Rs. 130) mojood hain (Pepsi, 7Up, Mirinda, Next Cola). Kaunsa size add karun? 😊',
+        };
+    }
+    if (isCategoryWings) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Wings',
+            reply: 'Hamare paas *Crispy Hot Wings* (Rs. 449) aur *Oven Baked Wings* (Rs. 499) mojood hain. Kaunse wings add karun? 😊',
+        };
     }
 
     // 1. If query is purely a size specification (e.g. "medium", "party krdo", "large", "small")
@@ -460,7 +504,15 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
                 const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
                 return /\b(?:burger|zinger|zegy|chicken)\b/i.test(combined) && !/\b(?:pizza|piza)\b/i.test(combined);
             });
-            if (burgerOnly.length > 0) candidateDeals = burgerOnly;
+            if (burgerOnly.length > 0) {
+                candidateDeals = burgerOnly;
+            } else {
+                const specificBurgerDeal = activeDeals.find(d => 
+                    new RegExp(`\\b(?:burger|zinger|zegy)\\s*(?:deal|meal)\\s*(?:for\\s*)?#?${dNum}\\b`, 'i').test(d.name) ||
+                    (new RegExp(`\\b#?${dNum}\\b`).test(d.name) && /\b(?:burger|zinger|zegy)\b/i.test(d.name))
+                );
+                if (specificBurgerDeal) candidateDeals = [specificBurgerDeal];
+            }
         } else if (wantsPizza && !wantsBurgerOrZinger) {
             const pizzaOnly = candidateDeals.filter(d => {
                 const combined = `${d.name} ${(d.deal_items || []).map(di => di.menu_item?.name || '').join(' ')} ${d.description || ''}`.toLowerCase();
@@ -469,7 +521,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             if (pizzaOnly.length > 0) candidateDeals = pizzaOnly;
         }
 
-        const numMatchedDeal = candidateDeals[0] || activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name));
+        const numMatchedDeal = candidateDeals[0] || (!wantsBurgerOrZinger ? activeDeals.find(d => new RegExp(`\\bdeal\\s*#?${dNum}\\b`, 'i').test(d.name)) : null);
         if (numMatchedDeal) {
             return buildDealResult(numMatchedDeal);
         }

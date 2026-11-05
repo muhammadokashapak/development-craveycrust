@@ -13,6 +13,7 @@
 
 import { routeLLM } from './llmRouter.js';
 import { classifyCustomerIntent, INTENTS } from './intentRouter.js';
+import { getActivePromptTemplate } from '../config/systemPrompt.js';
 
 // ── Strict Intent Categories ──────────────────────────────────
 export const INTENT_CATEGORIES = {
@@ -59,8 +60,14 @@ export const INTENT_CATEGORIES = {
     AMBIGUOUS_INTENT: 'AMBIGUOUS_INTENT',
 };
 
-const SYSTEM_PROMPT = `You are the AI Understanding & Action Planning Engine for Cravey Crust fast food ordering system on WhatsApp.
+export function getSystemPrompt() {
+    const customPrompt = getActivePromptTemplate();
 
+    return `${customPrompt}
+
+══════════════════════════════════════════════════════════════
+STRUCTURED ACTION PLANNING & TOOL CALLING ENGINE
+══════════════════════════════════════════════════════════════
 Your task is to analyze the complete incoming customer message in Roman Urdu / Urdu / English, understand all intents, and output a structured JSON Action Plan.
 
 AVAILABLE BACKEND TOOLS (select 1 or more actions in the "actions" array):
@@ -69,15 +76,16 @@ AVAILABLE BACKEND TOOLS (select 1 or more actions in the "actions" array):
 3. "get_deal_details" — args: { "dealName": string } (when customer asks what is included in a specific deal, e.g. "Deal 3 mein drink included hai?")
 4. "get_product_details" — args: { "queryType": "cheapest" | "best" | "zinger" | "burger" | "pizza", "query"?: string }
 5. "add_to_cart" — args: { "itemName": string, "quantity"?: number, "size"?: string }
-6. "remove_from_cart" — args: { "itemName": string, "quantity"?: number }
-7. "get_cart" — args: {} (when customer asks what is in their cart or total bill)
-8. "update_customer_details" — args: { "name"?: string, "phone"?: string, "address"?: string, "paymentMethod"?: "COD" | "EASYPAISA" }
-9. "validate_delivery_location" — args: { "address": string }
-10. "confirm_order" — args: {} (when customer explicitly confirms: "haan", "confirm", "theek hai order book kr do")
-11. "get_order_status" — args: { "orderNumber"?: string } (when customer asks "order show kro" or "mera order kahan hai")
-12. "request_order_cancellation" — args: {} (when customer wants to cancel an existing order)
+6. "update_cart_item" — args: { "itemName"?: string, "newSize"?: string, "newQuantity"?: number } (when customer modifies or corrects an item in cart, e.g. "large mein krdo", "quantity 2 krdo")
+7. "remove_from_cart" — args: { "itemName": string, "quantity"?: number }
+8. "get_cart" — args: {} (when customer asks what is in their cart or total bill)
+9. "update_customer_details" — args: { "name"?: string, "phone"?: string, "address"?: string, "paymentMethod"?: "COD" | "EASYPAISA" }
+10. "validate_delivery_location" — args: { "address": string }
+11. "confirm_order" — args: {} (when customer explicitly confirms: "haan", "confirm", "theek hai order book kr do")
+12. "get_order_status" — args: { "orderNumber"?: string } (when customer asks "order show kro" or "mera order kahan hai")
+13. "request_order_cancellation" — args: {} (when customer wants to cancel an existing order)
 
-CRITICAL SENTENCE UNDERSTANDING RULES:
+CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
 1. Multi-Intent Handling:
    - "Deals or menu dikhao" / "deals aur menu dono bhejo" / "dono bhejo": Customer wants BOTH catalogs! Return TWO actions:
      "actions": [{ "tool": "get_menu", "args": {} }, { "tool": "get_deals", "args": {} }], "intent": "VIEW_BOTH"
@@ -85,32 +93,26 @@ CRITICAL SENTENCE UNDERSTANDING RULES:
      "actions": [{ "tool": "get_deals", "args": {} }], "intent": "VIEW_DEALS"
    - "Menu bhejo" / "menu dikhao" / "menu": Customer wants menu catalog:
      "actions": [{ "tool": "get_menu", "args": {} }], "intent": "VIEW_MENU"
-2. Informational Questions vs. Adding Items:
+2. Product Reference Disambiguation (Rule A):
+   - Never identify a product using only one word or number when the complete customer message contains additional information!
+   - "Deal 3 krdo burger" / "Burger wali deal 3" / "Burger meal for 3" must resolve to burger deals (e.g. Burger Meal For 3 or Zinger Deal 3), NEVER Pizza Deal 3!
+   - "Pizza deal 3" must resolve to Pizza Deal 3.
+3. Category-Level Product Requests (Rule B):
+   - When a customer says "Pizza add kro", "Burger dikhao", "Fries mangwani hain", "Cold drink bhi add krdo":
+     A general category name is NOT an unavailable product. Call "add_to_cart" with "itemName": "Pizza" (or the requested category). The backend tool will retrieve actual available choices and guide the customer.
+4. Mandatory Product Variations (Rule C):
+   - Never assume product size without explicit rule. For pizzas, size is required (Small, Medium, Large). If a customer says "Chicken Tandori pizza add kro", call "add_to_cart" with "itemName": "Chicken Tandori pizza"; the backend will prompt for size before modifying the cart.
+5. Correction and Modification Understanding (Rule D):
+   - "Large mein krdo small nahi" / "Medium chahiye" / "Isko large krdo" / "Size change krdo" / "Quantity 2 krdo":
+     Customer wants to MODIFY an existing item in cart! Do NOT call add_to_cart (which adds duplicates).
+     Return "actions": [{ "tool": "update_cart_item", "args": { "newSize": "Large" } }], "intent": "UPDATE_ITEM"
+6. Informational Questions vs. Adding Items:
    - "Deal 3 mein drink included hai ya nahi?" / "is deal mein kya kya hai": Customer is ASKING INFORMATION, NOT ordering!
      "actions": [{ "tool": "get_deal_details", "args": { "dealName": "Deal 3" } }], "intent": "DEAL_QUERY"
    - NEVER call add_to_cart for questions about a deal or item!
-3. Multiple Items in One Message:
-   - "Aik deal 3 krdo aur aik burger meal for 3 bhi add krdo": Return TWO add_to_cart actions:
-     "actions": [
-       { "tool": "add_to_cart", "args": { "itemName": "Deal 3", "quantity": 1 } },
-       { "tool": "add_to_cart", "args": { "itemName": "Burger Meal For 3", "quantity": 1 } }
-     ]
-4. Item Removal:
-   - "drink ko remove kr do" / "remove 1 soft drink":
-     "actions": [{ "tool": "remove_from_cart", "args": { "itemName": "drink", "quantity": 1 } }], "intent": "REMOVE_ITEM"
-5. Menu Inquiries:
-   - "sb sa low level price wla item bato" / "cheapest item": "actions": [{ "tool": "get_product_details", "args": { "queryType": "cheapest" } }]
-   - "best item konsa hai" / "top item": "actions": [{ "tool": "get_product_details", "args": { "queryType": "best" } }]
-   - "kon kon sa zinger hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "zinger" } }]
-   - "kon kon sa burgers hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "burger" } }]
-   - "pizza name batoo kon kon sa hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "pizza" } }]
-6. Ordering Any Item (including unavailable/off-menu items):
-   - When customer says "chahiye", "chiye", "mangwana", "bhej do", "kar do", "add" for ANY food item (e.g. "Anda wla burger chiye mujay", "biryani chahiye", "fish burger kar do"):
-     ALWAYS return an "add_to_cart" action with the exact item requested:
-     "actions": [{ "tool": "add_to_cart", "args": { "itemName": "Anda wla burger", "quantity": 1 } }], "intent": "ADD_ITEM"
-     The backend tool will authoritatively check the menu and clearly report if it is not available.
-7. Order Confirmation:
-   - "haan" / "confirm" / "theek hai book kardo": "actions": [{ "tool": "confirm_order", "args": {} }], "intent": "CONFIRM_ORDER"
+7. Greetings and Small Talk:
+   - When the customer says "Hello", "Hi", "Salam", "AOA", "Kashii", "Kaise ho":
+     Return "actions": [], "intent": "GREETING", "conversational_reply": "<friendly greeting in Roman Urdu strictly following the personality, identity, and instructions configured in the System Prompt above>"
 8. Delivery Address Update:
    - "location change kr do Xortlogix, Ghauri VIP Block" / "address update kardo street 5" / "pata badal do":
      Extract the updated address without resetting other customer details:
@@ -124,6 +126,7 @@ OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no exp
   "actions": [
     { "tool": "<tool_name>", "args": { ... } }
   ],
+  "conversational_reply": "<direct conversational reply if greeting or chitchat, otherwise null>",
   "referenced_entity": {
     "type": "deal" | "item" | "none",
     "name": "<name of deal or item or null>"
@@ -139,6 +142,9 @@ OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no exp
   },
   "customer_confirmation": <true | false>
 }`;
+}
+
+export const SYSTEM_PROMPT = getSystemPrompt();
 
 /**
  * Clean and parse LLM output into validated JSON Action Plan
@@ -172,6 +178,7 @@ function parseAndValidateJson(raw) {
             intent: parsed.intent || 'GENERAL_CONVERSATION',
             confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
             actions,
+            conversational_reply: typeof parsed.conversational_reply === 'string' ? parsed.conversational_reply.trim() : null,
             referenced_entity: {
                 type: parsed.referenced_entity?.type || 'none',
                 name: parsed.referenced_entity?.name || null,
@@ -311,7 +318,7 @@ export async function interpretCustomerContext({
     }));
 
     const messages = [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: getSystemPrompt() },
         ...historyMessages,
         {
             role: 'user',

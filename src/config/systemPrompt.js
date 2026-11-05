@@ -312,11 +312,14 @@ Admin Contact Phone: {{adminPhone}} | Admin WhatsApp Link: {{adminWhatsappLink}}
 
 let activeCustomPrompt = null;
 let promptUpdatedAt = null;
+let lastFileMtime = 0;
 
 // Load persisted custom prompt from disk or DB
 function initCustomPrompt() {
     try {
         if (fs.existsSync(PROMPT_FILE)) {
+            const stats = fs.statSync(PROMPT_FILE);
+            lastFileMtime = stats.mtimeMs;
             const raw = fs.readFileSync(PROMPT_FILE, 'utf-8');
             const data = JSON.parse(raw);
             if (data && typeof data.prompt === 'string') {
@@ -330,11 +333,29 @@ function initCustomPrompt() {
 }
 initCustomPrompt();
 
+function syncPromptFromFile() {
+    try {
+        if (fs.existsSync(PROMPT_FILE)) {
+            const stats = fs.statSync(PROMPT_FILE);
+            if (stats.mtimeMs !== lastFileMtime) {
+                lastFileMtime = stats.mtimeMs;
+                const raw = fs.readFileSync(PROMPT_FILE, 'utf-8');
+                const data = JSON.parse(raw);
+                if (data && typeof data.prompt === 'string') {
+                    activeCustomPrompt = data.prompt.trim();
+                    promptUpdatedAt = data.updatedAt || null;
+                }
+            }
+        }
+    } catch (_) {}
+}
+
 /**
  * Returns currently active raw template string.
  */
 export function getActivePromptTemplate() {
-    return activeCustomPrompt !== null ? activeCustomPrompt : DEFAULT_SYSTEM_PROMPT_TEMPLATE;
+    syncPromptFromFile();
+    return activeCustomPrompt !== null && activeCustomPrompt.length > 0 ? activeCustomPrompt : DEFAULT_SYSTEM_PROMPT_TEMPLATE;
 }
 
 /**
