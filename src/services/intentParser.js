@@ -61,11 +61,12 @@ export function clearAllFastRouteCaches() {
     console.log('[FAST_ROUTE] All fast route memory caches cleared.');
 }
 
-export function setLastDiscussedItem(sessionKey, item, variant = null, altKey = null) {
+export function setLastDiscussedItem(sessionKey, item, variant = null, altKey = null, quantity = 1) {
     if ((!sessionKey && !altKey) || !item) return;
     const entry = {
         item,
         variant,
+        quantity: typeof quantity === 'number' && quantity > 0 ? quantity : 1,
         timestamp: Date.now(),
     };
     if (sessionKey) _lastDiscussedItemBySession.set(sessionKey, entry);
@@ -3154,8 +3155,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     // ── Check Fast Route: Cart Item Flavour Update (Zero Tokens, e.g. "Pizza Tikka kena hi", "Pizza Tikka lena hai", "flavour tikka kardo") ──
     const hasRemovalWord = /\b(?:remove|nikal|hata|delete)\b/i.test(lower);
+    const hasMultiItemSignals = lower.includes('\n') || /\b(?:burger|deal|drinks?|cold\s*drink|soft\s*drink|fries|wings|nuggets)\b/i.test(lower);
     const extractedFlavours = extractFlavoursFromText(lower);
-    const isFlavourChangeSignal = extractedFlavours.length > 0 &&
+    const isFlavourChangeSignal = !hasMultiItemSignals && extractedFlavours.length > 0 &&
         !hasRemovalWord &&
         /\b(?:pizza|flavour|flavor|kena|lena|rakh|rakho|kardo|krdo|kr\s*do|kar\s*do|chahiye|mein|me|badal|change|update)\b/i.test(lower);
 
@@ -3190,7 +3192,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     });
                 }
                 if (!targetRow && cart.items.length === 1) {
-                    targetRow = cart.items[0];
+                    const onlyItem = cart.items[0];
+                    const isPizza = onlyItem.deal ? getDealPizzaInfo(onlyItem.deal).isPizzaDeal : (onlyItem.menu_item?.name || '').toLowerCase().includes('pizza');
+                    if (isPizza) {
+                        targetRow = onlyItem;
+                    }
                 }
 
                 if (targetRow) {
@@ -3408,7 +3414,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 { id: 'v-34-4', name: '1.5 Liter', price: 240 }
             ]
         };
-        setLastDiscussedItem(userSessionId, drinkItem, null, cleanPhone);
+        let drinkQty = 1;
+        const prefixQtyMatch = lower.match(/(?:^|\b)(\d+|aik|ek|ik|do|teen|char|panch|fifteen|twenty|fifty)\s*(?:x\s*)?/i);
+        const postQtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:drinks?|pepsi|coke|kr\s*do|kardo|add)\b/i);
+        const qm = prefixQtyMatch || postQtyMatch;
+        if (qm) {
+            const wordMap = { ek: 1, aik: 1, ik: 1, one: 1, do: 2, two: 2, teen: 3, tin: 3, three: 3, char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, five: 5, fifteen: 15, twenty: 20, fifty: 50 };
+            drinkQty = wordMap[qm[1].toLowerCase()] || parseInt(qm[1], 10) || 1;
+        }
+        setLastDiscussedItem(userSessionId, drinkItem, null, cleanPhone, drinkQty);
         return {
             handled: true,
             routeName: 'drink_size_prompt',
@@ -3594,7 +3608,8 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Fast Route: Customer orders Drink with size directly (Zero Tokens) ──
     const hasDrinkWord = /\b(?:drinks?|cold\s*drinks?|soft\s*drinks?|sift\s*drinks?|sofe\s*drinks?|suft\s*drinks?|pepsi|coke|next\s*cola|7up|mirinda|dew|sprite)\b/i.test(lower);
     const hasDrinkSizeWord = /\b(?:1\.5\s*liter|1\.5\s*litre|1\.5l|1\s*liter|1\s*litre|1l|regular|reg|can|tin|litre|liter|dedh\s*litre)\b/i.test(lower);
-    const isDirectDrinkWithSize = hasDrinkWord && hasDrinkSizeWord &&
+    const hasOtherItemsInDrinkMsg = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|fries|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n');
+    const isDirectDrinkWithSize = !hasOtherItemsInDrinkMsg && hasDrinkWord && hasDrinkSizeWord &&
         (/\b(?:add|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|chahiye|mangwa\s*do|aur|bhi|daal\s*do|bhejo|bhej\s*do|dedo|de\s*do|wali|wala)\b/i.test(lower) || wordCount <= 4);
     if (isDirectDrinkWithSize && userSessionId) {
         try {
@@ -3621,10 +3636,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             }
 
             let qty = 1;
-            const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+|can\s+)?(?:drink|drinks|pepsi|coke)\b/i);
-            const wordQtyMatch = lower.match(/\b(aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+|can\s+)?(?:drink|drinks|pepsi|coke)\b/i);
-            if (digitQtyMatch) qty = parseInt(digitQtyMatch[1], 10) || 1;
-            else if (wordQtyMatch) qty = { ek: 1, aik: 1, ik: 1, do: 2, teen: 3, char: 4, panch: 5 }[wordQtyMatch[1].toLowerCase()] || 1;
+            const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s*)?(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|mirinda)\b/i) ||
+                                  lower.match(/(?:^|\b)(\d+)\s*(?:x\s*)?/i);
+            const wordQtyMatch = lower.match(/\b(aik|ek|ik|do|teen|char|panch|pandrah|bees|pachaas|fifteen|twenty|fifty)\s*(?:x\s*)?(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke)\b/i);
+            if (digitQtyMatch) {
+                qty = parseInt(digitQtyMatch[1], 10) || 1;
+            } else if (wordQtyMatch) {
+                const wordMap = { ek: 1, aik: 1, ik: 1, do: 2, teen: 3, char: 4, panch: 5, pandrah: 15, fifteen: 15, bees: 20, twenty: 20, pachaas: 50, fifty: 50 };
+                qty = wordMap[wordQtyMatch[1].toLowerCase()] || 1;
+            }
 
             const { getActiveCart, addToCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
@@ -3668,11 +3688,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     // ── Check Fast Follow-up: Variant selection for pending discussed item (e.g. "regular", "can", "1.5 liter", "large") ──
-    let lastItemEntry = userSessionId ? getLastDiscussedItem(userSessionId, cleanPhone) : null;
-    if (!lastItemEntry) {
-        // Fallback: If customer simply typed a drink size (e.g. "1.5 litre", "1.5 liter", "1.5l", "can", "regular", "tin")
-        const isStandaloneDrinkSize = /^(?:(?:aik|ek|ik|1|2)\s+)?(?:1\.5\s*(?:l|liter|litre|ltr)?|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin)[\s.!?]*$/i.test(lower.trim()) ||
-                                      /\b(?:1\.5\s*(?:liter|litre|l)|derh\s*liter)\b/i.test(lower.trim());
+    const hasOtherItemsInFollowup = /\b(?:pizza|burger|deal|zinger|zegy|zeggy|fries|tandoori|tandori|tikka|fajita|supreme|wings|nuggets)\b/i.test(lower) || lower.includes('\n');
+    let lastItemEntry = (!hasOtherItemsInFollowup && userSessionId) ? getLastDiscussedItem(userSessionId, cleanPhone) : null;
+    if (!lastItemEntry && !hasOtherItemsInFollowup) {
+        // Fallback: If customer simply typed a standalone drink size (e.g. "1.5 litre", "1.5 liter", "1.5l", "can", "regular", "tin")
+        const isStandaloneDrinkSize = /^(?:(?:aik|ek|ik|do|teen|char|panch|\d+)\s*(?:x\s*)?)?(?:1\.5\s*(?:l|liter|litre|ltr)?|dedh\s*liter|derh\s*liter|1\s*(?:l|liter|litre|ltr)|aik\s*liter|ek\s*liter|liter|litre|1l|can|tin)[\s.!?]*$/i.test(lower.trim()) ||
+                                      /^(?:1\.5\s*(?:liter|litre|l)|dedh\s*liter|derh\s*liter)\s*(?:wali|wala|kardo|krdo|kr\s*do|kar\s*do)?[\s.!?]*$/i.test(lower.trim());
         if (isStandaloneDrinkSize) {
             lastItemEntry = {
                 item: {
@@ -3697,8 +3718,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getActiveCart, addToCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
                 const cleanItemName = lastItemEntry.item.name;
-                const digitQtyMatch = lower.match(/\b(\d+)\b/);
-                const qty = digitQtyMatch ? parseInt(digitQtyMatch[1], 10) : 1;
+                // Extract explicit quantity, excluding decimal size indicators like '1.5' in '1.5 Liter'
+                const withoutDecimals = lower.replace(/\b1\s*\.\s*5\b/g, '');
+                const digitQtyMatch = withoutDecimals.match(/\b(\d+)\s*(?:x\s*)?/);
+                const explicitQty = digitQtyMatch ? parseInt(digitQtyMatch[1], 10) : null;
+                const rememberedQty = (typeof lastItemEntry.quantity === 'number' && lastItemEntry.quantity > 0) ? lastItemEntry.quantity : 1;
+                const qty = explicitQty || rememberedQty;
 
                 await addToCart({
                     sessionKey: userSessionId,
@@ -4585,14 +4610,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getSessionOrderDetails: getDetailsForPhone } = await import('./sessionService.js');
     const existingDetailsForPhone = getDetailsForPhone(userSessionId, (whatsappPhone || '').replace(/\D/g, ''));
     const isPhoneAffirmativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) && (
-        /^(?:(?:haa?n|g|ji|jee|yes|ok|theek\s*(?:hai|hy)?)\s+)?(?:yeh|ye|yahi|yehi|yehe|yhe|wahi|isi|same)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|hai|he|hy|ha|yar|bhai))?[\s.!?]*$/i.test(lower.trim()) ||
-        /^(?:haa?n|hn|ji|jee|g|yes|ok|theek\s*(?:hai|hy)?|done|confirm|sahi\s*hai)[\s.!?]*$/i.test(lower.trim()) ||
+        /^(?:(?:han|haan|ha|hn|g|ji|jee|gee|yes|ok|okay|theek\s*(?:hai|hy)?|sahi\s*(?:hai|hy)?)\s+)?(?:same|yahi|yehi|yehe|yhe|yeh|ye|wahi|isi\s*pe|isi\s*par|isi|yahi\s*hai|yehi\s*hai|yeh\s*hai|ye\s*hai|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*number|same\s*whatsapp|haan|han|hn|ji|jee|gee|g|yes|yep|yeah|theek\s*hai|theek\s*hy|thk\s*hai|thk\s*hy|sahi\s*hai|sahi\s*hy|bilkul|ji\s*bilkul|g\s*bilkul|ok|okay|done|confirm|acha|achha)(?:\s+(?:hi|bhi))?(?:\s*(?:number|no|whatsapp|contact))?(?:\s*(?:pe|par|per))?(?:\s*(?:hoga|hogi|rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|rakh\s*lo|rakh\s*do|rakho|rakhein|rehn\s*do|rehne\s*do|dedo|de\s*do|likh\s*do|likh\s*lo|daal\s*do|kar\s*do|kr\s*do|kardo|krdo|karo|kro|bhej\s*do|bhejo|rabta\s*karein|rabta|rider\s*ko\s*de\s*do|rider\s*ko\s*dedo|theek\s*(?:hai|hy)?|sahi\s*(?:hai|hy)?|hai|he|hy|ha|yar|yaar|bhai|jee|ji|gee))?[\s.!?]*$/i.test(lower.trim()) ||
         /\b(?:same|yahi|yehi|yehe|yeh|ye|wahi|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)?\s*(?:pe|par|per)?\s*(?:rahyga|rahega|rhega|ryga|rahy\s*ga|rahe\s*ga|hoga|rakh\s*lo|rakh\s*do|rakho|dedo|de\s*do|likh\s*do|likh\s*lo|bhej\s*do|ha|hai|he|hy)\b/i.test(lower.trim()) ||
         /\b(?:btaya|bola|kaha)\s+to\s+h(?:ai|y)?.*(?:yehe|yehi|yeh|ye|same|isi)\s+number\b/i.test(lower.trim()) ||
-        /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim())
+        /^(?:han|haan|g|ji|jee|gee)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp|contact)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim())
     );
     const rawPhoneMatch = raw.replace(/[\s-]/g, '').match(/(?:03\d{9}|\+?923\d{9})/);
-    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai|ha|hai|he))?$/i.test(lower.trim()) || /^(?:han|haan|g|ji)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim()) || !!rawPhoneMatch;
+    const isSameNumber = isPhoneAffirmativeWhenAwaiting || /^(?:same\s*number|same|isi\s*number|yehi\s*number|yahi\s*number|yehe\s*number|yeh\s*number|ye\s*number|same\s*whatsapp)(?:\s*(?:dedo|de\s*do|rakho|rakhein|hoga|hogi|yar|bhai|ha|hai|he))?$/i.test(lower.trim()) || /^(?:han|haan|g|ji|jee|gee)?\s*(?:yeh|ye|yahi|yehi|same|isi)\s*(?:hi\s*)?(?:number|no|whatsapp)\s*(?:ha|hai|h|he)?[\s.!?]*$/i.test(lower.trim()) || !!rawPhoneMatch;
 
     const isPhoneNegativeWhenAwaiting = (existingDetailsForPhone?.name && !existingDetailsForPhone?.phoneConfirmed) &&
         /^(?:nahi|nahin|na|no|nope|change|badal\s*do|badlo|doosra\s*number|dusra\s*number|koi\s*aur\s*number|different\s*number)[\s.!?]*$/i.test(lower.trim()) && !rawPhoneMatch;
@@ -6181,9 +6205,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         };
     }
 
-    // ── 15. Quick Reply: Standalone Affirmative / Filler (e.g. "jee", "haan", "theek hai", "ok") ──
-    const isStandaloneAffirmative = /^(?:jee?|ji|g|haan|han|hn|yes|theek\s*hai?|theek\s*hy|thk\s*hai?|thk\s*hy|ok|okay|acha|achha)[\s.!?]*$/i.test(lower.trim());
-    if (isStandaloneAffirmative && wordCount <= 2) {
+    // ── 15. Quick Reply: Standalone Affirmative / Filler (e.g. "jee", "haan", "theek hai", "han gee", "yehi krdo") ──
+    const isStandaloneAffirmative = /^(?:jee?|ji|gee|g|haan|han|hn|yes|yep|yeah|theek\s*hai?|theek\s*hy|thk\s*hai?|thk\s*hy|sahi\s*hai?|sahi\s*hy|ok|okay|acha|achha|accha|bilkul|ji\s*bilkul|g\s*bilkul|han\s*ji|haan\s*ji|han\s*gee|haan\s*gee|g\s*han|ji\s*han|jee\s*han|yehi\s*(?:krdo|kardo|kr\s*do|kar\s*do)?|yahi\s*(?:krdo|kardo|kr\s*do|kar\s*do)?|same)[\s.!?]*$/i.test(lower.trim());
+    if (isStandaloneAffirmative && wordCount <= 4) {
         try {
             const cache = await getCatalogCache();
             const rawStore = cache.storeName || '';

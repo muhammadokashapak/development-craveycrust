@@ -139,6 +139,14 @@ const QTY_WORD_MAP = {
     'teen': 3, 'tin': 3, 'three': 3, '3': 3,
     'char': 4, 'chaar': 4, 'four': 4, '4': 4,
     'panch': 5, 'paanch': 5, 'five': 5, '5': 5,
+    'che': 6, 'chey': 6, 'six': 6, '6': 6,
+    'saat': 7, 'seven': 7, '7': 7,
+    'aath': 8, 'eight': 8, '8': 8,
+    'nau': 9, 'nine': 9, '9': 9,
+    'das': 10, 'dus': 10, 'ten': 10, '10': 10,
+    'pandrah': 15, 'fifteen': 15, '15': 15,
+    'bees': 20, 'twenty': 20, '20': 20,
+    'pachaas': 50, 'pachas': 50, 'fifty': 50, '50': 50,
 };
 
 /**
@@ -169,7 +177,7 @@ export function extractRequestedItems(text, activeCart = null) {
             size = 'Standard';
         }
         let qty = 1;
-        const qtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:regular\s+|large\s+)?fries\b/i) ||
+        const qtyMatch = lower.match(/(?:\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:x\s*)?)(?:regular\s+|large\s+)?fries\b/i) ||
                          lower.match(/\bfries\s*(?:krdo|kardo|add)?\s*(?:regular\s+)?(?:aik|ek|ik|do|1|2)\b/i);
         if (qtyMatch) {
             qty = QTY_WORD_MAP[qtyMatch[1]] || parseInt(qtyMatch[1], 10) || 1;
@@ -209,8 +217,9 @@ export function extractRequestedItems(text, activeCart = null) {
 
         if (size) {
             let qty = 1;
-            const qtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:x\s+)?(?:1\s*liter\s+|1\.5\s*liter\s+|regular\s+)?(?:drink|drinks|pepsi|coke)\b/i) ||
-                             lower.match(/(?:drink|pepsi|coke)\s*(?:litre\s*wali\s+)?(?:aik|ek|ik|1)\b/i);
+            const qtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch|fifteen|twenty|fifty)\s*(?:x\s*)?(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|mirinda)\b/i) ||
+                             lower.match(/(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\s*(?:(?:1\.5\s*liter|1\.5\s*litre|1\s*liter|1\s*litre|can|regular|tin|litre|liter)\s*(?:wali|wale)?\s*)?(\d+|aik|ek|ik|1)\b/i) ||
+                             lower.match(/(?:^|\n)\s*(\d+)\s*(?:x\s*)?(?:(?:soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke)/i);
             if (qtyMatch) {
                 qty = QTY_WORD_MAP[qtyMatch[1]] || parseInt(qtyMatch[1], 10) || 1;
             }
@@ -236,7 +245,7 @@ export function extractRequestedItems(text, activeCart = null) {
     // 3. Detect Burger Mentions (e.g. Zinger, Zegy, etc.)
     // SAKHT GUARD: Never treat a DEAL request (e.g. "zinger deal", "4 bandon ki zinger deal") as a standalone burger!
     const isDealMention = /\b(?:deal|deals|meal|meals)\b/i.test(lower);
-    const burgerMatch = !isDealMention && lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/i);
+    const burgerMatch = !isDealMention && lower.match(/(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|fifty)\s*(?:x\s*)?)?(?:^|[^\w])(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/i);
     if (burgerMatch) {
         const qty = burgerMatch[1] ? (QTY_WORD_MAP[burgerMatch[1]] || parseInt(burgerMatch[1], 10) || 1) : 1;
         const isZegy = /ziggy|zegy|zeggy/i.test(burgerMatch[2]);
@@ -254,7 +263,7 @@ export function extractRequestedItems(text, activeCart = null) {
         });
     }
     // 3b. Detect Chicken Box Mentions (e.g. Happy Box, Half Box, Full Box, Quarter Box, Junior Chicken)
-    const boxMatch = lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(half\s*box|happy\s*box|full\s*box|quarter\s*box|junior\s*chicken|chicken\s*piece)\b/i);
+    const boxMatch = lower.match(/(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|fifty)\s*(?:x\s*)?)?(?:^|[^\w])(half\s*box|happy\s*box|full\s*box|quarter\s*box|junior\s*chicken|chicken\s*piece)\b/i);
     if (boxMatch) {
         const qty = boxMatch[1] ? (QTY_WORD_MAP[boxMatch[1]] || parseInt(boxMatch[1], 10) || 1) : 1;
         const boxNameLower = boxMatch[2].replace(/\s+/g, '-').toLowerCase();
@@ -285,10 +294,11 @@ export function extractRequestedItems(text, activeCart = null) {
 
     // 3c. Detect Standalone Pizza Mentions (e.g. 'Chicken Fajita Large', 'Chicken Tikka Large')
     if (!isDealMention) {
-        const pizzaMatch = lower.match(/\b(?:(\d+|aik|ek|ik|do|teen|two|three)\s+)?(chicken\s*fajita|chicken\s*tikka|chicken\s*supreme|cheese\s*lover|chicken\s*tandori|chicken\s*extreme|peri\s*peri|behari\s*kebab|crown\s*crust)(?:\s+(small|medium|large|party\s*size|party))?\b/i);
+        const pizzaMatch = lower.match(/(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|fifty)\s*(?:x\s*)?)?(?:^|[^\w])(chicken\s*fajita|chicken\s*tikka|chicken\s*supreme|cheese\s*lover|chicken\s*tando?ori|chicken\s*extreme|peri\s*peri|behari\s*kebab|crown\s*crust)(?:\s+(small|medium|large|party\s*size|party))?\b/i);
         if (pizzaMatch) {
             const qty = pizzaMatch[1] ? (QTY_WORD_MAP[pizzaMatch[1]] || parseInt(pizzaMatch[1], 10) || 1) : 1;
-            const pFlav = pizzaMatch[2].trim().toLowerCase();
+            const rawFlav = pizzaMatch[2].trim().toLowerCase();
+            const pFlav = rawFlav.replace('chicken tandoori', 'chicken tandori');
             let size = pizzaMatch[3] ? pizzaMatch[3].trim().toLowerCase() : null;
             if (!size) {
                 if (lower.includes('large') || lower.includes('bari')) size = 'large';
