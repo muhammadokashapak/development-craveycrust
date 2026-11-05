@@ -90,7 +90,17 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     }
 
     const rawLower = (text || '').trim().toLowerCase();
-    const lower = normalizeQuery(rawLower);
+    let lower = normalizeQuery(rawLower);
+
+    // If query has compound clauses (e.g. "is main sy pizza waali cancel kr dain or Burger deal main 1 or add kr dain"),
+    // isolate the clause with explicit removal intent for item/deal resolution.
+    if (/\b(?:aur|or|and|\+|,|\n)\b/i.test(lower)) {
+        const parts = lower.split(/\b(?:aur|or|and|\+)\b|,|\n/i).map(p => p.trim()).filter(Boolean);
+        const remPart = parts.find(p => isRemovalIntent(p));
+        if (remPart) {
+            lower = remPart;
+        }
+    }
 
     // ── 1. Check for Deal Component Restriction (e.g. "deal ki drink remove kr do") ──
     const isDealComponentTarget = /\b(?:deal|deal\s*#?\d+|package|combo)\s*(?:ki|k|wali|mai\s*se|se)?\s*(?:drink|pepsi|coke|burger|fries|wings)\b/i.test(lower) ||
@@ -101,6 +111,8 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         const dealName = dealItem?.deal ? dealItem.deal.name : 'Deal';
         return {
             status: 'DEAL_COMPONENT_RESTRICTION',
+            dealItem,
+            dealId: dealItem?.id,
             dealName,
             component: 'Drink',
             message: `Soft Drink *${dealName}* ka lazmi hissa hai aur deal se alag remove nahi ki ja sakti. Agar aap pura deal change ya remove karna chahein to batayein! 😊`,
@@ -223,13 +235,52 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         };
     }
 
+    // ── 4a. Target Deal Removal by Category/Name (e.g. "pizza waali cancel kr dain", "burger deal cancel kr dain") ──
+    const dealsInCart = cart.items.filter(i => Boolean(i.deal || i.deal_id));
+    if (dealsInCart.length > 0) {
+        const wantsPizzaDeal = /\bpizzas?\b/i.test(lower) && (/\b(?:deal|meal|wal[aie]|waal[aie]|cancel|remove|hata|nikal)\b/i.test(lower));
+        const wantsBurgerDeal = /\b(?:burgers?|zingers?|zegy)\b/i.test(lower) && (/\b(?:deal|meal|wal[aie]|waal[aie]|cancel|remove|hata|nikal)\b/i.test(lower));
+
+        if (wantsPizzaDeal && !wantsBurgerDeal) {
+            const matchingPizzaDeals = dealsInCart.filter(i => {
+                const dName = (i.deal?.name || '').toLowerCase();
+                const dDesc = (i.deal?.description || '').toLowerCase();
+                return /pizza/i.test(dName) || /pizza/i.test(dDesc);
+            });
+            const standalonePizzas = cart.items.filter(i => !i.deal && !i.deal_id && /pizza/i.test(i.menu_item?.name || ''));
+            if (matchingPizzaDeals.length === 1 && (standalonePizzas.length === 0 || /\b(?:deal|meal|wal[aie]|waal[aie])\b/i.test(lower))) {
+                return {
+                    status: 'MATCH_FOUND',
+                    item: matchingPizzaDeals[0],
+                    qtyToRemove: qtyToRemove || null,
+                };
+            }
+        }
+
+        if (wantsBurgerDeal && !wantsPizzaDeal) {
+            const matchingBurgerDeals = dealsInCart.filter(i => {
+                const dName = (i.deal?.name || '').toLowerCase();
+                const dDesc = (i.deal?.description || '').toLowerCase();
+                return /\b(?:burger|zinger|zegy)\b/i.test(dName) || /\b(?:burger|zinger|zegy)\b/i.test(dDesc);
+            });
+            const standaloneBurgers = cart.items.filter(i => !i.deal && !i.deal_id && /\b(?:burger|zinger|zegy)\b/i.test(i.menu_item?.name || ''));
+            if (matchingBurgerDeals.length === 1 && (standaloneBurgers.length === 0 || /\b(?:deal|meal|wal[aie]|waal[aie])\b/i.test(lower))) {
+                return {
+                    status: 'MATCH_FOUND',
+                    item: matchingBurgerDeals[0],
+                    qtyToRemove: qtyToRemove || null,
+                };
+            }
+        }
+    }
+
     // ── 4b. Direct Item / Flavor Matching against items currently in Cart ──
     // e.g. "acha 5x zeggy burgers remove kr do", "behari kebab remove kr dain", "chicken tikka hata do"
     const cleanItemQuery = lower
         .replace(/\b(?:acha|achha|accha|theek|thek|sahi|ok|okay|ab|aur|bas|sirf|plz|please|bhai|yaar|yar|ji|jee|janab|sunen|suno|meherbani|shukriya)\b/gi, '')
         .replace(/\b(?:remove|hata|hatayein|hatao|hatado|nikal|nikalo|nikalein|nikaldo|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
         .replace(/\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden)\b/gi, '')
-        .replace(/\b(?:cart\s*se|order\s*se|se|main\s*se|mein\s*se|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|wali)\b/gi, '')
+        .replace(/\b(?:is\s*main\s*(?:se|sy|say)?|is\s*mein\s*(?:se|sy|say)?|isme\s*(?:se|sy|say)?|is\s*(?:se|sy|say)|cart\s*(?:se|sy|say)?|order\s*(?:se|sy|say)?|se|sy|say|main\s*(?:se|sy|say)|mein\s*(?:se|sy|say)|main|mein|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|waal[aie]|wali|waali)\b/gi, '')
         .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*(?:x\s+)?/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
@@ -402,13 +453,26 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     }
 
     // ── Case C: No matching standalone item, but product exists inside a deal ──
-    if (matchingStandalone.length === 0 && (isDrinkQuery || isBurgerQuery || isFriesQuery)) {
-        const dealWithComponent = cart.items.find(i => Boolean(i.deal || i.deal_id));
+    const isExplicitDealRemoval = /\b(?:deal|deal\s*#?\d+|package|combo|meal|wali|waali)\b/i.test(lower);
+    if (!isExplicitDealRemoval && matchingStandalone.length === 0 && (isDrinkQuery || isBurgerQuery || isFriesQuery)) {
+        const dealWithComponent = cart.items.find(i => {
+            if (!i.deal && !i.deal_id) return false;
+            const dName = (i.deal?.name || '').toLowerCase();
+            const dDesc = (i.deal?.description || '').toLowerCase();
+            const dItems = (i.deal?.deal_items || []).map(di => di.menu_item?.name || di.name || '').join(' ').toLowerCase();
+            const combined = `${dName} ${dDesc} ${dItems}`;
+            if (isBurgerQuery && /\b(?:burger|zinger|zegy)\b/i.test(combined)) return true;
+            if (isDrinkQuery && /\b(?:drink|pepsi|coke|beverage|liter|litre)\b/i.test(combined)) return true;
+            if (isFriesQuery && /\b(?:fries)\b/i.test(combined)) return true;
+            return false;
+        });
         if (dealWithComponent) {
             const dName = dealWithComponent.deal ? dealWithComponent.deal.name : 'Deal';
             const compName = isDrinkQuery ? 'Soft Drink' : (isBurgerQuery ? 'Burger' : 'Fries');
             return {
                 status: 'DEAL_COMPONENT_RESTRICTION',
+                dealItem: dealWithComponent,
+                dealId: dealWithComponent.id,
                 dealName: dName,
                 component: compName,
                 message: `${compName} *${dName}* ka lazmi hissa hai aur deal se alag remove nahi ki ja sakti. Agar aap pura deal change ya remove karna chahein to batayein! 😊`,

@@ -1810,6 +1810,107 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const { getPendingCartAction, clearPendingCartAction, setPendingCartAction } = await import('./sessionService.js');
     const { isRemovalIntent, isPendingActionCancellation, resolveCartItemForRemoval, executeCartItemRemoval } = await import('./cartItemResolver.js');
     const pendingCartAction = userSessionId ? getPendingCartAction(userSessionId, cleanPhone) : null;
+    if (pendingCartAction && pendingCartAction.action === 'REMOVE_DEAL_CONFIRMATION' && userSessionId) {
+        if (isPendingActionCancellation(lower)) {
+            clearPendingCartAction(userSessionId, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'pending_deal_removal_cancelled',
+                reply: 'Theek hai, deal remove nahi ki gayi. Cart mein items barkarar hain. 😊',
+            };
+        }
+        const isAffirmativeOrRemoval = /^(?:kr\s*d[aoeiu]+n?|kar\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|hata\s*do|nikal\s*do|remove|remove\s*kr\s*do|delete|haan|han|hn|ji|jee|g|yes|theek\s*hai|ok|okay|kar\s*do|pura\s*deal\s*hata\s*do|deal\s*hata\s*do)[\s.!?]*$/i.test(lower.trim()) ||
+            /\b(?:hata\s*d[aoeiu]+n?|nikal\s*d[aoeiu]+n?|remove\s*kr|delete\s*kr)\b/i.test(lower);
+        if (isAffirmativeOrRemoval) {
+            clearPendingCartAction(userSessionId, cleanPhone);
+            try {
+                const { getActiveCart } = await import('./cartService.js');
+                const cache = await getCatalogCache();
+                const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                const targetDeal = (cart?.items || []).find(i => i.id === pendingCartAction.dealId || (i.deal && (i.deal.name === pendingCartAction.dealName || i.deal.id === pendingCartAction.dealId)));
+                if (targetDeal) {
+                    const resolution = { status: 'MATCH_FOUND', item: targetDeal };
+                    const removeRes = await executeCartItemRemoval({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        resolution,
+                        cart,
+                    });
+                    const { clearOrderSummarySnapshot, ORDER_STAGES } = await import('./checkoutStateMachine.js');
+                    clearOrderSummarySnapshot(userSessionId);
+                    const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                    const details = getSessionOrderDetails(userSessionId, cleanPhone) || {};
+                    if (!removeRes.updatedCart.items || removeRes.updatedCart.items.length === 0) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.CART_BUILDING,
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_deal_removal_empty',
+                            reply: `Theek hai Ji! Aapke order se *${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\nAap ka cart ab khali hai. Menu ya deals dekhne ke liye 'menu' ya 'deals' likhein. 😊`,
+                        };
+                    }
+                    const isAtFinalReview = Boolean(details.name && details.phoneConfirmed && (details.address || details.location) && details.paymentMethod);
+                    const lines = (removeRes.pricing?.breakdown?.items?.length || removeRes.pricing?.breakdown?.deals?.length)
+                        ? [
+                            ...(removeRes.pricing.breakdown.items || []).map(it => {
+                                const v = it.variantName ? ` (${it.variantName})` : '';
+                                return `• ${it.quantity}x ${it.name}${v} — Rs. ${Number(it.lineTotal).toLocaleString('en-PK')}`;
+                            }),
+                            ...(removeRes.pricing.breakdown.deals || []).map(d => {
+                                const notes = d.notes ? ` (${d.notes})` : '';
+                                return `• ${d.quantity}x ${d.name}${notes} — Rs. ${Number(d.lineTotal).toLocaleString('en-PK')}`;
+                            })
+                        ].join('\n')
+                        : removeRes.updatedCart.items.map(i => {
+                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                            const fText = i.notes ? ` (${i.notes})` : '';
+                            const vText = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
+                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                            return `• ${i.quantity}x ${n}${vText}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                        }).join('\n');
+                    if (isAtFinalReview) {
+                        updateSessionOrderDetails(userSessionId, {
+                            orderStage: ORDER_STAGES.AWAITING_CONFIRMATION,
+                            summaryShown: true,
+                            awaitingFinalConfirmation: true,
+                            orderConfirmed: false,
+                        }, cleanPhone);
+                        const delCharges = removeRes.pricing.deliveryFee > 0 ? `Rs. ${removeRes.pricing.deliveryFee}` : 'Free';
+                        const totalFormatted = Number(removeRes.pricing.total).toLocaleString('en-PK');
+                        const updatedSummary = `Ji bilkul! ${removeRes.removedItemName} order se remove kar di hai. ✅\n\n` +
+                            `📋 *Aap ke Updated Order ki Details:*\n` +
+                            `${lines}\n\n` +
+                            `🚚 *Delivery Charges:* ${delCharges}\n` +
+                            `💰 *Total:* Rs. ${totalFormatted}\n\n` +
+                            `Kya aap is updated order ko confirm karte hain? (Order book karne ke liye "Haan" ya "Confirm" likhein)`;
+                        return {
+                            handled: true,
+                            routeName: 'fast_cart_deal_removal_updated_summary',
+                            reply: updatedSummary,
+                        };
+                    } else {
+                        updateSessionOrderDetails(userSessionId, {
+                            summaryShown: false,
+                            awaitingFinalConfirmation: false,
+                        }, cleanPhone);
+                        const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
+                        return await getNextCheckoutStepResponse({
+                            details,
+                            whatsappPhone,
+                            cart: removeRes.updatedCart,
+                            cache,
+                            introMessage: removalIntro,
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('[FAST_ROUTE] Error removing deal on confirmation:', err.message);
+            }
+        }
+    }
     if (pendingCartAction && pendingCartAction.action === 'REMOVE_ITEM' && userSessionId) {
         if (isPendingActionCancellation(lower)) {
             clearPendingCartAction(userSessionId, cleanPhone);
@@ -1909,7 +2010,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         reply: resolution.clarificationMessage,
                     };
                 } else if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
-                    clearPendingCartAction(userSessionId, cleanPhone);
+                    setPendingCartAction(userSessionId, {
+                        action: 'REMOVE_DEAL_CONFIRMATION',
+                        dealId: resolution.dealItem?.id || resolution.dealId,
+                        dealName: resolution.dealName,
+                    }, cleanPhone);
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(userSessionId, {
+                        awaitingFinalConfirmation: false,
+                        summaryShown: false,
+                    }, cleanPhone);
                     return {
                         handled: true,
                         routeName: 'deal_component_restriction',
@@ -3207,7 +3317,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                 const finalAddress = details.address || details.savedAddress || details.location?.address;
                 const readyToConfirm = Boolean(details.name && (finalAddress || details.location) && (details.paymentMethod || 'COD') && details.phoneConfirmed);
-                const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes|g)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)?|haan|han|ji|g|yes|theek\s*hai|ok)\b/i.test(lower.trim());
+                const hasExplicitConfirmWord = /\b(?:confirm|comfirm|konfirm|book\s*kar|book\s*kr|order\s*book|final(?:ize|ise)?\s*kar|final\s*kr|order\s*confirm|order\s*book|bhej\s*do|order\s*final|(?:han|haan|jee|ji|yes|g)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)|(?:kr|kar)\s*d[aoeiu]+n?\s*(?:confirm|order)|order\s*(?:kr|kar)\s*d[aoeiu]+n?)\b/i.test(lower.trim());
+                const isBareAffirmation = !hasExplicitConfirmWord;
+                // Guard: Bare affirmative words (like "kr dain", "haan", "theek hai") without explicit confirmation keywords
+                // must ONLY confirm if we are actively awaiting final confirmation (i.e. final confirmation question was just presented)
+                if (isBareAffirmation && !details?.awaitingFinalConfirmation) {
+                    return null;
+                }
                 const isAffirmationEligible = Boolean(details.awaitingFinalConfirmation || details.summaryShown || readyToConfirm);
                 if ((!cart?.items || cart.items.length === 0) && isAffirmationEligible) {
                     const { getRecentOrderBySessionOrPhone } = await import('./orderService.js');
@@ -3332,6 +3448,16 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             if (cart?.items && cart.items.length > 0) {
                 const resolution = resolveCartItemForRemoval({ cart, text: lower, pendingAction: null });
                 if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
+                    setPendingCartAction(userSessionId, {
+                        action: 'REMOVE_DEAL_CONFIRMATION',
+                        dealId: resolution.dealItem?.id || resolution.dealId,
+                        dealName: resolution.dealName,
+                    }, cleanPhone);
+                    const { updateSessionOrderDetails } = await import('./sessionService.js');
+                    updateSessionOrderDetails(userSessionId, {
+                        awaitingFinalConfirmation: false,
+                        summaryShown: false,
+                    }, cleanPhone);
                     return {
                         handled: true,
                         routeName: 'deal_component_restriction',
@@ -3364,6 +3490,57 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         resolution,
                         cart,
                     });
+
+                    // Check if message was compound: removal + addition (e.g. "pizza waali cancel kr dain or Burger deal main 1 or add kr dain")
+                    let addedCompoundNote = '';
+                    const compoundAddMatch = lower.match(/\b(?:aur|or|and|\+)\s+(.+?\b(?:add|daal\s*do|bhej\s*do|kr\s*d[aoeiu]+n?|kar\s*d[aoeiu]+n?|kardo|krdo|chahiye)\b.*)$/i);
+                    if (compoundAddMatch) {
+                        const addClause = compoundAddMatch[1];
+                        const wantsBurgerDeal = /\bburger\s*(?:deal|meal)\b/i.test(addClause);
+                        const wantsPizzaDeal = /\bpizza\s*(?:deal|meal)\b/i.test(addClause);
+                        const addQtyMatch = addClause.match(/\b(\d+|ak|aik|ek|ik|one|two|do|teen|char|paanch)\s*(?:aur|or|more|aur\s*bhi|x)?\s*(?:add|kr|kar|daal)/i) ||
+                            addClause.match(/\b(?:add|daal|kr|kar)\s*(\d+|ak|aik|ek|ik|one|two|do|teen|char|paanch)\b/i);
+                        const numMap = { '1': 1, 'ak': 1, 'aik': 1, 'ek': 1, 'ik': 1, 'one': 1, '2': 2, 'do': 2, 'two': 2, '3': 3, 'teen': 3, 'three': 3 };
+                        const qtyToAdd = addQtyMatch ? (numMap[addQtyMatch[1].toLowerCase()] || parseInt(addQtyMatch[1], 10) || 1) : 1;
+
+                        const targetDealToInc = (removeRes.updatedCart?.items || []).find(i => {
+                            if (!i.deal && !i.deal_id) return false;
+                            const dName = (i.deal?.name || '').toLowerCase();
+                            if (wantsBurgerDeal && /burger/i.test(dName)) return true;
+                            if (wantsPizzaDeal && /pizza/i.test(dName)) return true;
+                            return false;
+                        });
+
+                        if (targetDealToInc) {
+                            const { updateCartItem } = await import('./cartService.js');
+                            const currentQ = targetDealToInc.quantity || 1;
+                            await updateCartItem({
+                                sessionKey: userSessionId,
+                                cartItemId: targetDealToInc.id,
+                                quantity: currentQ + qtyToAdd,
+                            });
+                            removeRes.updatedCart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                            const { calculatePricing } = await import('./pricingService.js');
+                            const itemsP = (removeRes.updatedCart.items || []).filter(i => !i.deal_id && !i.deal).map(i => ({
+                                menuItemId: i.menu_item_id || i.menu_item?.id,
+                                variantId: i.menu_variant_id || i.menu_variant?.id,
+                                quantity: i.quantity,
+                            }));
+                            const dealsP = (removeRes.updatedCart.items || []).filter(i => i.deal_id || i.deal).map(i => ({
+                                dealId: i.deal_id || i.deal?.id,
+                                quantity: i.quantity,
+                                notes: i.notes,
+                            }));
+                            removeRes.pricing = await calculatePricing({
+                                restaurantId: cache.restId,
+                                items: itemsP,
+                                deals: dealsP,
+                            }).catch(() => removeRes.pricing);
+                            const dName = targetDealToInc.deal ? targetDealToInc.deal.name : 'Deal';
+                            addedCompoundNote = ` aur ${qtyToAdd > 1 ? `${qtyToAdd}x ` : ''}*${dName}* add kar di gayi hai`;
+                        }
+                    }
+
                     const { clearOrderSummarySnapshot, ORDER_STAGES } = await import('./checkoutStateMachine.js');
                     clearOrderSummarySnapshot(userSessionId);
                     const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
@@ -3408,7 +3585,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         }, cleanPhone);
                         const delCharges = removeRes.pricing.deliveryFee > 0 ? `Rs. ${removeRes.pricing.deliveryFee}` : 'Free';
                         const totalFormatted = Number(removeRes.pricing.total).toLocaleString('en-PK');
-                        const updatedSummary = `Ji bilkul! ${removeRes.removedQtyText}${removeRes.removedItemName} order se remove kar di hai. ✅\n\n` +
+                        const updatedSummary = `Ji bilkul! ${removeRes.removedQtyText}${removeRes.removedItemName} order se remove kar di hai${addedCompoundNote}. ✅\n\n` +
                             `📋 *Aap ke Updated Order ki Details:*\n` +
                             `${lines}\n\n` +
                             `🚚 *Delivery Charges:* ${delCharges}\n` +
@@ -3424,7 +3601,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             summaryShown: false,
                             awaitingFinalConfirmation: false,
                         }, cleanPhone);
-                        const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
+                        const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai${addedCompoundNote}. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
                         return await getNextCheckoutStepResponse({
                             details,
                             whatsappPhone,
@@ -4244,23 +4421,71 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const isDealInquiryCandidate = /\b(?:(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay|hy|hega)|detail|details|shamil|includes?|included|hai\s*ya\s*nahi|items?|batao|bataiye|dikhao|info)\b/i.test(lower) || lower.includes('?');
 
     if (isDealOrderCandidate && !isDealInquiryCandidate && userSessionId) {
-        let cleanDealText = lower.trim().replace(PREFIX_STRIP_REGEX, '').replace(ACTION_SUFFIX_REGEX, '');
+        const DEAL_NUM_MAP = {
+            '1': 1, 'ak': 1, 'aik': 1, 'ek': 1, 'ik': 1, 'one': 1,
+            '2': 2, 'do': 2, 'doo': 2, 'two': 2,
+            '3': 3, 'teen': 3, 'tin': 3, 'three': 3,
+            '4': 4, 'char': 4, 'chaar': 4, 'four': 4,
+            '5': 5, 'paanch': 5, 'panch': 5, 'five': 5,
+            '6': 6, 'che': 6, 'chey': 6, 'six': 6,
+            '7': 7, 'saat': 7, 'sat': 7, 'seven': 7,
+            '8': 8, 'aath': 8, 'ath': 8, 'eight': 8,
+            '9': 9, 'nau': 9, 'no': 9, 'nine': 9,
+            '10': 10, 'das': 10, 'dus': 10, 'ten': 10,
+        };
+        const QTY_WORD_RE = '(?:\\d+|ak|aik|ek|ik|one|two|do|doo|teen|tin|three|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten)';
+        const ACTION_VERBS_RE = '(?:kr\\s*d[aoeiu]+n?|kar\\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|kar\\s*dein|kr\\s*dein|karden|kar\\s*dain|kr\\s*dain|chahiye|mangwana|pack\\s*karo|pack\\s*krdo|bhejo|bhej\\s*do|order|laga\\s*do)';
+
         let dealQty = 1;
-        const qtyMatch = cleanDealText.match(/^(\d+)\s*(?:x\s+)?(.+)$/i);
-        if (qtyMatch) {
-            dealQty = parseInt(qtyMatch[1], 10);
-            cleanDealText = qtyMatch[2].trim();
-        }
-
-        // Normalize "4 bandon ki zinger deal" -> "deal 4"
         const personMatch = lower.match(/\b(\d+|aik|ek|do|teen|char|chaar|paanch|panch)\s*(?:bandon|bando|logon|logo|person|persons|people)\s*(?:ki\s*)?(?:zinger\s*|burger\s*|pizza\s*)?deal\b/i);
+        let workingText = lower.trim().replace(PREFIX_STRIP_REGEX, '');
         if (personMatch) {
-            const pMap = { '1': '1', 'aik': '1', 'ek': '1', '2': '2', 'do': '2', '3': '3', 'teen': '3', '4': '4', 'char': '4', 'chaar': '4', '5': '5', 'paanch': '5', 'panch': '5' };
-            const pNum = pMap[personMatch[1].toLowerCase()] || '4';
-            cleanDealText = `deal ${pNum}`;
+            const pNum = DEAL_NUM_MAP[personMatch[1].toLowerCase()] || '4';
+            workingText = workingText.replace(personMatch[0], 'deal ' + pNum);
         }
 
-        const dealMatch = cleanDealText.match(/^((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])(?:\s+(.+))?$/i);
+        const directDealPattern = /\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i;
+        const m = directDealPattern.exec(workingText);
+
+        let cleanDealText = '';
+        let flavourCandidate = '';
+
+        if (m) {
+            cleanDealText = m[1];
+            let before = workingText.substring(0, m.index).trim();
+            let after = workingText.substring(m.index + m[0].length).trim();
+
+            // 1. Check quantity in before (e.g. "2 burger meal for 2")
+            const leadMatch = before.match(new RegExp('(?:^|\\s)(' + QTY_WORD_RE + ')\\s*(?:x\\b)?\\s*$', 'i'));
+            if (leadMatch) {
+                dealQty = DEAL_NUM_MAP[leadMatch[1].toLowerCase()] || parseInt(leadMatch[1], 10) || 1;
+            } else {
+                // 2. Check quantity in after (post-action: 'kr dain 2')
+                const postActionMatch = after.match(new RegExp(ACTION_VERBS_RE + '\\s+(' + QTY_WORD_RE + ')\\b', 'i'));
+                if (postActionMatch) {
+                    dealQty = DEAL_NUM_MAP[postActionMatch[1].toLowerCase()] || parseInt(postActionMatch[1], 10) || 1;
+                    after = after.replace(postActionMatch[0], '').trim();
+                } else {
+                    // 3. Pre-action in after ('2 kr dain' or 'do kr dain')
+                    const preActionMatch = after.match(new RegExp('\\b(' + QTY_WORD_RE + ')\\s*(?:x\\s+)?' + ACTION_VERBS_RE, 'i'));
+                    if (preActionMatch) {
+                        dealQty = DEAL_NUM_MAP[preActionMatch[1].toLowerCase()] || parseInt(preActionMatch[1], 10) || 1;
+                        after = after.replace(preActionMatch[0], '').trim();
+                    } else {
+                        // 4. Trailing quantity in after ('2' or 'chicken tikka 2')
+                        const trailMatch = after.match(new RegExp('(?:^|\\s)(' + QTY_WORD_RE + ')\\s*(?:x)?$', 'i'));
+                        if (trailMatch) {
+                            dealQty = DEAL_NUM_MAP[trailMatch[1].toLowerCase()] || parseInt(trailMatch[1], 10) || 1;
+                            after = after.slice(0, trailMatch.index).trim();
+                        }
+                    }
+                }
+            }
+            after = after.replace(new RegExp('(?:^|\\s+)' + ACTION_VERBS_RE + '$', 'i'), '').trim();
+            flavourCandidate = after;
+        }
+
+        const dealMatch = cleanDealText ? [cleanDealText, cleanDealText, flavourCandidate] : null;
         if (dealMatch) {
             try {
                 const cache = await getCatalogCache();
