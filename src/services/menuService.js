@@ -437,12 +437,36 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         return buildDealResult(exactDeal);
     }
 
-    // 2b. Match "4 zeggy burgr wali deal", "4 zegy burger deal", "4 burger wali deal", "4 burgers deal"
+    // 2b. Match 3 Zinger combo ("3 zinger burger wali deal", "3 zinger deal", "zinger meal for 3", "3 zinger meal", "zinger deal 3", "3 zingers deal")
     const rawToCheck = (query || '').toLowerCase();
+    const threeZingerMatch = /\b(?:3|teen|tin)\s*(?:x\s+)?(?:zinger)s?\s*(?:wali\s*)?(?:deal|meal)?\b/i.test(rawToCheck) ||
+        /\b(?:zinger)s?\s*(?:wali\s*)?(?:meal|deal)\s*(?:#|no\.?\s*)?(?:for\s*)?3\b/i.test(rawToCheck) ||
+        /\b(?:zinger)s?\s*(?:meal|deal)\s*(?:for\s*)?(?:3|teen|tin)\b/i.test(rawToCheck);
+    if (threeZingerMatch) {
+        const zinger3Deal = activeDeals.find(d => 
+            /\bzinger\s*deal\s*#?3\b/i.test(d.name) ||
+            /\bdeal\s*#?5\b/i.test(d.name) ||
+            /3\s*x?\s*zinger/i.test(d.description || '') ||
+            (d.deal_items || []).some(di => di.quantity === 3 && /zinger/i.test(di.menu_item?.name || di.name || di.item_name || '')) ||
+            (d.items || []).some(di => di.quantity === 3 && /zinger/i.test(di.item_name || di.name || ''))
+        );
+        if (zinger3Deal) {
+            return buildDealResult(zinger3Deal);
+        }
+    }
+
+    // 2c. Match "4 zeggy burgr wali deal", "4 zegy burger deal", "4 burger wali deal", "4 burgers deal", "zegy meal for 4"
     const fourBurgerMatch = /\b(?:4|char|chaar)\s*(?:x\s+)?(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?(?:deal|meal)?\b/i.test(rawToCheck) ||
-        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?deal\s*(?:#|no\.?\s*)?4\b/i.test(rawToCheck);
+        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:wali\s*)?deal\s*(?:#|no\.?\s*)?4\b/i.test(rawToCheck) ||
+        /\b(?:zeggy|zegy|ziggy|burger)s?\s*(?:meal|deal)\s*(?:for\s*)?(?:4|char|chaar)\b/i.test(rawToCheck);
     if (fourBurgerMatch) {
-        const deal4 = activeDeals.find(d => /\bdeal\s*#?4\b/i.test(d.name) || /4\s*x?\s*(?:zegy|burger)/i.test(d.description || ''));
+        const deal4 = activeDeals.find(d => 
+            /\bdeal\s*#?4\b/i.test(d.name) ||
+            /\bzegy\s*deal\s*#?4\b/i.test(d.name) ||
+            /4\s*x?\s*(?:zegy|burger)/i.test(d.description || '') ||
+            (d.deal_items || []).some(di => di.quantity === 4 && /zegy/i.test(di.menu_item?.name || di.name || di.item_name || '')) ||
+            (d.items || []).some(di => di.quantity === 4 && /zegy/i.test(di.item_name || di.name || ''))
+        );
         if (deal4) {
             return buildDealResult(deal4);
         }
@@ -455,7 +479,9 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         const zNum = zingerDealMatch[1];
         const zDeal = activeDeals.find(d => 
             new RegExp(`\\bzinger\\s*deal\\s*#?${zNum}\\b`, 'i').test(d.name) ||
-            new RegExp(`\\bburger\\s*(?:deal|meal)\\s*(?:for\\s*)?#?${zNum}\\b`, 'i').test(d.name)
+            new RegExp(`\\bburger\\s*(?:deal|meal)\\s*(?:for\\s*)?#?${zNum}\\b`, 'i').test(d.name) ||
+            (zNum === '3' && /\bdeal\s*#?5\b/i.test(d.name)) ||
+            (zNum === '4' && /\bdeal\s*#?4\b/i.test(d.name))
         );
         if (zDeal) {
             return buildDealResult(zDeal);
@@ -580,48 +606,50 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isFullBox = /\b(?:full\s*box)\b/i.test(cleanQ) || (strippedQ && /\b(?:full\s*box)\b/i.test(strippedQ));
     const isChickenPiece = /\b(?:chicken\s*piece|chkn\s*piece|piece\s*chicken)\b/i.test(cleanQ) || (strippedQ && /\b(?:chicken\s*piece|chkn\s*piece|piece\s*chicken)\b/i.test(strippedQ));
 
+    const hasDealWord = /\b(?:deal|meal|combos?|packages?|wali\s*deal|wala\s*deal)\b/i.test(cleanQ) || (strippedQ && /\b(?:deal|meal|combos?|packages?|wali\s*deal|wala\s*deal)\b/i.test(strippedQ));
+
     let aliasTargetItem = null;
-    if (isRegularFries) {
+    if (isRegularFries && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'fries' || i.name.toLowerCase() === 'fries');
-    } else if (isZiggy && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isZiggy && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'zegy-burger' || /zegy\s*burger/i.test(i.name));
-    } else if (isZinger && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isZinger && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'zinger-burger' || /zinger\s*burger/i.test(i.name));
-    } else if (isChickenBurger && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isChickenBurger && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-burger' || /chicken\s*burger/i.test(i.name));
-    } else if (isLoadedFries) {
+    } else if (isLoadedFries && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'loaded-fries' || /loaded\s*fries/i.test(i.name));
-    } else if (isHotWings) {
+    } else if (isHotWings && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'hot-wings' || /hot\s*wings/i.test(i.name));
-    } else if (isOvenBakedWings) {
+    } else if (isOvenBakedWings && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'oven-baked-wings' || /oven\s*baked/i.test(i.name));
-    } else if (isBehariRoll) {
+    } else if (isBehariRoll && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'behari-roll' || /behari\s*roll/i.test(i.name));
-    } else if (isPeriPeri && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isPeriPeri && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'peri-peri' || /peri\s*peri/i.test(i.name));
-    } else if (isDrink && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isDrink && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'soft-drink' || /soft\s*drink/i.test(i.name));
-    } else if (isSupreme && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isSupreme && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-supreme' || /chicken\s*supreme/i.test(i.name));
-    } else if (isTikka && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isTikka && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-tikka' || /chicken\s*tikka/i.test(i.name));
-    } else if (isFajita && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isFajita && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-fajita' || /chicken\s*fajita/i.test(i.name));
-    } else if (isCheeseLover && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isCheeseLover && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'cheese-lover' || /cheese\s*lover/i.test(i.name));
-    } else if (isTandori && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isTandori && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-tandori' || /chicken\s*tandori/i.test(i.name));
-    } else if (isExtreme && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isExtreme && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-extreme' || /chicken\s*extreme/i.test(i.name));
-    } else if (isSnackBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isSnackBox && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'junior-chicken' || /junior\s*chicken/i.test(i.name)) || allItems.find(i => /happy\s*box/i.test(i.name));
-    } else if (isHappyBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isHappyBox && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'happy-box' || /happy\s*box/i.test(i.name));
-    } else if (isQuarterBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isQuarterBox && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'quarter-box' || /quarter\s*box/i.test(i.name));
-    } else if (isHalfBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isHalfBox && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'half-box' || /half\s*box/i.test(i.name));
-    } else if (isFullBox && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
+    } else if (isFullBox && !hasDealWord) {
         aliasTargetItem = allItems.find(i => i.slug === 'full-box' || /full\s*box/i.test(i.name));
     } else if (isChickenPiece && !cleanQ.includes('deal') && !cleanQ.includes('meal')) {
         aliasTargetItem = allItems.find(i => i.slug === 'chicken-piece' || /chicken\s*piece/i.test(i.name));

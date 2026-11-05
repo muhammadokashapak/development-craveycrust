@@ -95,11 +95,25 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
      "actions": [{ "tool": "get_menu", "args": {} }], "intent": "VIEW_MENU"
 2. Product Reference Disambiguation (Rule A):
    - Never identify a product using only one word or number when the complete customer message contains additional information!
-   - "Deal 3 krdo burger" / "Burger wali deal 3" / "Burger meal for 3" must resolve to burger deals (e.g. Burger Meal For 3 or Zinger Deal 3), NEVER Pizza Deal 3!
-   - "Pizza deal 3" must resolve to Pizza Deal 3.
-3. Category-Level Product Requests (Rule B):
+   - Cravey Deals Catalog Reference:
+     • Deal 1 = 2 Small Pizzas + 2 Reg Drinks
+     • Deal 2 = 2 Medium Pizzas + 1L Drink
+     • Deal 3 = 2 Large Pizzas + 1L/1.5L Drink (Pizza Deal 3)
+     • Deal 4 = 4 Zegy Burgers
+     • Deal 5 / Zinger Deal 3 = 3 Zinger Burgers + 1L Drink
+   - "zinger meal for 3" / "3 zinger deal" / "zinger deal 3" / "3 zinger burger wali deal" refers to the 3-Zinger deal (Zinger Deal 3 / Deal 5). Call "add_to_cart" with "itemName": "Zinger Deal 3", NEVER Pizza Deal 3, and NEVER 1 single Zinger Burger!
+   - "4 zeggy burgers deal" / "4 burger deal" refers to Deal 4 (4 Zegy Burgers). Call "add_to_cart" with "itemName": "Deal 4".
+   - "Deal 3" / "Pizza deal 3" refers to Deal 3 (2 Large Pizzas). Call "add_to_cart" with "itemName": "Deal 3".
+   - If customer orders both ("aik kam kro aik deal 3 kr do aur aik zinger meal for 3 kr do"), output TWO actions:
+     "actions": [
+       { "tool": "add_to_cart", "args": { "itemName": "Deal 3", "quantity": 1 } },
+       { "tool": "add_to_cart", "args": { "itemName": "Zinger Deal 3", "quantity": 1 } }
+     ]
+3. Category-Level vs Unavailable Product Requests (Rule B):
    - When a customer says "Pizza add kro", "Burger dikhao", "Fries mangwani hain", "Cold drink bhi add krdo":
      A general category name is NOT an unavailable product. Call "add_to_cart" with "itemName": "Pizza" (or the requested category). The backend tool will retrieve actual available choices and guide the customer.
+   - When a customer specifically asks for an unsupported or unavailable food item (e.g. "Anda burger", "Anda wala burger", "Egg burger", "Biryani", "Daal", "Fish", "Karahi"):
+     Call "add_to_cart" with "itemName": "<exact item requested, e.g. 'Anda burger'>". The backend tool will authoritatively report that this item is not available in Cravey Crust's menu.
 4. Mandatory Product Variations (Rule C):
    - Never assume product size without explicit rule. For pizzas, size is required (Small, Medium, Large). If a customer says "Chicken Tandori pizza add kro", call "add_to_cart" with "itemName": "Chicken Tandori pizza"; the backend will prompt for size before modifying the cart.
 5. Correction and Modification Understanding (Rule D):

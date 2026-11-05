@@ -240,19 +240,26 @@ export async function add_to_cart(args = {}, context = {}) {
         const dealObj = resolved.deal;
         if (isPizzaDeal(dealObj)) {
             const pizzaInfo = getDealPizzaInfo(dealObj);
-            const extractedFlavours = args.flavours || extractFlavoursFromText(itemName, pizzaInfo.pizzaCount);
+            let extractedFlavours = [];
+            if (Array.isArray(args.flavours)) {
+                extractedFlavours = args.flavours.filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
+            }
+            if (extractedFlavours.length === 0) {
+                extractedFlavours = extractFlavoursFromText(itemName, pizzaInfo.pizzaCount);
+            }
             if (extractedFlavours.length < pizzaInfo.pizzaCount) {
+                const firstFlv = (extractedFlavours[0] && !/^(?:undefined|null)$/i.test(extractedFlavours[0])) ? extractedFlavours[0] : null;
                 setPendingDealFlavour(sessionKey, {
                     deal: dealObj,
                     quantity,
                     pizzaInfo,
-                    firstFlavour: extractedFlavours[0] || null,
+                    firstFlavour: firstFlv,
                 });
                 let flavourPrompt = '';
-                if (extractedFlavours.length === 0) {
+                if (!firstFlv) {
                     flavourPrompt = formatDealFlavourPrompt(dealObj, pizzaInfo);
                 } else {
-                    flavourPrompt = formatSingleFlavourConfirmationPrompt(extractedFlavours[0], pizzaInfo);
+                    flavourPrompt = formatSingleFlavourConfirmationPrompt(firstFlv, { ...pizzaInfo, deal: dealObj });
                 }
                 return {
                     success: true,

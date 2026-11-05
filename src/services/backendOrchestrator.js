@@ -579,18 +579,20 @@ export async function handleCustomerMessage({
                     // Check pizza deal flavours
                     if (isPizzaDeal(dealObj)) {
                         const pizzaInfo = getDealPizzaInfo(dealObj);
-                        const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.pizzaCount);
+                        const extractedFlavours = extractFlavoursFromText(resolvedText, pizzaInfo.pizzaCount)
+                            .filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
                         if (extractedFlavours.length < pizzaInfo.pizzaCount) {
+                            const firstFlv = (extractedFlavours[0] && !/^(?:undefined|null)$/i.test(extractedFlavours[0])) ? extractedFlavours[0] : null;
                             setPendingDealFlavour(canonicalKey, {
                                 deal: dealObj,
                                 quantity: entities.quantity || 1,
                                 pizzaInfo,
-                                firstFlavour: extractedFlavours[0] || null,
+                                firstFlavour: firstFlv,
                             });
-                            if (extractedFlavours.length === 0) {
+                            if (!firstFlv) {
                                 backendReply = formatDealFlavourPrompt(dealObj, pizzaInfo);
                             } else {
-                                backendReply = formatSingleFlavourConfirmationPrompt(extractedFlavours[0], pizzaInfo);
+                                backendReply = formatSingleFlavourConfirmationPrompt(firstFlv, { ...pizzaInfo, deal: dealObj });
                             }
                             break;
                         }

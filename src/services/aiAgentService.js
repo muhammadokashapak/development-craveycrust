@@ -482,8 +482,9 @@ export async function executeTool(toolName, args, context) {
                     if (foundDeal) {
                         const pizzaInfo = getDealPizzaInfo(foundDeal);
                         if (pizzaInfo.isPizzaDeal) {
-                            const extracted = extractFlavoursFromText(notes, pizzaInfo.pizzaCount);
-                            if (pizzaInfo.pizzaCount === 2 && extracted.length === 1) {
+                            const extracted = extractFlavoursFromText(notes, pizzaInfo.pizzaCount)
+                                .filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
+                            if (pizzaInfo.pizzaCount === 2 && extracted.length === 1 && extracted[0]) {
                                 setPendingDealFlavour(sessionKey, {
                                     deal: foundDeal,
                                     quantity,
@@ -494,7 +495,7 @@ export async function executeTool(toolName, args, context) {
                                     requiresFlavourConfirmation: true,
                                     firstFlavour: extracted[0],
                                     dealName: foundDeal.name,
-                                    message: formatSingleFlavourConfirmationPrompt(extracted[0], pizzaInfo),
+                                    message: formatSingleFlavourConfirmationPrompt(extracted[0], { ...pizzaInfo, deal: foundDeal }),
                                 };
                             } else if (extracted.length > 0) {
                                 notes = formatFlavourNotes(extracted);
@@ -630,8 +631,9 @@ export async function executeTool(toolName, args, context) {
                                             message: `"${resolved.deal.name}" mein ${pizzaInfo.pizzaCount > 1 ? `${pizzaInfo.pizzaCount}x ${pizzaInfo.sizeName} Pizzas` : `1x ${pizzaInfo.sizeName} Pizza`} shamil hai. Pehle customer se unki pasand ka flavour poochein (Available flavours: Chicken Tikka, Chicken Fajita, Chicken Supreme, Cheese Lover, Chicken Tandori, Behari Kebab, Chicken Extreme). Flavour milne ke baad add_to_cart(..., notes: "Flavours: ...") call karein.`
                                         };
                                     } else {
-                                        const extracted = extractFlavoursFromText(dealNotes, pizzaInfo.pizzaCount);
-                                        if (pizzaInfo.pizzaCount === 2 && extracted.length === 1) {
+                                        const extracted = extractFlavoursFromText(dealNotes, pizzaInfo.pizzaCount)
+                                            .filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
+                                        if (pizzaInfo.pizzaCount === 2 && extracted.length === 1 && extracted[0]) {
                                             setPendingDealFlavour(sessionKey, {
                                                 deal: resolved.deal,
                                                 quantity,
@@ -642,7 +644,7 @@ export async function executeTool(toolName, args, context) {
                                                 requiresFlavourConfirmation: true,
                                                 firstFlavour: extracted[0],
                                                 dealName: resolved.deal.name,
-                                                message: formatSingleFlavourConfirmationPrompt(extracted[0], pizzaInfo),
+                                                message: formatSingleFlavourConfirmationPrompt(extracted[0], { ...pizzaInfo, deal: resolved.deal }),
                                             };
                                         } else if (extracted.length > 0) {
                                             notes = formatFlavourNotes(extracted);

@@ -384,11 +384,16 @@ export function formatDealFlavourPrompt(deal, pizzaInfo) {
 }
 
 export function formatSingleFlavourConfirmationPrompt(flavourName, pizzaInfo = {}) {
+    if (!flavourName || typeof flavourName !== 'string' || flavourName.trim() === '' || /^(?:undefined|null)$/i.test(flavourName.trim())) {
+        const deal = pizzaInfo.deal || { name: pizzaInfo.dealName || 'Deal' };
+        return formatDealFlavourPrompt(deal, pizzaInfo);
+    }
+    const cleanFlavour = flavourName.trim();
     const isPremium = pizzaInfo.pizzaType === 'PREMIUM';
     const altFlavours = isPremium
         ? 'Chicken Extreme, Peri Peri, Behari Kebab, Crown Crust, ya Stuffed Crust'
         : 'Chicken Tikka, Chicken Supreme, Cheese Lover, ya Chicken Tandori';
-    return `Aap ne ${flavourName} select kiya hai. Kya dono pizzas ${flavourName} rakhne hain ya doosre pizza ke liye koi aur flavour chunna chahenge (jaise ${altFlavours})?`;
+    return `Aap ne *${cleanFlavour}* select kiya hai. Kya dono pizzas *${cleanFlavour}* rakhne hain ya doosre pizza ke liye koi aur flavour chunna chahenge (jaise ${altFlavours})?`;
 }
 
 // ─── Session State for Pending Deal Flavour ───────────────────────────────

@@ -682,9 +682,10 @@ Reply cart to view cart ya checkout to continue.`,
             }
         }
 
-        const extracted = extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount);
+        const extracted = extractFlavoursFromText(cleanText, pizzaInfo.pizzaCount)
+            .filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
         if (extracted.length > 0) {
-            if (is2PizzaDeal && extracted.length === 1) {
+            if (is2PizzaDeal && extracted.length === 1 && extracted[0]) {
                 const firstFlv = extracted[0];
                 draft.pendingDealFlavour = {
                     ...pendingFlavourDeal,
@@ -695,7 +696,7 @@ Reply cart to view cart ya checkout to continue.`,
                     firstFlavour: firstFlv,
                 });
                 return {
-                    text: formatSingleFlavourConfirmationPrompt(firstFlv, pizzaInfo),
+                    text: formatSingleFlavourConfirmationPrompt(firstFlv, { ...pizzaInfo, deal: pDeal }),
                     intent: 'PROMPT_DEAL_FLAVOUR',
                     stage: convSession.stage,
                 };
