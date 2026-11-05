@@ -375,53 +375,123 @@ function createInitialDeal(id, name, slug, price, sortOrder, itemsConfig) {
 }
 
 export let FALLBACK_DEALS = [
-    createInitialDeal('deal-1', 'Pizza Meal For 1', 'deal-pizza-meal-for-1', 599, 1, [
-        { itemId: 'item-33', variantId: 'v-33-1', qty: 1 },
-        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
-    ]),
-    createInitialDeal('deal-2', 'Pizza Meal For 2', 'deal-pizza-meal-for-2', 1299, 2, [
-        { itemId: 'item-33', variantId: 'v-33-2', qty: 1 },
-        { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
-    ]),
-    createInitialDeal('deal-3', 'Pizza Meal For 3', 'deal-pizza-meal-for-3', 1599, 3, [
-        { itemId: 'item-33', variantId: 'v-33-3', qty: 1 },
+    // ── Cravey Crust Real Meal Deals (from Admin Catalog) ──
+    createInitialDeal('deal-zinger-4', 'Zinger Deal 4', 'zinger-deal-4', 2150, 1, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 5 },
         { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-4', 'Pizza Meal For 4', 'deal-pizza-meal-for-4', 2499, 4, [
-        { itemId: 'item-33', variantId: 'v-33-4', qty: 1 },
-        { itemId: 'item-34', variantId: 'v-34-4', qty: 1 },
+    createInitialDeal('deal-zinger-3', 'Zinger Deal 3', 'zinger-deal-3', 1750, 2, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 4 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-5', 'Burger Meal For 1', 'deal-burger-meal-for-1', 599, 5, [
-        { itemId: 'item-22', variantId: 'v-22-1', qty: 1 },
-        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
-        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    createInitialDeal('deal-zinger-2', 'Zinger Deal 2', 'zinger-deal-2', 1350, 3, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 3 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-6', 'Burger Meal For 2', 'deal-burger-meal-for-2', 999, 6, [
+    createInitialDeal('deal-zinger-1', 'Zinger Deal 1', 'zinger-deal-1', 950, 4, [
         { itemId: 'item-22', variantId: 'v-22-1', qty: 2 },
-        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
-        { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-7', 'Burger Meal For 3', 'deal-burger-meal-for-3', 1599, 7, [
+    createInitialDeal('deal-burger-3', 'Burger Deal 3', 'burger-deal-3', 1599, 5, [
         { itemId: 'item-22', variantId: 'v-22-1', qty: 3 },
         { itemId: 'item-10', variantId: 'v-10-1', qty: 3 },
         { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-8', 'Deal 1', 'deal-1', 1099, 8, [
+    createInitialDeal('deal-snackbox-2', 'SNACK Box 2', 'snack-box-2', 799, 6, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 1 },
+        { itemId: 'item-2',  variantId: 'v-2-1',  qty: 1 },
+        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-snackbox-1', 'SNACK Box 1', 'snack-box-1', 799, 7, [
+        { itemId: 'item-5',  variantId: 'v-5-1',  qty: 2 },
+        { itemId: 'item-2',  variantId: 'v-2-1',  qty: 1 },
+        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-midnight-2', 'Midnight 2', 'midnight-2', 899, 8, [
+        { itemId: 'item-1',  variantId: 'v-1-1',  qty: 1 },
+        { itemId: 'item-2',  variantId: 'v-2-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-midnight-1', 'Midnight 1', 'midnight-1', 999, 9, [
+        { itemId: 'item-17', variantId: 'v-17-1', qty: 1 },
+        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-dualzone-3', 'Cravey Dual Zone 3', 'cravey-dual-zone-3', 2999, 10, [
+        { itemId: 'item-36', variantId: 'v-36-3', qty: 2 },
+        { itemId: 'item-34', variantId: 'v-34-4', qty: 1 },
+    ]),
+    createInitialDeal('deal-dualzone-2', 'Cravey Dual Zone 2', 'cravey-dual-zone-2', 2099, 11, [
+        { itemId: 'item-36', variantId: 'v-36-2', qty: 2 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
+    ]),
+    createInitialDeal('deal-dualzone-1', 'Cravey Dual Zone 1', 'cravey-dual-zone-1', 1099, 12, [
+        { itemId: 'item-36', variantId: 'v-36-1', qty: 2 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
+    ]),
+    createInitialDeal('deal-cravey20-6', 'Cravey 2.0 Deal 6', 'cravey-2-0-deal-6', 2499, 13, [
+        { itemId: 'item-36', variantId: 'v-36-4', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-4', qty: 1 },
+    ]),
+    createInitialDeal('deal-cravey20-5', 'Cravey 2.0 Deal 5', 'cravey-2-0-deal-5', 1499, 14, [
+        { itemId: 'item-36', variantId: 'v-36-3', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
+    ]),
+    createInitialDeal('deal-cravey20-4', 'Cravey 2.0 Deal 4', 'cravey-2-0-deal-4', 1099, 15, [
+        { itemId: 'item-36', variantId: 'v-36-2', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
+    ]),
+
+    // ── Additional Pizza & Burger Combo Meals ──
+    createInitialDeal('deal-1', 'Pizza Meal For 1', 'deal-pizza-meal-for-1', 599, 16, [
+        { itemId: 'item-33', variantId: 'v-33-1', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-2', 'Pizza Meal For 2', 'deal-pizza-meal-for-2', 1299, 17, [
+        { itemId: 'item-33', variantId: 'v-33-2', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
+    ]),
+    createInitialDeal('deal-3', 'Pizza Meal For 3', 'deal-pizza-meal-for-3', 1599, 18, [
+        { itemId: 'item-33', variantId: 'v-33-3', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
+    ]),
+    createInitialDeal('deal-4', 'Pizza Meal For 4', 'deal-pizza-meal-for-4', 2499, 19, [
+        { itemId: 'item-33', variantId: 'v-33-4', qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-4', qty: 1 },
+    ]),
+    createInitialDeal('deal-5', 'Burger Meal For 1', 'deal-burger-meal-for-1', 599, 20, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 1 },
+        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 1 },
+    ]),
+    createInitialDeal('deal-6', 'Burger Meal For 2', 'deal-burger-meal-for-2', 999, 21, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 2 },
+        { itemId: 'item-4',  variantId: 'v-4-1',  qty: 1 },
+        { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
+    ]),
+    createInitialDeal('deal-7', 'Burger Meal For 3', 'deal-burger-meal-for-3', 1599, 22, [
+        { itemId: 'item-22', variantId: 'v-22-1', qty: 3 },
+        { itemId: 'item-10', variantId: 'v-10-1', qty: 3 },
+        { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
+    ]),
+    createInitialDeal('deal-8', 'Deal 1', 'deal-1', 1099, 23, [
         { itemId: 'item-33', variantId: 'v-33-1', qty: 2 },
         { itemId: 'item-34', variantId: 'v-34-1', qty: 2 },
     ]),
-    createInitialDeal('deal-9', 'Deal 2', 'deal-2', 2099, 9, [
+    createInitialDeal('deal-9', 'Deal 2', 'deal-2', 2099, 24, [
         { itemId: 'item-33', variantId: 'v-33-2', qty: 2 },
         { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-10', 'Deal 3', 'deal-3', 2999, 10, [
+    createInitialDeal('deal-10', 'Deal 3', 'deal-3', 2999, 25, [
         { itemId: 'item-33', variantId: 'v-33-3', qty: 2 },
         { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),
-    createInitialDeal('deal-11', 'Deal 4', 'deal-4', 999, 11, [
+    createInitialDeal('deal-11', 'Deal 4', 'deal-4', 999, 26, [
         { itemId: 'item-20', variantId: 'v-20-1', qty: 4 },
     ]),
-    createInitialDeal('deal-12', 'Deal 5', 'deal-5', 1099, 12, [
+    createInitialDeal('deal-12', 'Deal 5', 'deal-5', 1099, 27, [
         { itemId: 'item-22', variantId: 'v-22-1', qty: 3 },
         { itemId: 'item-34', variantId: 'v-34-3', qty: 1 },
     ]),

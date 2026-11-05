@@ -1620,12 +1620,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
     const hasFoodItemName = /\b(zinger|ziggy|zegy|zeggy|chicken\s*burger|crispy\s*burger|hot\s*wings|oven\s*baked|loaded\s*fries|behari\s*roll|chicken\s*extreme|chicken\s*tikka|chicken\s*fajita|chicken\s*supreme|cheese\s*lover|peri\s*peri|crown\s*crust|stuffed\s*crust|alfredo|pasta|nuggets?)\b/i.test(lower);
 
-    const hasCartOrOrderAction = hasLeadingOrderQuantity ||
+    const isCatalogViewingRequest = /\b(?:menu|deals?|card|cards|flyer|flyers|catalog|catlog|rate\s*list|food\s*list|pics?|pictures?|photos?)\b/i.test(lower) &&
+        !hasLeadingOrderQuantity && !hasFoodItemName && !/\b(?:add|cart|order\s*\d+|deal\s*#?\d)\b/i.test(lower);
+
+    const hasCartOrOrderAction = !isCatalogViewingRequest && (hasLeadingOrderQuantity ||
         hasFoodItemName ||
         /\b(add\s+to\s+cart|cart\s*(?:m|me|mai|mein)|checkout|check\s*out|daal\s*do|cancel\s+order|bar\s*(?:kr|kar)\s*do|sari\s+deals?|har\s+deal)\b/i.test(lower) ||
         /\b(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|chahiye|chaiye|chahye|chahey|chahein|mangwao|bhejo|bhej\s*do|dedo|de\s*do|order\s*karo|order\s*krdo|order\s*dein|order\s*dain)\b/i.test(lower) ||
         /^(?:add|order)\s+(?!show|status|dikhao|dekhao|check|track|kahan|kidhar|kia|kya|details?|info|history|list|confirm|cancel|delete|update|badal)(?:\d+|aik|ek|do|teen|char|paanch|[a-z]+)/i.test(lower) ||
-        /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower);
+        /^(?:(?:\d+)|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five))\s*(?:x\s+)?(?:pizza|burger|deal|zinger|ziggy|zegy|roll|wings|fries)/i.test(lower));
 
     // ── 1. Handover / Complaint / Real Person Request ──
     const isFoodOrDealContext = /\b(?:deals?|meals?|offers?|packages?|combos?|pizza|burger|fries|food|khana|menu|catalog|items?|order|serving|servings|person\s*deal|person\s*meal|bando\s*ki\s*deal|bando\s*k\s*liye|bandon\s*k\s*liye)\b/i.test(lower) ||
@@ -3795,7 +3798,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // Recognizes: "deal 4", "zinger deal 4", "4 bandon ki deal", "4 bandon ki zinger deal", "burger meal for 4"
     const isPersonDealOrder = /\b(?:(\d+|aik|ek|do|teen|char|chaar|paanch|panch)\s*(?:bandon|bando|logon|logo|person|persons|people)\s*(?:ki\s*)?(?:zinger\s*|burger\s*|pizza\s*)?deal)\b/i.test(lower);
     const isDealOrderCandidate = isPersonDealOrder || /\b((?:burger|zinger)\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|pi[z]+a\s*(?:meal|deal)\s*(?:#|no\.?)?\s*(?:for\s*)?[1-5]|deal\s*#?\s*[1-5])\b/i.test(lower);
-    const isDealInquiryCandidate = /\b(?:(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay|hy|hega)|detail|details|shamil|includes?|items?|batao|bataiye|dikhao|info)\b/i.test(lower);
+    const isDealInquiryCandidate = /\b(?:(?:kya|kia|kay)\s*(?:kya|kia|kay)?\s*(?:h|ha|hai|hay|hy|hega)|detail|details|shamil|includes?|included|hai\s*ya\s*nahi|items?|batao|bataiye|dikhao|info)\b/i.test(lower) || lower.includes('?');
 
     if (isDealOrderCandidate && !isDealInquiryCandidate && userSessionId) {
         let cleanDealText = lower.trim().replace(PREFIX_STRIP_REGEX, '').replace(ACTION_SUFFIX_REGEX, '');
@@ -3824,10 +3827,13 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const wantsBurgerOrZinger = /\b(?:burger|zinger|zegy)\b/i.test(lower);
                 const wantsPizza = /\b(?:pizza|piza)\b/i.test(lower);
 
+                const isExplicitZingerDeal = /zinger/i.test(dealMatch[1]);
                 const bMealMatch = queryNorm.match(/(?:burger|zinger)(?:deal|meal)(?:for)?([1-5])/);
                 if (bMealMatch) {
                     const num = parseInt(bMealMatch[1], 10);
-                    if (num >= 4) {
+                    if (isExplicitZingerDeal) {
+                        queryNorm = `zingerdeal${num}`;
+                    } else if (num >= 4) {
                         queryNorm = `deal${num}`;
                     } else {
                         queryNorm = `burgermealfor${num}`;
@@ -5108,7 +5114,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Fast Route: Both Menu AND Deals Request (Send Menu completely first, then Deals) ──
     const isBothMenuAndDeals = (
         (/\b(?:menu|manu|menue|mainu|card|catalog|catlog|rate\s*list|food\s*list)\b/i.test(lower) && /\b(?:deals?|offers?|combos?|packages?)\b/i.test(lower)) ||
-        /\b(?:menu\s*(?:aur|and|&|\+)\s*deals?|deals?\s*(?:aur|and|&|\+)\s*menu)\b/i.test(lower) ||
+        /\b(?:menu\s*(?:aur|and|or|&|\+)\s*deals?|deals?\s*(?:aur|and|or|&|\+)\s*menu)\b/i.test(lower) ||
         /\b(?:dono\s*(?:dikhao|dekhao|bhejo|send|share|dein|do|chahiye)|menu\s*bhi\s*aur\s*deals?\s*bhi|deals?\s*bhi\s*aur\s*menu\s*bhi)\b/i.test(lower)
     ) && !hasCartOrOrderAction;
 

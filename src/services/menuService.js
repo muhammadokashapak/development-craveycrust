@@ -196,9 +196,9 @@ export async function getActiveDeals(restaurantId) {
         const restId = restaurantId || await getDefaultRestaurantId().catch(() => 'default-restaurant');
         const now = new Date();
 
-        const deals = await prisma.deal.findMany({
+        let deals = await prisma.deal.findMany({
             where: {
-                restaurant_id: restId,
+                ...(restId ? { restaurant_id: restId } : {}),
                 is_active: true,
                 AND: [
                     { OR: [{ start_at: null }, { start_at: { lte: now } }] },
@@ -220,13 +220,40 @@ export async function getActiveDeals(restaurantId) {
             },
         });
 
-        // Verify all items inside deal are active and available
-        const validDeals = deals.filter(deal => {
+        // If no deals found for specific restaurant ID, fall back to global active deals
+        if ((!deals || deals.length === 0) && restId) {
+            deals = await prisma.deal.findMany({
+                where: {
+                    is_active: true,
+                    AND: [
+                        { OR: [{ start_at: null }, { start_at: { lte: now } }] },
+                        { OR: [{ end_at: null }, { end_at: { gte: now } }] },
+                    ],
+                },
+                orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
+                include: {
+                    deal_items: {
+                        include: {
+                            menu_item: {
+                                select: { id: true, name: true, is_active: true, is_available: true },
+                            },
+                            menu_variant: {
+                                select: { id: true, name: true, is_available: true },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+
+        // Verify items inside deal: only exclude if a contained item or variant is explicitly unavailable
+        const validDeals = (deals || []).filter(deal => {
+            if (!deal.deal_items || deal.deal_items.length === 0) return true;
             return deal.deal_items.every(di => {
-                if (!di.menu_item || !di.menu_item.is_active || !di.menu_item.is_available) {
+                if (di.menu_item && (di.menu_item.is_active === false || di.menu_item.is_available === false)) {
                     return false;
                 }
-                if (di.menu_variant && !di.menu_variant.is_available) {
+                if (di.menu_variant && di.menu_variant.is_available === false) {
                     return false;
                 }
                 return true;
@@ -300,8 +327,10 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     rawItemQ = rawItemQ.replace(/^(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))\s*(?:x\s+)?/i, '').trim();
     // Also strip trailing ordering verbs
     rawItemQ = rawItemQ.replace(/\s+(?:(?:order\s*)?(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do))|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add\s*(?:karo|kar\s*do|kr\s*do))[\s.!?]*$/i, '').trim();
-    // Also strip trailing discrete item quantities (e.g. snackbox 1 -> snackbox)
-    if (!/\b(?:deal|meal)\b/i.test(rawItemQ)) {
+    // Guard: Only strip trailing item quantity if the query does NOT match a known numbered combo/deal
+    // (e.g. snackbox 1/2, midnight 1/2, dual zone 1/2/3, 2.0 deal 4/5/6, zinger deal 1-4)
+    const isNumberedComboOrDeal = /\b(?:deal|meal|snack\s*box|snackbox|snakbox|midnight|dual\s*zone|zone|cravey)\b/i.test(rawItemQ);
+    if (!isNumberedComboOrDeal) {
         rawItemQ = rawItemQ.replace(/\s+(?:(?:\d+(?!\.\d+)(?!\s*(?:l|liter|litre|ltr)\b))|(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch|chay|chey|saat|aath|ath|nau|dus|das|one|two|three|four|five|six|seven|eight|nine|ten))$/i, '').trim();
     }
     const cleanQ = rawItemQ;
@@ -339,17 +368,18 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     }
 
     // Normalized queries (stripping "for", spaces, and punctuation for alias comparison)
-    const normCleanQ = cleanQ.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
-    const normStrippedQ = strippedQ ? strippedQ.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '') : '';
+    const normCleanQ = cleanQ.replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
+    const normStrippedQ = strippedQ ? strippedQ.replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '') : '';
 
-    // Exact deal name or slug match first (e.g. "Deal 1", "Burger Meal For 1", "Burger Meal 2")
+    // Exact deal name or slug match first (e.g. "Deal 1", "Zinger Deal 3", "SNACK Box 1", "Midnight 1", "Cravey Dual Zone 2")
     const exactDeal = activeDeals.find(d => {
-        const dNorm = (d.name || '').toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
-        const dSlug = (d.slug || '').toLowerCase();
+        const dNorm = (d.name || '').toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
+        const dSlug = (d.slug || '').toLowerCase().replace(/#|\.|\s+|-/g, '');
         const dName = (d.name || '').toLowerCase();
         return dSlug === cleanQ ||
             dName === cleanQ ||
             dNorm === normCleanQ ||
+            (normCleanQ.length >= 6 && (dNorm.endsWith(normCleanQ) || dNorm.includes(normCleanQ))) ||
             (strippedQ && (dSlug === strippedQ || dName === strippedQ || dNorm === normStrippedQ));
     });
     if (exactDeal) {
@@ -367,12 +397,28 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
         }
     }
 
-    // Specific Burger Meal / Pizza Meal alias check (e.g. "burger deal 3", "zinger deal 4", "pizza deal 2")
-    const burgerDealMatch = cleanQ.match(/\b(?:burger|zinger|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
-        (strippedQ && strippedQ.match(/\b(?:burger|zinger|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
+    // Specific Zinger Deal alias check (e.g. "zinger deal 3", "zinger deal 2", "zinger deal 4")
+    const zingerDealMatch = cleanQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
+        (strippedQ && strippedQ.match(/\b(?:zinger|zeggy|zegy)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
+    if (zingerDealMatch) {
+        const zNum = zingerDealMatch[1];
+        const zDeal = activeDeals.find(d => 
+            new RegExp(`\\bzinger\\s*deal\\s*#?${zNum}\\b`, 'i').test(d.name) ||
+            new RegExp(`\\bdeal\\s*#?${zNum}\\b`, 'i').test(d.name) ||
+            new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${zNum}\\b`, 'i').test(d.name)
+        );
+        if (zDeal) {
+            return buildDealResult(zDeal);
+        }
+    }
+
+    // Specific Burger Meal / Burger Deal alias check (e.g. "burger deal 3", "burger meal 2")
+    const burgerDealMatch = cleanQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i) ||
+        (strippedQ && strippedQ.match(/\b(?:burger)\s*(?:deal|meal)\s*(?:#|no\.?)?\s*([1-5])\b/i));
     if (burgerDealMatch) {
         const bNum = burgerDealMatch[1];
         const bDeal = activeDeals.find(d => 
+            new RegExp(`\\bburger\\s*deal\\s*#?${bNum}\\b`, 'i').test(d.name) ||
             new RegExp(`\\bburger\\s*meal\\s*(?:for\\s*)?${bNum}\\b`, 'i').test(d.name) ||
             (new RegExp(`\\bdeal\\s*#?${bNum}\\b`, 'i').test(d.name) && !/cravey\s*2\.?0/i.test(d.name))
         );

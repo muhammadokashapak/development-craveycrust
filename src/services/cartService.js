@@ -532,12 +532,13 @@ export async function validateCartItemInput({ restaurantId, menuItemId, variantI
         // 3. Fallback to FALLBACK_DEALS if not in DB, DB offline, or fallback ID passed
         if (!deal) {
             const lowerDealId = String(dealId).toLowerCase();
-            const lowerNorm = lowerDealId.replace(/\bfor\b/gi, '').replace(/#|\s+/g, '');
+            const lowerNorm = lowerDealId.replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '');
             deal = FALLBACK_DEALS.find(d => 
                 d.id.toLowerCase() === lowerDealId || 
                 d.slug.toLowerCase() === lowerDealId || 
                 d.name.toLowerCase() === lowerDealId ||
-                d.name.toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\s+/g, '') === lowerNorm
+                d.name.toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '') === lowerNorm ||
+                (lowerNorm.length >= 6 && d.name.toLowerCase().replace(/\bfor\b/gi, '').replace(/#|\.|\s+/g, '').includes(lowerNorm))
             );
         }
 

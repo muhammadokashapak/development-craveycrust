@@ -1,29 +1,25 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- * ║   AI Context Interpreter — src/services/aiContextInterpreter.js ║
- * ║   AI for Natural Language Understanding & Context ONLY      ║
+ * ║   AI Context Interpreter & Action Planner                   ║
+ * ║   src/services/aiContextInterpreter.js                       ║
  * ╚══════════════════════════════════════════════════════════════╝
  *
  * Core Principle:
- *   AI UNDERSTANDS.
- *   BACKEND THINKS AND DECIDES.
- *   BACKEND EXECUTES.
- *   BACKEND VALIDATES.
- *   BACKEND RESPONDS.
- *
- * The AI is NEVER given tools. It NEVER directly modifies the database,
- * alters carts, or generates customer-facing messages.
- * It ONLY outputs structured JSON representing customer intent, referenced
- * entities, operations, and conversational context.
+ *   AI UNDERSTANDS FULL SENTENCES & MULTI-INTENTS.
+ *   AI PLANS STRUCTURED ACTIONS (TOOL CALLS).
+ *   BACKEND EXECUTES AUTHORITATIVELY AGAINST DATABASE.
+ *   BACKEND RESPONDS GROUNDED IN TOOL RESULTS.
  */
 
 import { routeLLM } from './llmRouter.js';
 import { classifyCustomerIntent, INTENTS } from './intentRouter.js';
 
-// ── Strict Intent Categories (Section 4) ──────────────────────────────────
+// ── Strict Intent Categories ──────────────────────────────────
 export const INTENT_CATEGORIES = {
-    // Informational
-    MENU_QUERY: 'MENU_QUERY',
+    // Informational & Catalogs
+    VIEW_MENU: 'VIEW_MENU',
+    VIEW_DEALS: 'VIEW_DEALS',
+    VIEW_BOTH: 'VIEW_BOTH',
     DEAL_QUERY: 'DEAL_QUERY',
     PRODUCT_QUERY: 'PRODUCT_QUERY',
     CART_QUERY: 'CART_QUERY',
@@ -63,55 +59,85 @@ export const INTENT_CATEGORIES = {
     AMBIGUOUS_INTENT: 'AMBIGUOUS_INTENT',
 };
 
-const SYSTEM_PROMPT = `You are the Roman Urdu Context & Intent Interpreter for Cravey Crust fast food ordering system.
+const SYSTEM_PROMPT = `You are the AI Understanding & Action Planning Engine for Cravey Crust fast food ordering system on WhatsApp.
 
-Your SOLE task is to analyze the incoming customer message in Roman Urdu/Urdu/English and return a structured JSON object representing their intent, referenced entities, and context.
+Your task is to analyze the complete incoming customer message in Roman Urdu / Urdu / English, understand all intents, and output a structured JSON Action Plan.
 
-CRITICAL RULES:
-1. Respond ONLY with valid raw JSON. No explanations, no markdown code blocks, no conversational text.
-2. NEVER generate customer-facing messages or replies.
-3. NEVER generate executable tool calls or function names.
-4. Do NOT invent database IDs, prices, or customer details. Use null for unknown values.
-5. Context Understanding Rules:
-   - "Is mein drink included hai?" / "konsi drink hai": intent = "DEAL_QUERY", operation = "READ_ONLY", context_reference = "CURRENT_CART_ITEM".
-   - "Aik aur drink kar do" / "extra drink add kr do": intent = "ADD_ITEM", operation = "ADD", entities.product_name = "Soft Drink".
-   - "Wohi deal dobara add kar do": intent = "ADD_ITEM", operation = "ADD", context_reference = "PREVIOUS_INFO".
-   - "Nahi yehi rahy ga" / "same rehne do": intent = "PRESERVE_CURRENT_SELECTION", operation = "NO_CHANGE".
-   - "Bataya to tha" / "pehle bataya tha": intent = "REFER_TO_PREVIOUS_INFORMATION", operation = "READ_ONLY".
-   - "Haan confirm kar do" / "haan kardo": intent = "CONFIRM_ORDER", customer_confirmation = true.
-   - If customer shares an address or location: intent = "PROVIDE_ADDRESS", entities.address = "<extracted address>".
-   - If customer states their name: intent = "PROVIDE_NAME", entities.customer_name = "<extracted name>".
-   - If customer chooses payment ("Cash" / "COD" / "EasyPaisa"): intent = "PAYMENT_QUERY", entities.payment_method = "COD" | "EASYPAISA".
+AVAILABLE BACKEND TOOLS (select 1 or more actions in the "actions" array):
+1. "get_menu" — args: { "category"?: string } (when customer wants to see menu)
+2. "get_deals" — args: { "dealType"?: "all" | "burger" | "pizza" } (when customer wants to see deals)
+3. "get_deal_details" — args: { "dealName": string } (when customer asks what is included in a specific deal, e.g. "Deal 3 mein drink included hai?")
+4. "get_product_details" — args: { "queryType": "cheapest" | "best" | "zinger" | "burger" | "pizza", "query"?: string }
+5. "add_to_cart" — args: { "itemName": string, "quantity"?: number, "size"?: string }
+6. "remove_from_cart" — args: { "itemName": string, "quantity"?: number }
+7. "get_cart" — args: {} (when customer asks what is in their cart or total bill)
+8. "update_customer_details" — args: { "name"?: string, "phone"?: string, "address"?: string, "paymentMethod"?: "COD" | "EASYPAISA" }
+9. "validate_delivery_location" — args: { "address": string }
+10. "confirm_order" — args: {} (when customer explicitly confirms: "haan", "confirm", "theek hai order book kr do")
+11. "get_order_status" — args: { "orderNumber"?: string } (when customer asks "order show kro" or "mera order kahan hai")
+12. "request_order_cancellation" — args: {} (when customer wants to cancel an existing order)
 
-REQUIRED JSON SCHEMA:
+CRITICAL SENTENCE UNDERSTANDING RULES:
+1. Multi-Intent Handling:
+   - "Deals or menu dikhao" / "deals aur menu dono bhejo" / "dono bhejo": Customer wants BOTH catalogs! Return TWO actions:
+     "actions": [{ "tool": "get_menu", "args": {} }, { "tool": "get_deals", "args": {} }], "intent": "VIEW_BOTH"
+   - "Deals bhejo" / "deals dikhao" / "deals": Customer wants deals catalog:
+     "actions": [{ "tool": "get_deals", "args": {} }], "intent": "VIEW_DEALS"
+   - "Menu bhejo" / "menu dikhao" / "menu": Customer wants menu catalog:
+     "actions": [{ "tool": "get_menu", "args": {} }], "intent": "VIEW_MENU"
+2. Informational Questions vs. Adding Items:
+   - "Deal 3 mein drink included hai ya nahi?" / "is deal mein kya kya hai": Customer is ASKING INFORMATION, NOT ordering!
+     "actions": [{ "tool": "get_deal_details", "args": { "dealName": "Deal 3" } }], "intent": "DEAL_QUERY"
+   - NEVER call add_to_cart for questions about a deal or item!
+3. Multiple Items in One Message:
+   - "Aik deal 3 krdo aur aik burger meal for 3 bhi add krdo": Return TWO add_to_cart actions:
+     "actions": [
+       { "tool": "add_to_cart", "args": { "itemName": "Deal 3", "quantity": 1 } },
+       { "tool": "add_to_cart", "args": { "itemName": "Burger Meal For 3", "quantity": 1 } }
+     ]
+4. Item Removal:
+   - "drink ko remove kr do" / "remove 1 soft drink":
+     "actions": [{ "tool": "remove_from_cart", "args": { "itemName": "drink", "quantity": 1 } }], "intent": "REMOVE_ITEM"
+5. Menu Inquiries:
+   - "sb sa low level price wla item bato" / "cheapest item": "actions": [{ "tool": "get_product_details", "args": { "queryType": "cheapest" } }]
+   - "best item konsa hai" / "top item": "actions": [{ "tool": "get_product_details", "args": { "queryType": "best" } }]
+   - "kon kon sa zinger hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "zinger" } }]
+   - "kon kon sa burgers hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "burger" } }]
+   - "pizza name batoo kon kon sa hain": "actions": [{ "tool": "get_product_details", "args": { "queryType": "pizza" } }]
+6. Ordering Any Item (including unavailable/off-menu items):
+   - When customer says "chahiye", "chiye", "mangwana", "bhej do", "kar do", "add" for ANY food item (e.g. "Anda wla burger chiye mujay", "biryani chahiye", "fish burger kar do"):
+     ALWAYS return an "add_to_cart" action with the exact item requested:
+     "actions": [{ "tool": "add_to_cart", "args": { "itemName": "Anda wla burger", "quantity": 1 } }], "intent": "ADD_ITEM"
+     The backend tool will authoritatively check the menu and clearly report if it is not available.
+7. Order Confirmation:
+   - "haan" / "confirm" / "theek hai book kardo": "actions": [{ "tool": "confirm_order", "args": {} }], "intent": "CONFIRM_ORDER"
+
+OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {
+  "reasoning": "<1 sentence explanation of customer intent>",
   "intent": "<ONE_OF_INTENT_CATEGORIES>",
-  "confidence": <number between 0.0 and 1.0>,
+  "confidence": <number 0.0 to 1.0>,
+  "actions": [
+    { "tool": "<tool_name>", "args": { ... } }
+  ],
   "referenced_entity": {
     "type": "deal" | "item" | "none",
-    "name": "<name of deal or item referenced or null>",
-    "id": null
+    "name": "<name of deal or item or null>"
   },
   "entities": {
     "product_name": "<string or null>",
     "quantity": <number or null>,
     "size": "<string or null>",
-    "flavour": "<string or null>",
     "customer_name": "<string or null>",
     "phone": "<string or null>",
     "address": "<string or null>",
     "payment_method": "<COD | EASYPAISA | null>"
   },
-  "operation": "ADD" | "REMOVE" | "UPDATE" | "READ_ONLY" | "NO_CHANGE" | "CONFIRM",
-  "context_reference": "CURRENT_CART_ITEM" | "PREVIOUS_INFO" | "NONE",
-  "customer_confirmation": <true | false>,
-  "ambiguity": <true | false>,
-  "clarification_required": <true | false>,
-  "clarification_reason": "<string or null>"
+  "customer_confirmation": <true | false>
 }`;
 
 /**
- * Clean and parse LLM output into validated JSON
+ * Clean and parse LLM output into validated JSON Action Plan
  */
 function parseAndValidateJson(raw) {
     if (!raw || typeof raw !== 'string') return null;
@@ -126,10 +152,22 @@ function parseAndValidateJson(raw) {
         const parsed = JSON.parse(cleaned);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 
-        // Ensure basic schema fields exist
+        const rawActions = Array.isArray(parsed.actions) ? parsed.actions : [];
+        const actions = rawActions.map(a => {
+            if (a && typeof a === 'object' && a.tool) {
+                return {
+                    tool: String(a.tool).trim(),
+                    args: a.args && typeof a.args === 'object' ? a.args : {},
+                };
+            }
+            return null;
+        }).filter(Boolean);
+
         return {
+            reasoning: parsed.reasoning || '',
             intent: parsed.intent || 'GENERAL_CONVERSATION',
             confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,
+            actions,
             referenced_entity: {
                 type: parsed.referenced_entity?.type || 'none',
                 name: parsed.referenced_entity?.name || null,
@@ -139,18 +177,13 @@ function parseAndValidateJson(raw) {
                 product_name: parsed.entities?.product_name || null,
                 quantity: parsed.entities?.quantity ? Number(parsed.entities.quantity) : 1,
                 size: parsed.entities?.size || null,
-                flavour: parsed.entities?.flavour || null,
                 customer_name: parsed.entities?.customer_name || null,
                 phone: parsed.entities?.phone || null,
                 address: parsed.entities?.address || null,
                 payment_method: parsed.entities?.payment_method || null,
             },
             operation: parsed.operation || 'READ_ONLY',
-            context_reference: parsed.context_reference || 'NONE',
             customer_confirmation: Boolean(parsed.customer_confirmation),
-            ambiguity: Boolean(parsed.ambiguity),
-            clarification_required: Boolean(parsed.clarification_required),
-            clarification_reason: parsed.clarification_reason || null,
         };
     } catch (_) {
         return null;
@@ -158,47 +191,102 @@ function parseAndValidateJson(raw) {
 }
 
 /**
- * Fallback deterministic interpretation when LLM is unavailable or unparseable
+ * Fallback deterministic interpretation when LLM is offline
  */
 function fallbackDeterministicInterpretation(text, sessionDetails, orderStage) {
+    const lower = (text || '').toLowerCase().trim();
+
+    // 1. Check for Both Menu & Deals
+    const isBoth = (
+        (/\b(?:menu|manu|card|catalog)\b/i.test(lower) && /\b(?:deals?|combos?)\b/i.test(lower)) ||
+        /\b(?:menu\s*(?:aur|and|or|&|\+)\s*deals?|deals?\s*(?:aur|and|or|&|\+)\s*menu|dono)\b/i.test(lower)
+    );
+    if (isBoth) {
+        return {
+            reasoning: 'Fallback detected request for both menu and deals',
+            intent: 'VIEW_BOTH',
+            confidence: 0.95,
+            actions: [
+                { tool: 'get_menu', args: {} },
+                { tool: 'get_deals', args: {} },
+            ],
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 2. Check for Deals
+    if (/\b(?:deals?|combos?|packages?)\b/i.test(lower) && !/\b(?:add|order\s*\d|cart)\b/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected request for deals',
+            intent: 'VIEW_DEALS',
+            confidence: 0.95,
+            actions: [{ tool: 'get_deals', args: {} }],
+            referenced_entity: { type: 'deal', name: 'Deals' },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 3. Check for Menu
+    if (/\b(?:menu|card|catalog)\b/i.test(lower) && !/\b(?:add|order\s*\d|cart)\b/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected request for menu',
+            intent: 'VIEW_MENU',
+            confidence: 0.95,
+            actions: [{ tool: 'get_menu', args: {} }],
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 4. Default intent classification
     const parsed = classifyCustomerIntent(text, { orderStage });
+    const actions = [];
+
+    if (parsed.intent === 'ADD_ITEM') {
+        actions.push({
+            tool: 'add_to_cart',
+            args: { itemName: parsed.referencedTopic || text, quantity: 1 },
+        });
+    } else if (parsed.intent === 'REMOVE_ITEM') {
+        actions.push({
+            tool: 'remove_from_cart',
+            args: { itemName: parsed.referencedTopic || text },
+        });
+    } else if (parsed.intent === 'CONFIRM_ORDER') {
+        actions.push({ tool: 'confirm_order', args: {} });
+    }
+
     return {
+        reasoning: 'Fallback deterministic intent classification',
         intent: parsed.intent || 'GENERAL_CONVERSATION',
         confidence: 0.85,
+        actions,
         referenced_entity: {
             type: parsed.referencedTopic ? 'item' : 'none',
             name: parsed.referencedTopic || null,
-            id: null,
         },
         entities: {
             product_name: parsed.referencedTopic || null,
             quantity: 1,
-            size: null,
-            flavour: null,
             customer_name: sessionDetails?.name || null,
             phone: sessionDetails?.phone || null,
             address: sessionDetails?.address || null,
             payment_method: sessionDetails?.paymentMethod || null,
         },
         operation: parsed.isModification ? 'ADD' : 'READ_ONLY',
-        context_reference: parsed.referencedTopic ? 'CURRENT_CART_ITEM' : 'NONE',
-        customer_confirmation: false,
-        ambiguity: false,
-        clarification_required: false,
-        clarification_reason: null,
+        customer_confirmation: parsed.intent === 'CONFIRM_ORDER',
     };
 }
 
 /**
- * Interpret customer message using lightweight AI Context Understanding
- *
- * @param {Object} params
- * @param {string} params.text - Customer incoming message
- * @param {string} params.orderStage - Current checkout state machine stage
- * @param {Object} params.sessionDetails - Known customer details (name, phone, address, payment)
- * @param {string} params.activeCartSummary - Current cart text representation
- * @param {Array} params.recentHistory - Last 2-3 conversation turns
- * @returns {Promise<{ context: Object, tokenUsage: Object, providerInfo: Object }>}
+ * Interpret customer message using lightweight AI Context Understanding & Action Planning
  */
 export async function interpretCustomerContext({
     text,
@@ -210,7 +298,7 @@ export async function interpretCustomerContext({
     const compactContext = [
         `CURRENT ORDER STAGE: ${orderStage}`,
         `KNOWN CUSTOMER: Name=${sessionDetails.name || 'Unknown'}, Phone=${sessionDetails.phone || 'Unknown'}, Address=${sessionDetails.address || 'Unknown'}, Payment=${sessionDetails.paymentMethod || 'Unknown'}`,
-        `ACTIVE CART / DEAL: ${activeCartSummary || 'Cart is empty'}`,
+        `ACTIVE CART: ${activeCartSummary || 'Cart is empty'}`,
     ].join('\n');
 
     const historyMessages = (recentHistory || []).slice(-3).map(h => ({
@@ -223,14 +311,14 @@ export async function interpretCustomerContext({
         ...historyMessages,
         {
             role: 'user',
-            content: `CONTEXT:\n${compactContext}\n\nCUSTOMER MESSAGE: "${text}"\n\nReturn structured JSON:`,
+            content: `CONTEXT:\n${compactContext}\n\nCUSTOMER MESSAGE: "${text}"\n\nReturn structured JSON Action Plan:`,
         },
     ];
 
     try {
         const response = await routeLLM(messages, {
             temperature: 0.0,
-            maxTokens: 256,
+            maxTokens: 512,
         });
 
         const rawContent = response?.content || '';

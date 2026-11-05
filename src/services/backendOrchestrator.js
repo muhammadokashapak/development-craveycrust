@@ -460,12 +460,69 @@ export async function handleCustomerMessage({
             model: providerInfo.model,
         });
 
-        // ── 7. Map Intent & Execute Backend Managers ──
+        // ── 7. Execute AI Planned Actions (Tool Execution Engine) ──
         let backendReply = '';
+        let backendImageUrl = null;
+        let backendImageUrls = [];
+
+        const toolContext = {
+            sessionKey: canonicalKey,
+            whatsappPhone,
+            chatId: jid,
+            sock,
+            restId,
+            locationData: activeLocation,
+            effectiveText: resolvedText,
+        };
+
+        if (Array.isArray(context.actions) && context.actions.length > 0) {
+            const isBothCatalogs = context.actions.some(a => a.tool === 'get_menu') && context.actions.some(a => a.tool === 'get_deals');
+            if (isBothCatalogs) {
+                const { get_menu, get_deals } = await import('./toolRegistry.js');
+                const mRes = await get_menu({}, toolContext);
+                const dRes = await get_deals({}, toolContext);
+
+                if (sock && (jid || canonicalKey)) {
+                    try {
+                        const { sendWhatsAppMediaOrText } = await import('../utils/media.js');
+                        await sendWhatsAppMediaOrText(sock, jid, {
+                            imageUrls: mRes.imageUrls,
+                            text: '📋 *Cravey Crust Menu:*',
+                        });
+                        await new Promise(r => setTimeout(r, 600));
+                        await sendWhatsAppMediaOrText(sock, jid, {
+                            imageUrls: dRes.imageUrls,
+                            text: '🔥 *Cravey Crust Deals:*',
+                        });
+                    } catch (_) {}
+                }
+
+                backendReply = 'Cravey Crust ka mukammal Menu aur Deals haazir hain! 🍕🍔🔥\n\nPehle menu aur deals check kar lein. Aap ko in mein se kya order karna hai? Bas naam ya deal number bata dein! 😊';
+                backendImageUrls = [...mRes.imageUrls, ...dRes.imageUrls];
+                backendImageUrl = mRes.imageUrl;
+            } else {
+                const { executeRegisteredTool } = await import('./toolRegistry.js');
+                const replies = [];
+                for (const action of context.actions) {
+                    const res = await executeRegisteredTool(action.tool, action.args, toolContext);
+                    if (res?.reply) replies.push(res.reply);
+                    else if (res?.caption) replies.push(res.caption);
+                    if (res?.imageUrl && !backendImageUrl) backendImageUrl = res.imageUrl;
+                    if (Array.isArray(res?.imageUrls) && res.imageUrls.length > 0) {
+                        backendImageUrls.push(...res.imageUrls);
+                    }
+                }
+                if (replies.length > 0) {
+                    backendReply = replies.join('\n\n');
+                }
+            }
+        }
+
+        // ── 8. Intent Switch & State Machine Fallback ──
         const intent = context.intent;
         const entities = context.entities || {};
 
-        switch (intent) {
+        if (!backendReply) switch (intent) {
             case 'CONFIRM_ORDER': {
                 if (!hasCartItems) {
                     backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
@@ -556,18 +613,66 @@ export async function handleCustomerMessage({
                 break;
             }
 
+            case 'VIEW_DEALS':
+            case 'SHOW_DEALS': {
+                const { get_deals } = await import('./toolRegistry.js');
+                const dRes = await get_deals({}, toolContext);
+                backendReply = dRes.caption;
+                backendImageUrls = dRes.imageUrls;
+                backendImageUrl = dRes.imageUrl;
+                break;
+            }
+
+            case 'VIEW_MENU':
+            case 'SHOW_MENU': {
+                const { get_menu } = await import('./toolRegistry.js');
+                const mRes = await get_menu({}, toolContext);
+                backendReply = mRes.caption;
+                backendImageUrls = mRes.imageUrls;
+                backendImageUrl = mRes.imageUrl;
+                break;
+            }
+
+            case 'VIEW_BOTH':
+            case 'SHOW_BOTH': {
+                const { get_menu, get_deals } = await import('./toolRegistry.js');
+                const mRes = await get_menu({}, toolContext);
+                const dRes = await get_deals({}, toolContext);
+
+                if (sock && (jid || canonicalKey)) {
+                    try {
+                        const { sendWhatsAppMediaOrText } = await import('../utils/media.js');
+                        await sendWhatsAppMediaOrText(sock, jid, {
+                            imageUrls: mRes.imageUrls,
+                            text: '📋 *Cravey Crust Menu:*',
+                        });
+                        await new Promise(r => setTimeout(r, 600));
+                        await sendWhatsAppMediaOrText(sock, jid, {
+                            imageUrls: dRes.imageUrls,
+                            text: '🔥 *Cravey Crust Deals:*',
+                        });
+                    } catch (_) {}
+                }
+
+                backendReply = 'Cravey Crust ka mukammal Menu aur Deals haazir hain! 🍕🍔🔥\n\nPehle menu aur deals check kar lein. Aap ko in mein se kya order karna hai? Bas naam ya deal number bata dein! 😊';
+                backendImageUrls = [...mRes.imageUrls, ...dRes.imageUrls];
+                backendImageUrl = mRes.imageUrl;
+                break;
+            }
+
             case 'DEAL_QUERY': {
-                const dealName = context.referenced_entity?.name || 'Deal';
-                if (/drink|cold\s*drink|pepsi|coke|beverage/i.test(resolvedText)) {
-                    backendReply = RESPONSE_TEMPLATES.dealDrinkIncluded({
-                        dealName,
-                        drinkDetails: '1 Liter Soft Drink',
-                    });
+                const dealName = context.referenced_entity?.name || '';
+                const isGeneralDealsAsk = !dealName || /^(?:deal|deals|sari\s*deals|all\s*deals)$/i.test(dealName);
+                if (isGeneralDealsAsk && !/drink|cold\s*drink|pepsi|coke/i.test(resolvedText)) {
+                    const { get_deals } = await import('./toolRegistry.js');
+                    const dRes = await get_deals({}, toolContext);
+                    backendReply = dRes.caption;
+                    backendImageUrls = dRes.imageUrls;
+                    backendImageUrl = dRes.imageUrl;
                 } else {
-                    backendReply = RESPONSE_TEMPLATES.dealDetails({
-                        dealName,
-                        includedItems: '• Fresh Crispy Burgers / Pizzas\n• Soft Drink (Chilled)',
-                    });
+                    const { get_deal_details } = await import('./toolRegistry.js');
+                    const dDetailRes = await get_deal_details({ dealName: dealName || resolvedText }, { restId });
+                    backendReply = dDetailRes.reply;
                 }
                 break;
             }
@@ -781,8 +886,8 @@ export async function handleCustomerMessage({
 
         return {
             text: cleanFinalReply,
-            imageUrl: null,
-            imageUrls: [],
+            imageUrl: backendImageUrl || (backendImageUrls[0] || null),
+            imageUrls: backendImageUrls,
         };
     } finally {
         _inFlightMessages.delete(canonicalKey);

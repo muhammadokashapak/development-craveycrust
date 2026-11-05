@@ -778,7 +778,8 @@ export async function handleIntentRouting(params) {
     }
 
 
-    if (NEGATIVE_ADD_REGEX.test(lower) && /\b(?:drink|fries|burger|pizza|item|extra|aur)\b/i.test(lower)) {
+    const isQuestionInquiry = /\b(?:hai\s*ya\s*nahi|shamil|included|hogi\s*ya\s*nahi|hoga\s*ya\s*nahi|kya|kia|detail|details|batao|btao)\b/i.test(lower) || lower.includes("?");
+    if (!isQuestionInquiry && NEGATIVE_ADD_REGEX.test(lower) && /\b(?:drink|fries|burger|pizza|item|extra|aur)\b/i.test(lower)) {
         return {
             handled: true,
             routeName: 'negative_add_acknowledged',
