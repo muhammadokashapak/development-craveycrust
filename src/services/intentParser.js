@@ -1925,13 +1925,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             awaitingFinalConfirmation: false,
                         }, cleanPhone);
                         const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
-                        return await getNextCheckoutStepResponse({
+                        const checkoutRes = await getNextCheckoutStepResponse({
                             details,
                             whatsappPhone,
                             cart: removeRes.updatedCart,
                             cache,
                             introMessage: removalIntro,
                         });
+                        return {
+                            ...checkoutRes,
+                            routeName: 'fast_cart_deal_removal',
+                        };
                     }
                 }
             } catch (err) {
@@ -2047,13 +2051,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             awaitingFinalConfirmation: false,
                         }, cleanPhone);
                         const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
-                        return await getNextCheckoutStepResponse({
+                        const checkoutRes = await getNextCheckoutStepResponse({
                             details,
                             whatsappPhone,
                             cart: removeRes.updatedCart,
                             cache,
                             introMessage: removalIntro,
                         });
+                        return {
+                            ...checkoutRes,
+                            routeName: 'fast_cart_item_removal',
+                        };
                     }
                 } else if (resolution.status === 'AMBIGUOUS') {
                     return {
@@ -3677,13 +3685,17 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             awaitingFinalConfirmation: false,
                         }, cleanPhone);
                         const removalIntro = `Theek hai Ji! Aapke order se *${removeRes.removedQtyText}${removeRes.removedItemName}* remove kar di gayi hai${addedCompoundNote}. ✅\n\n📋 *Aap Ka Updated Cart:*\n${lines}\n💰 *Subtotal:* Rs. ${removeRes.pricing.subtotal.toLocaleString('en-PK')}`;
-                        return await getNextCheckoutStepResponse({
+                        const checkoutRes = await getNextCheckoutStepResponse({
                             details,
                             whatsappPhone,
                             cart: removeRes.updatedCart,
                             cache,
                             introMessage: removalIntro,
                         });
+                        return {
+                            ...checkoutRes,
+                            routeName: 'fast_cart_item_removal',
+                        };
                     }
                 }
             } else {

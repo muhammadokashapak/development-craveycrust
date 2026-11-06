@@ -208,9 +208,17 @@ export async function handleCustomerMessage({
                 fastResult.routeName === 'deal_flavour_prompt' ||
                 ((hadPendingFlavour || hasPendingFlavourNow) && (fastResult.routeName === 'step_item_added_ask_confirm' || fastResult.routeName === 'step_name_needed'))
             );
+            const isCartRemovalRoute = fastResult.routeName && (
+                fastResult.routeName.startsWith('fast_cart_') ||
+                fastResult.routeName.includes('removal') ||
+                fastResult.routeName === 'deal_component_restriction' ||
+                fastResult.routeName === 'ambiguous_removal_clarification' ||
+                fastResult.routeName === 'item_not_in_cart_removal'
+            );
             const isAllowedFast = fastResult.routeName && (
                 ALLOWED_FAST_ROUTES.has(fastResult.routeName) ||
-                isFlavourRoute
+                isFlavourRoute ||
+                isCartRemovalRoute
             );
 
             if ((fastResult.handled || fastResult.reply) && hasFastContent && isAllowedFast) {

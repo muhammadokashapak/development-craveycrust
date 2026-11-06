@@ -532,7 +532,7 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
 
     // ── Case C: No matching standalone item, but product exists inside a deal ──
     const isExplicitDealRemoval = /\b(?:deal|deal\s*#?\d+|package|combo|meal|wali|waali)\b/i.test(lower);
-    if (!isExplicitDealRemoval && matchingStandalone.length === 0 && (isDrinkQuery || isBurgerQuery || isFriesQuery)) {
+    if (!isExplicitDealRemoval && matchingStandalone.length === 0 && (isDrinkQuery || isBurgerQuery || isFriesQuery || isPizzaQuery)) {
         const dealWithComponent = cart.items.find(i => {
             if (!i.deal && !i.deal_id) return false;
             const dName = (i.deal?.name || '').toLowerCase();
@@ -542,11 +542,21 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
             if (isBurgerQuery && /\b(?:burger|zinger|zegy)\b/i.test(combined)) return true;
             if (isDrinkQuery && /\b(?:drink|pepsi|coke|beverage|liter|litre)\b/i.test(combined)) return true;
             if (isFriesQuery && /\b(?:fries)\b/i.test(combined)) return true;
+            if (isPizzaQuery && /\b(?:pizza)\b/i.test(combined)) return true;
             return false;
         });
         if (dealWithComponent) {
             const dName = dealWithComponent.deal ? dealWithComponent.deal.name : 'Deal';
-            const compName = isDrinkQuery ? 'Soft Drink' : (isBurgerQuery ? 'Burger' : 'Fries');
+            const isDealWholePizza = isPizzaQuery && /pizza/i.test(dName);
+            const isDealWholeBurger = isBurgerQuery && /\b(?:burger|zinger)\b/i.test(dName);
+            if (isDealWholePizza || isDealWholeBurger) {
+                return {
+                    status: 'MATCH_FOUND',
+                    item: dealWithComponent,
+                    qtyToRemove: qtyToRemove || null,
+                };
+            }
+            const compName = isDrinkQuery ? 'Soft Drink' : (isBurgerQuery ? 'Burger' : (isPizzaQuery ? 'Pizza' : 'Fries'));
             return {
                 status: 'DEAL_COMPONENT_RESTRICTION',
                 dealItem: dealWithComponent,

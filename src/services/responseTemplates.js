@@ -43,6 +43,9 @@ export const RESPONSE_TEMPLATES = {
 
     // ── Item Removed ──
     itemRemoved({ itemName, updatedTotal = 0 }) {
+        if (Number(updatedTotal) <= 0) {
+            return `Theek hai Ji! *${itemName}* cart se remove kar diya gaya hai. ✅\n\nAap ka cart ab khali hai. Naya order shuru karne ke liye "menu" ya "deals" likhein! 😊`;
+        }
         return `Theek hai! *${itemName}* cart se remove kar diya gaya hai. 👍\n\nNaya Total: Rs. ${Number(updatedTotal).toLocaleString('en-PK')}`;
     },
 

@@ -553,7 +553,7 @@ export async function update_cart_item(args = {}, context = {}) {
  * Authoritatively locates item in active cart and executes removal.
  */
 export async function remove_from_cart(args = {}, context = {}) {
-    const { sessionKey, chatId, restId: ctxRestId } = context;
+    const { sessionKey, chatId, restId: ctxRestId, effectiveText } = context;
     const restId = ctxRestId || await getDefaultRestaurantId().catch(() => 'default');
     const activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
 
@@ -561,14 +561,26 @@ export async function remove_from_cart(args = {}, context = {}) {
         return {
             success: false,
             emptyCart: true,
-            reply: RESPONSE_TEMPLATES.emptyCartConfirmGuard(),
+            reply: 'Aap ka cart pehle se khali hai. Menu ya deals dekhne ke liye "menu" ya "deals" likhein! 😊',
         };
     }
 
-    const resolution = resolveCartItemForRemoval({
+    const rawQuery = (args.itemName && !/^(?:item|items|ye|yeh|isko|isay|mera|order)$/i.test(args.itemName.trim()))
+        ? args.itemName
+        : (effectiveText || args.itemName || '');
+
+    let resolution = resolveCartItemForRemoval({
         cart: activeCart,
-        text: args.itemName || '',
+        text: rawQuery,
     });
+
+    if (resolution.status === 'NOT_FOUND' && activeCart.items.length === 1) {
+        resolution = {
+            status: 'MATCH_FOUND',
+            item: activeCart.items[0],
+            qtyToRemove: args.quantity || null,
+        };
+    }
 
     if (resolution.status === 'MATCH_FOUND') {
         const removalResult = await executeCartItemRemoval({
