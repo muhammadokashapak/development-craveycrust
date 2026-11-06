@@ -763,7 +763,7 @@ export async function handleCustomerMessage({
 
                     // Rule C: Mandatory Product Variations (e.g. "Chicken Tandori pizza add kro" -> ask "Small, Medium ya Large?")
                     if (hasMultipleSizes && !explicitSize) {
-                        setLastDiscussedItem(canonicalKey, itemObj, null, whatsappPhone);
+                        setLastDiscussedItem(canonicalKey, itemObj, null, whatsappPhone, entities.quantity || 1);
                         const sizeOptionsStr = variants.map(v => `*${v.name}*`).join(', ');
                         backendReply = `Zabardast choice! *${itemObj.name}* ke liye kaunsa size add karun — ${sizeOptionsStr}? 😊`;
                         break;

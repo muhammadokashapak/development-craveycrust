@@ -3935,18 +3935,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             ]
         };
         let drinkQty = 1;
-        const prefixQtyMatch = lower.match(/(?:^|\b)(\d+|aik|ek|ik|do|teen|char|panch|fifteen|twenty|fifty)\s*(?:x\s*)?/i);
-        const postQtyMatch = lower.match(/\b(\d+|aik|ek|ik|do|teen|char|panch)\s*(?:drinks?|pepsi|coke|kr\s*do|kardo|add)\b/i);
+        const prefixQtyMatch = lower.match(/(?:^|\b)(\d+|aik|ek|ik|one|do|two|teen|tin|three|char|chaar|four|panch|paanch|five|che|chey|six|saat|seven|aath|eight|nau|nine|das|dus|ten|fifteen|twenty|fifty)\s*(?:x\s*)?/i);
+        const postQtyMatch = lower.match(/\b(\d+|aik|ek|ik|one|do|two|teen|tin|three|char|chaar|four|panch|paanch|five|che|chey|six|saat|seven|aath|eight|nau|nine|das|dus|ten)\s*(?:drinks?|pepsi|coke|kr\s*do|kardo|add)\b/i);
         const qm = prefixQtyMatch || postQtyMatch;
         if (qm) {
-            const wordMap = { ek: 1, aik: 1, ik: 1, one: 1, do: 2, two: 2, teen: 3, tin: 3, three: 3, char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, five: 5, fifteen: 15, twenty: 20, fifty: 50 };
+            const wordMap = { ek: 1, aik: 1, ik: 1, one: 1, do: 2, two: 2, teen: 3, tin: 3, three: 3, char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, five: 5, che: 6, chey: 6, six: 6, saat: 7, sat: 7, seven: 7, aath: 8, ath: 8, eight: 8, nau: 9, nine: 9, das: 10, dus: 10, ten: 10, fifteen: 15, twenty: 20, fifty: 50 };
             drinkQty = wordMap[qm[1].toLowerCase()] || parseInt(qm[1], 10) || 1;
         }
         setLastDiscussedItem(userSessionId, drinkItem, null, cleanPhone, drinkQty);
+        const qtyPrefix = drinkQty > 1 ? `*${drinkQty}x Soft Drinks* ke liye` : 'Soft Drink ka';
         return {
             handled: true,
             routeName: 'drink_size_prompt',
-            reply: 'Zaroor! Soft Drink ka kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤',
+            reply: `Zaroor! ${qtyPrefix} kaunsa size add karun — *Regular* (Rs. 110), *Can* (Rs. 130), *1 Liter* (Rs. 200), ya *1.5 Liter* (Rs. 240)? 🥤`,
         };
     }
 
@@ -4156,30 +4157,52 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 price = 200;
             }
 
+            // Strip size descriptors so size numbers (1.5, 1) are never mistaken for order quantity!
+            const textWithoutSizes = lower
+                .replace(/\b1\s*\.\s*5\s*(?:liter|litre|l|ltr)?/gi, '')
+                .replace(/\b1\s*(?:liter|litre|l|ltr)\b/gi, '')
+                .replace(/\b(?:dedh|derh)\s*lit(?:er|re)\b/gi, '')
+                .replace(/\b(?:regular|reg|can|tin)\b/gi, '');
+
             let qty = 1;
-            const digitQtyMatch = lower.match(/\b(\d+)\s*(?:x\s*)?(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|mirinda)\b/i) ||
-                                  lower.match(/(?:^|\b)(\d+)\s*(?:x\s*)?/i);
-            const wordQtyMatch = lower.match(/\b(aik|ek|ik|do|teen|char|panch|pandrah|bees|pachaas|fifteen|twenty|fifty)\s*(?:x\s*)?(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke)\b/i);
+            const digitQtyMatch = textWithoutSizes.match(/\b(\d+)\s*(?:x\b|\s*adad|\s*bottles?|\s*drinks?|\s*pepsi|\s*coke|\s*kar\s*do|\s*kr\s*do|\s*kardo|\s*krdo)/i) ||
+                                  textWithoutSizes.match(/\b(?:ko|kar|kr|kardo|krdo)\s*(\d+)\b/i) ||
+                                  textWithoutSizes.match(/\b(\d+)\b/);
+            const wordQtyMatch = textWithoutSizes.match(/\b(aik|ek|ik|one|do|two|teen|tin|three|char|chaar|four|panch|paanch|five|che|chey|six|saat|seven|aath|eight|nau|nine|das|dus|ten|pandrah|fifteen|bees|twenty|pachaas|fifty)\b/i);
+            const wordMap = { ek: 1, aik: 1, ik: 1, one: 1, do: 2, two: 2, teen: 3, tin: 3, three: 3, char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, five: 5, che: 6, chey: 6, six: 6, saat: 7, sat: 7, seven: 7, aath: 8, ath: 8, eight: 8, nau: 9, nine: 9, das: 10, dus: 10, ten: 10, pandrah: 15, fifteen: 15, bees: 20, twenty: 20, pachaas: 50, fifty: 50 };
+
             if (digitQtyMatch) {
                 qty = parseInt(digitQtyMatch[1], 10) || 1;
             } else if (wordQtyMatch) {
-                const wordMap = { ek: 1, aik: 1, ik: 1, do: 2, teen: 3, char: 4, panch: 5, pandrah: 15, fifteen: 15, bees: 20, twenty: 20, pachaas: 50, fifty: 50 };
                 qty = wordMap[wordQtyMatch[1].toLowerCase()] || 1;
             }
 
-            const { getActiveCart, addToCart } = await import('./cartService.js');
+            const { getActiveCart, addToCart, updateCartItem } = await import('./cartService.js');
             const cache = await getCatalogCache();
-            await addToCart({
-                sessionKey: userSessionId,
-                restaurantId: cache.restId,
-                chatId,
-                verifiedPhone: whatsappPhone,
-                menuItemId: 'item-34',
-                variantId: variantId,
-                quantity: qty,
-            });
+            const existingCart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+            const existingDrinkItem = (existingCart?.items || []).find(i => (i.menu_item_id === 'item-34' || i.menu_item?.id === 'item-34') && (i.menu_variant_id === variantId || i.menu_variant?.id === variantId));
 
-            clearLastDiscussedItem(userSessionId);
+            const isQuantitySetCommand = /\b(?:ko\s*\d+\s*(?:kr|kar|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein)|kr\s*d[ao]|kar\s*d[ao]|kardo|krdo)\b/i.test(lower);
+
+            if (existingDrinkItem && isQuantitySetCommand) {
+                await updateCartItem({
+                    sessionKey: userSessionId,
+                    cartItemId: existingDrinkItem.id,
+                    quantity: qty,
+                });
+            } else {
+                await addToCart({
+                    sessionKey: userSessionId,
+                    restaurantId: cache.restId,
+                    chatId,
+                    verifiedPhone: whatsappPhone,
+                    menuItemId: 'item-34',
+                    variantId: variantId,
+                    quantity: qty,
+                });
+            }
+
+            clearLastDiscussedItem(userSessionId, cleanPhone);
 
             const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
@@ -4336,24 +4359,65 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 const { getActiveCart, addToCart } = await import('./cartService.js');
                 const cache = await getCatalogCache();
                 const cleanItemName = lastItemEntry.item.name;
-                // Extract explicit quantity, excluding decimal size indicators like '1.5' in '1.5 Liter'
-                const withoutDecimals = lower.replace(/\b1\s*\.\s*5\b/g, '');
-                const digitQtyMatch = withoutDecimals.match(/\b(\d+)\s*(?:x\s*)?/);
-                const explicitQty = digitQtyMatch ? parseInt(digitQtyMatch[1], 10) : null;
+                // Clean all variant / size numbers from the text first so they are never mistaken for order quantity
+                const textWithoutVariantSizes = lower
+                    .replace(/\b1\s*\.\s*5\s*(?:liter|litre|l|ltr)?/gi, '')
+                    .replace(/\b1\s*(?:liter|litre|l|ltr)\b/gi, '')
+                    .replace(/\b(?:dedh|derh)\s*lit(?:er|re)\b/gi, '')
+                    .replace(/\b(?:regular|reg|can|tin)\b/gi, '');
+
+                const explicitDigitMatch = textWithoutVariantSizes.match(/\b(\d+)\s*(?:x\b|\s*adad|\s*bottles?|\s*drinks?|\s*pepsi|\s*coke|\s*kar\s*do|\s*kr\s*do|\s*kardo|\s*krdo)/i) ||
+                                           textWithoutVariantSizes.match(/\b(?:ko|kar|kr|kardo|krdo)\s*(\d+)\b/i) ||
+                                           textWithoutVariantSizes.match(/\b(\d+)\b/);
+                const explicitWordMatch = textWithoutVariantSizes.match(/\b(aik|ek|ik|one|do|two|teen|tin|three|char|chaar|four|panch|paanch|five|che|chey|six|saat|seven|aath|eight|nau|nine|das|dus|ten|pandrah|fifteen|bees|twenty|pachaas|fifty)\b/i);
+
+                const wordMap = {
+                    ek: 1, aik: 1, ik: 1, one: 1,
+                    do: 2, two: 2,
+                    teen: 3, tin: 3, three: 3,
+                    char: 4, chaar: 4, four: 4,
+                    panch: 5, paanch: 5, five: 5,
+                    che: 6, chey: 6, six: 6,
+                    saat: 7, sat: 7, seven: 7,
+                    aath: 8, ath: 8, eight: 8,
+                    nau: 9, nine: 9,
+                    das: 10, dus: 10, ten: 10,
+                    pandrah: 15, fifteen: 15, bees: 20, twenty: 20, pachaas: 50, fifty: 50
+                };
+
+                let explicitQty = null;
+                if (explicitDigitMatch) {
+                    explicitQty = parseInt(explicitDigitMatch[1], 10) || null;
+                } else if (explicitWordMatch) {
+                    explicitQty = wordMap[explicitWordMatch[1].toLowerCase()] || null;
+                }
+
                 const rememberedQty = (typeof lastItemEntry.quantity === 'number' && lastItemEntry.quantity > 0) ? lastItemEntry.quantity : 1;
                 const qty = explicitQty || rememberedQty;
 
-                await addToCart({
-                    sessionKey: userSessionId,
-                    restaurantId: cache.restId,
-                    chatId,
-                    verifiedPhone: whatsappPhone,
-                    menuItemId: lastItemEntry.item.id,
-                    variantId: matchedVariant.id,
-                    quantity: qty,
-                });
+                const { updateCartItem } = await import('./cartService.js');
+                const cartBefore = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
+                const existingSameVariant = (cartBefore?.items || []).find(it => it.menu_item_id === lastItemEntry.item.id && it.menu_variant_id === matchedVariant.id);
 
-                clearLastDiscussedItem(userSessionId);
+                if (existingSameVariant) {
+                    await updateCartItem({
+                        sessionKey: userSessionId,
+                        cartItemId: existingSameVariant.id,
+                        quantity: qty,
+                    });
+                } else {
+                    await addToCart({
+                        sessionKey: userSessionId,
+                        restaurantId: cache.restId,
+                        chatId,
+                        verifiedPhone: whatsappPhone,
+                        menuItemId: lastItemEntry.item.id,
+                        variantId: matchedVariant.id,
+                        quantity: qty,
+                    });
+                }
+
+                clearLastDiscussedItem(userSessionId, cleanPhone);
 
                 const itemPrice = Number(matchedVariant.price || lastItemEntry.item.base_price || 0) * qty;
                 const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
@@ -4685,14 +4749,15 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     const cartBefore = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
                     const existingItemInCart = (cartBefore?.items || []).find(it => it.menu_item_id === item.id);
 
+                    const targetQty = (typeof lastItemEntry.quantity === 'number' && lastItemEntry.quantity > 0) ? lastItemEntry.quantity : 1;
                     const itemName = item.name;
                     const variantName = matchedVariant.name;
-                    const price = Number(matchedVariant.price);
+                    const price = Number(matchedVariant.price) * targetQty;
 
                     const { calculateDiscount, getGlobalDiscountSettings } = await import('./discountService.js');
                     const globalDiscount = await getGlobalDiscountSettings(cache.restId).catch(() => null);
                     const disc = calculateDiscount(matchedVariant.price, matchedVariant.discount_percent ?? item.discount_percent, matchedVariant.discount_fixed ?? item.discount_fixed, globalDiscount);
-                    const pDisplay = disc.hasDiscount ? `~Rs. ${price}~ Rs. ${disc.discountedPrice}` : `Rs. ${price}`;
+                    const pDisplay = disc.hasDiscount ? `~Rs. ${Number(matchedVariant.price) * targetQty}~ Rs. ${disc.discountedPrice * targetQty}` : `Rs. ${price}`;
 
                     let introMsg = '';
                     if (existingItemInCart) {
@@ -4701,8 +4766,9 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             sessionKey: userSessionId,
                             cartItemId: existingItemInCart.id,
                             variantId: matchedVariant.id,
+                            quantity: targetQty,
                         });
-                        introMsg = `Theek hai! *${itemName} (${variantName})* ka size update kar diya gaya hai! ✅ (${pDisplay})`;
+                        introMsg = `Theek hai! *${itemName} (${variantName})* update kar diya gaya hai! ✅ (${pDisplay})`;
                     } else {
                         await addItemToCart({
                             sessionKey: userSessionId,
@@ -4711,12 +4777,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             verifiedPhone: whatsappPhone,
                             menuItemId: item.id,
                             variantId: matchedVariant.id,
-                            quantity: 1,
+                            quantity: targetQty,
                         });
                         introMsg = `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (${pDisplay})`;
                     }
 
-                    _lastDiscussedItemBySession.set(userSessionId, { item, variant: matchedVariant, timestamp: Date.now() });
+                    clearLastDiscussedItem(userSessionId, cleanPhone);
 
                     const { getSessionOrderDetails } = await import('./sessionService.js');
                     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');

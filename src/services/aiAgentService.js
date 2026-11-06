@@ -2475,6 +2475,7 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
             if (matchedVariant) {
                 console.log(`[AGENT] Auto-Rescue: Resolving pending variant "${matchedVariant.name}" for "${lastEntry.item.name}"`);
                 const { addItemToCart } = await import('./cartService.js');
+                const targetQty = (typeof lastEntry.quantity === 'number' && lastEntry.quantity > 0) ? lastEntry.quantity : 1;
                 await addItemToCart({
                     sessionKey,
                     restaurantId: restId,
@@ -2482,7 +2483,7 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
                     verifiedPhone: whatsappPhone,
                     menuItemId: lastEntry.item.id,
                     variantId: matchedVariant.id,
-                    quantity: 1,
+                    quantity: targetQty,
                 });
                 clearLastDiscussedItem(sessionKey, whatsappPhone);
                 freshCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId: jid });
