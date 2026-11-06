@@ -48,7 +48,7 @@ function normalizeQuery(str) {
 export function isClearCartIntent(text) {
     if (!text || typeof text !== 'string') return false;
     const lower = text.trim().toLowerCase();
-    return /\b(?:clear\s*(?:the\s*)?cart|empty\s*(?:the\s*)?cart|cart\s*(?:ko\s*)?(?:clear|khali|empty)|delete\s*(?:the\s*)?cart|cart\s*(?:delete|hata)|remove\s*all(?:\s*of\s*them|\s*items)?|delete\s*all(?:\s*of\s*them|\s*items)?|clear\s*all(?:\s*of\s*them|\s*items)?|empty\s*all(?:\s*of\s*them|\s*items)?|sab\s*(?:kuch\s*)?(?:hata|nikal|remove|khatam|delete|cancel|clear)|sara\s*(?:kuch\s*)?(?:hata|nikal|remove|delete|clear)|saare\s*(?:items?\s*)?(?:hata|nikal|remove|delete|clear)|po?o?ra\s*cart\s*(?:khali|clear|empty|hata|nikal)|sab\s*items?\s*(?:hata|nikal|remove|delete))\b/i.test(lower);
+    return /\b(?:clear\s*(?:the\s*)?cart|empty\s*(?:the\s*)?cart|cart\s*(?:ko\s*)?(?:clear|khali|empty)|delete\s*(?:the\s*)?cart|cart\s*(?:delete|hata)|remove\s*all(?:\s*of\s*them|\s*items)?|delete\s*all(?:\s*of\s*them|\s*items)?|clear\s*all(?:\s*of\s*them|\s*items)?|empty\s*all(?:\s*of\s*them|\s*items)?|sab\s*(?:kuch\s*)?(?:hata|nikal|remove|khatam|delete|cancel|clear)|sara\s*(?:kuch\s*)?(?:hata|nikal|remove|delete|clear)|saare\s*(?:items?\s*)?(?:hata|nikal|remove|delete|clear)|po?o?ra\s*cart\s*(?:khali|clear|empty|hata|nikal)|sab\s*items?\s*(?:hata|nikal|remove|delete)|dono(?:\s*(?:hi|bhi|items?|hat?a|nikal|cancel|delete|remove|chhor|chhoro))?|both(?:\s*(?:of\s*them|items?|remove|cancel|delete))?|tamam(?:\s*(?:items|hata|nikal|cancel))?|saray|saare|sab\s*hata\s*do|sub\s*hata\s*do)\b/i.test(lower);
 }
 
 /**
@@ -151,6 +151,14 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
 
     // ── 3. Check if answering a pending REMOVE_ITEM clarification ──
     if (pendingAction && pendingAction.action === 'REMOVE_ITEM') {
+        const isBothOrAll = /^(?:dono|dono\s*(?:hi|bhi|hata|nikal|cancel|kr\s*do|kar\s*do|dein|dain)?|both|both\s*of\s*them|all|sab|sub|tamam|saare|sare|everything)[\s.!?]*$/i.test(lower.trim()) ||
+            /\b(?:dono\s*(?:hi|bhi)?\s*(?:hata|nikal|cancel|delete|remove)|both\s*(?:of\s*them)?\s*(?:remove|cancel|delete))\b/i.test(lower);
+        if (isBothOrAll) {
+            return {
+                status: 'CLEAR_CART',
+            };
+        }
+
         const candidates = pendingAction.candidateIds
             ? cart.items.filter(i => pendingAction.candidateIds.includes(i.id))
             : cart.items;
@@ -602,6 +610,22 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
  * Execute removal atomically and recalculate pricing
  */
 export async function executeCartItemRemoval({ sessionKey, restaurantId, resolution, cart }) {
+    if (resolution.status === 'CLEAR_CART') {
+        for (const item of (cart?.items || [])) {
+            await removeCartItem({ sessionKey, cartItemId: item.id });
+        }
+        return {
+            success: true,
+            isCleared: true,
+            removedItemName: 'Tamam Items',
+            removedQtyText: '',
+            updatedCart: { items: [], subtotal: 0, total: 0 },
+            pricing: { subtotal: 0, total: 0, items: [], deals: [] },
+            subtotal: 0,
+            hasRemainingItems: false,
+        };
+    }
+
     const targetItem = resolution.item;
     const currentQty = targetItem.quantity || 1;
     const qtySpecified = resolution.qtyToRemove != null && !isNaN(resolution.qtyToRemove);

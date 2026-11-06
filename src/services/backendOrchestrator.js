@@ -216,10 +216,20 @@ export async function handleCustomerMessage({
                 fastResult.routeName === 'ambiguous_removal_clarification' ||
                 fastResult.routeName === 'item_not_in_cart_removal'
             );
+            const isAddressRoute = fastResult.routeName && (
+                fastResult.routeName === 'address_change_prompt' ||
+                fastResult.routeName === 'step_address_change_requested' ||
+                fastResult.routeName === 'step_address_incomplete' ||
+                fastResult.routeName === 'customer_location_out_of_range' ||
+                fastResult.routeName === 'address_out_of_range' ||
+                fastResult.routeName === 'step_address_clarification' ||
+                fastResult.routeName === 'request_address_change'
+            );
             const isAllowedFast = fastResult.routeName && (
                 ALLOWED_FAST_ROUTES.has(fastResult.routeName) ||
                 isFlavourRoute ||
-                isCartRemovalRoute
+                isCartRemovalRoute ||
+                isAddressRoute
             );
 
             if ((fastResult.handled || fastResult.reply) && hasFastContent && isAllowedFast) {
@@ -337,7 +347,8 @@ export async function handleCustomerMessage({
         const hasChangeIntent = /\b(?:change|badal|update)\b/i.test(resolvedText);
         const shouldUpdateAddress = (!sessionDetails.address || extracted.address || hasChangeIntent) && candidateAddress && candidateAddress.length >= 3;
         if (sessionDetails.name && sessionDetails.phoneConfirmed && shouldUpdateAddress && !updatePayload.address && !activeLocation) {
-            const isPureChangeCommand = /^(?:location|address|pata)\s*(?:change|badal|update|kardo|krdo|kar\s*do|kr\s*do)?$/i.test(resolvedText.trim());
+            const isPureChangeCommand = /^(?:location|address|pata)\s*(?:change|badal|update|kardo|krdo|kar\s*do|kr\s*do)?$/i.test(resolvedText.trim()) ||
+                /\b(?:location\s*(?:bhi\s*|b\s*)?(?:change|badal|update)|address\s*(?:bhi\s*|b\s*)?(?:change|badal|update)|(?:khi|kahin|kisi\s*aur\s*jagah|dusri\s*jagah)\s*(?:or|aur)?\s*(?:replace|shift|bhejna|mangwana)|replace\s*(?:krwna|karwana|krna|karna))\b/i.test(resolvedText);
             const isNotAddr = isPureChangeCommand || /^(?:menu|deals?|cancel|khatam|band|nahi|no|theek|ok|done|hi|hello|hey|suno|bhai|cod|easypaisa)[\s.!?]*$/i.test(resolvedText.trim()) ||
                 /\b(?:number|phone|contact|whatsapp|yahi\s*number|yehi\s*number|yeh\s*number|same\s*number)\b/i.test(resolvedText);
             if (!isNotAddr && (!sessionDetails.address || candidateAddress.toLowerCase() !== sessionDetails.address.toLowerCase())) {
@@ -346,6 +357,20 @@ export async function handleCustomerMessage({
                 updatePayload.summaryShown = false;
                 sessionDetails.summaryShown = false;
             }
+        }
+        const isPureChangeCommand = /^(?:location|address|pata)\s*(?:change|badal|update|kardo|krdo|kar\s*do|kr\s*do)?$/i.test(resolvedText.trim()) ||
+            /\b(?:location\s*(?:bhi\s*|b\s*)?(?:change|badal|update)|address\s*(?:bhi\s*|b\s*)?(?:change|badal|update)|(?:khi|kahin|kisi\s*aur\s*jagah|dusri\s*jagah)\s*(?:or|aur)?\s*(?:replace|shift|bhejna|mangwana)|replace\s*(?:krwna|karwana|krna|karna))\b/i.test(resolvedText);
+        if (isPureChangeCommand && !candidateAddress) {
+            updatePayload.address = null;
+            updatePayload.location = null;
+            updatePayload.locationConfirmed = false;
+            updatePayload.addressConfirmed = false;
+            updatePayload.summaryShown = false;
+            sessionDetails.address = null;
+            sessionDetails.location = null;
+            sessionDetails.locationConfirmed = false;
+            sessionDetails.addressConfirmed = false;
+            sessionDetails.summaryShown = false;
         }
         if (/^(?:cod|cash|cash\s*on\s*delivery|1)[\s.!?]*$/i.test(resolvedText.trim()) || /\b(?:cod|cash\s*on\s*delivery)\b/i.test(resolvedText.toLowerCase())) {
             if (!sessionDetails.paymentMethod || sessionDetails.paymentMethod !== 'COD') {
@@ -359,10 +384,12 @@ export async function handleCustomerMessage({
             }
         }
 
-        const isNoExtraItems = /^(?:nahi|nahin|na|no|nope|kuch\s*nahi|aur\s*kuch\s*nahi|aur\s*nahi|nahi\s*bhai|nahii+|bas|kuch\s*ni|nhi|nahi\s*chahiye|shukriya|sirf\s*yahi)[\s.!?]*$/i.test(resolvedText.trim()) ||
-            /\b(?:kuch\s*aur\s*nahi|aur\s*nahi\s*chahiye|extra\s*kuch\s*nahi|nahi\s*bhai|nahi\s*kuch\s*nahi)\b/i.test(resolvedText);
+        const isNoExtraItems = /^(?:nahi|nahin|na+|no+|nope|kuch\s*nahi|aur\s*kuch\s*nahi|aur\s*nahi|nahi\s*bhai|nahii+|bas|kuch\s*ni|nhi|nahi\s*chahiye|shukriya|sirf\s*yahi|thk\s*hai|theek\s*hai|sahi\s*hai|free\s*m(?:a|ein)?\s*kuch)[\s.!?]*$/i.test(resolvedText.trim()) ||
+            /\b(?:kuch\s*aur\s*nahi|aur\s*nahi\s*chahiye|extra\s*kuch\s*nahi|nahi\s*bhai|nahi\s*kuch\s*nahi|free\s*m(?:a|ein)?\s*kuch\s*ho\s*to\s*bhej|free\s*mein|free\s*ma|nahi\s*chahiye|rehne\s*do)\b/i.test(resolvedText);
         const isFinalConfirming = detectConfirmIntent(resolvedText);
-        if (isNoExtraItems || isFinalConfirming) {
+        const isAddingFood = /\b(?:add|aur|extra|bhi|daal\s*do|rakh\s*do|chahiye|mangwao)\b/i.test(resolvedText) &&
+            /\b(?:fries|burger|zinger|pizza|drink|pepsi|coke|sauce|wings|nuggets)\b/i.test(resolvedText);
+        if (isNoExtraItems || isFinalConfirming || (sessionDetails.extraItemsInquired && !isAddingFood)) {
             updatePayload.extraItemsAnswered = true;
             updatePayload.extraItemsInquired = true;
             sessionDetails.extraItemsAnswered = true;
@@ -680,6 +707,8 @@ export async function handleCustomerMessage({
                 } else if (!hasValidPayment) {
                     backendReply = RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name });
                 } else if (!sessionDetails.extraItemsAnswered) {
+                    updateSessionOrderDetails(canonicalKey, { extraItemsInquired: true }, whatsappPhone);
+                    sessionDetails.extraItemsInquired = true;
                     backendReply = RESPONSE_TEMPLATES.extraItemsUpsell({ name: sessionDetails.name });
                 } else {
                     backendReply = RESPONSE_TEMPLATES.orderProcessing();
@@ -1179,6 +1208,8 @@ export async function handleCustomerMessage({
                     } else if (!hasValidPayment) {
                         backendReply = RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name });
                     } else if (!sessionDetails.extraItemsAnswered) {
+                        updateSessionOrderDetails(canonicalKey, { extraItemsInquired: true }, whatsappPhone);
+                        sessionDetails.extraItemsInquired = true;
                         backendReply = RESPONSE_TEMPLATES.extraItemsUpsell({ name: sessionDetails.name });
                     } else {
                         backendReply = `📋 *AAP KA ORDER SUMMARY:*\n\n${activeCartSummary}\n\n*Naam:* ${sessionDetails.name}\n*Contact:* ${sessionDetails.phone}\n*Address:* ${sessionDetails.address}\n*Payment:* ${sessionDetails.paymentMethod === 'EASYPAISA' ? 'EasyPaisa' : 'Cash on Delivery (COD)'}\n\nKya aap tamam details check karke is order ko confirm karte hain? 😊 (Order book karne ke liye *"Haan"* ya *"Confirm"* likhein)`;

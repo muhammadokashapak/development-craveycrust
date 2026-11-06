@@ -671,14 +671,19 @@ export async function checkDeliveryAvailability(params) {
     const isPinProvided = Boolean(params.latitude != null && params.longitude != null) ||
         Boolean(lat != null && lng != null && (params.latitude != null || (address && (address.includes('lat=') || address.includes('google.com/maps')))));
 
+    const candidateText = [address, areaName].filter(Boolean).find(t => t && !t.startsWith('http') && !t.includes('lat='));
+    const candidateLocality = (candidateText && candidateText.trim().length >= 3 && !/takeaway|cravey/i.test(candidateText))
+        ? candidateText.trim()
+        : cleanDisplayName;
+
     // Classify ADDRESS_INCOMPLETE: recognized area or landmark without street, house, or specific details
     if (!isPinProvided && !hasSpecificAddressDetails(rawAddressText)) {
         return {
             available: false,
             code: 'ADDRESS_INCOMPLETE',
             matchedArea,
-            areaName: cleanDisplayName,
-            message: `Ji, ${cleanDisplayName} samajh aa gaya. Baraye meherbani qareebi street, sector ya kisi mashhoor landmark ka naam bata dein taake delivery location verify kar sakein. 📍`,
+            areaName: candidateLocality,
+            message: `Ji, ${candidateLocality} samajh aa gaya. Baraye meherbani qareebi street, sector ya kisi mashhoor landmark ka naam bata dein taake delivery location verify kar sakein. 📍`,
             requiresDetails: true,
             maxRadiusKm,
         };
@@ -688,7 +693,6 @@ export async function checkDeliveryAvailability(params) {
     const mapUrl = (lat != null && lng != null) ? `https://www.google.com/maps?q=${lat},${lng}` : null;
     let deliveryAddress = '';
 
-    const candidateText = [address, areaName].filter(Boolean).find(t => t && !t.startsWith('http') && !t.includes('lat='));
     if (candidateText && candidateText.trim().length > 0) {
         deliveryAddress = candidateText.trim();
         if (!deliveryAddress.toLowerCase().includes(cleanDisplayName.toLowerCase())) {
