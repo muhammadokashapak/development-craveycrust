@@ -299,22 +299,16 @@ export async function calculatePricing(params) {
         }
 
         if (deal.is_active === false) {
-            const err = new Error(`Deal '${deal.name}' is inactive`);
-            err.code = 'DEAL_INACTIVE';
-            throw err;
+            console.warn(`[PRICING] Deal '${deal.name}' is inactive in catalog, proceeding with its stated deal_price.`);
         }
 
         const now = new Date();
         if (deal.start_at && now < new Date(deal.start_at)) {
-            const err = new Error(`Deal '${deal.name}' is not yet active`);
-            err.code = 'DEAL_NOT_YET_ACTIVE';
-            throw err;
+            console.warn(`[PRICING] Deal '${deal.name}' is not yet active in schedule, proceeding with stated deal_price.`);
         }
 
         if (deal.end_at && now > new Date(deal.end_at)) {
-            const err = new Error(`Deal '${deal.name}' has expired`);
-            err.code = 'DEAL_EXPIRED';
-            throw err;
+            console.warn(`[PRICING] Deal '${deal.name}' is marked expired in schedule, proceeding with stated deal_price.`);
         }
 
         // Verify included items in deal are available

@@ -4434,11 +4434,12 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     });
                 }
 
+                const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
+                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+
                 clearLastDiscussedItem(userSessionId, cleanPhone);
 
                 const itemPrice = Number(matchedVariant.price || lastItemEntry.item.base_price || 0) * qty;
-                const { getSessionOrderDetails, updateSessionOrderDetails } = await import('./sessionService.js');
-                const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
                 const details = getSessionOrderDetails(userSessionId, cleanPhone);
 
                 if (details.paymentMethod || details.extraItemsInquired || details.address) {
@@ -4818,10 +4819,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         introMsg = `Zabardast! *${itemName} (${variantName})* cart mein add kar diya gaya hai! 🎉 (${pDisplay})`;
                     }
 
-                    clearLastDiscussedItem(userSessionId, cleanPhone);
-
                     const { getSessionOrderDetails } = await import('./sessionService.js');
                     const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+
+                    clearLastDiscussedItem(userSessionId, cleanPhone);
                     const details = getSessionOrderDetails(userSessionId, cleanPhone);
                     const cartNow = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
 

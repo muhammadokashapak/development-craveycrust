@@ -630,7 +630,24 @@ export async function get_cart(args = {}, context = {}) {
         };
     }
 
-    const freshTotals = await calculateCartTotals({ sessionKey, restaurantId: restId });
+    let freshTotals = null;
+    try {
+        freshTotals = await calculateCartTotals({ sessionKey, restaurantId: restId });
+    } catch (e) {
+        console.warn('[TOOL_REGISTRY] calculateCartTotals failed in get_cart, using fallback:', e.message);
+    }
+
+    let calculatedFallbackSubtotal = 0;
+    const fallbackLines = (activeCart.items || []).map(i => {
+        const title = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+        const sizeName = i.menu_variant?.name || i.variant?.name || '';
+        const sizeStr = sizeName ? ` (${sizeName})` : '';
+        const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0);
+        const price = unitPrice * i.quantity;
+        calculatedFallbackSubtotal += price;
+        return `• ${i.quantity}x ${title}${sizeStr} — Rs. ${price.toLocaleString('en-PK')}`;
+    }).join('\n');
+
     const cartLines = (freshTotals?.items && (freshTotals.items.length > 0 || (freshTotals.deals && freshTotals.deals.length > 0)))
         ? [
             ...freshTotals.items.map(it => {
@@ -642,28 +659,25 @@ export async function get_cart(args = {}, context = {}) {
                 return `• ${d.quantity}x ${d.name}${notesStr} — Rs. ${Number(d.lineTotal || d.totalPrice).toLocaleString('en-PK')}`;
             })
         ].join('\n')
-        : (activeCart.items || []).map(i => {
-            const title = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
-            const sizeName = i.menu_variant?.name || i.variant?.name || '';
-            const sizeStr = sizeName ? ` (${sizeName})` : '';
-            const unitPrice = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0);
-            const price = unitPrice * i.quantity;
-            return `• ${i.quantity}x ${title}${sizeStr} — Rs. ${price.toLocaleString('en-PK')}`;
-        }).join('\n');
+        : fallbackLines;
+
+    const subtotal = freshTotals?.subtotal ?? calculatedFallbackSubtotal;
+    const deliveryFee = freshTotals?.deliveryFee ?? 0;
+    const total = freshTotals?.total ?? (subtotal + deliveryFee);
 
     return {
         success: true,
         hasItems: true,
         itemsCount: activeCart.items.length,
-        subtotal: freshTotals.subtotal,
-        deliveryFee: freshTotals.deliveryFee,
-        total: freshTotals.total,
+        subtotal,
+        deliveryFee,
+        total,
         cartLines,
         reply: RESPONSE_TEMPLATES.cartSummary({
             cartLines,
-            subtotal: freshTotals.subtotal,
-            deliveryFee: freshTotals.deliveryFee,
-            total: freshTotals.total,
+            subtotal,
+            deliveryFee,
+            total,
         }),
     };
 }

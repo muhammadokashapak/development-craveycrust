@@ -584,18 +584,8 @@ export async function handleCustomerMessage({
         const intent = context.intent;
         const entities = context.entities || {};
 
-        if (!backendReply && context.conversational_reply && (
-            intent === 'GREETING' ||
-            intent === 'GENERAL_CONVERSATION' ||
-            intent === 'ACKNOWLEDGEMENT' ||
-            intent === 'PERSONA_QUERY' ||
-            intent === 'CLARIFICATION_QUERY' ||
-            intent === 'CUSTOM_DEAL_REQUEST' ||
-            intent === 'CHEAPEST_DEALS_QUERY' ||
-            intent === 'CHEAPEST_ITEMS_QUERY' ||
-            intent === 'DECLINE_ORDERING'
-        )) {
-            backendReply = context.conversational_reply;
+        if (!backendReply && typeof context.conversational_reply === 'string' && context.conversational_reply.trim()) {
+            backendReply = context.conversational_reply.trim();
         }
 
         if (!backendReply) switch (intent) {
@@ -647,7 +637,10 @@ export async function handleCustomerMessage({
                 break;
             }
 
-            case 'CONFIRM_ORDER': {
+            case 'CONFIRM_ORDER':
+            case 'CHECKOUT_PROCEED':
+            case 'PROCEED_TO_CHECKOUT':
+            case 'FINALIZE_ORDER_ATTEMPT': {
                 if (!hasCartItems) {
                     backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
                 } else if (!hasValidName) {
@@ -1148,14 +1141,20 @@ export async function handleCustomerMessage({
                     backendReply = RESPONSE_TEMPLATES.pizzaFlavoursList();
                 } else if (isFries) {
                     backendReply = RESPONSE_TEMPLATES.friesOptionsList();
-                } else if (hasCartItems && sessionDetails.awaitingFinalConfirmation && !sessionDetails.name) {
-                    backendReply = RESPONSE_TEMPLATES.namePrompt();
-                } else if (hasCartItems && !sessionDetails.name && !isAskingProductOrMenu) {
-                    backendReply = 'Zabardast! Cart mein items shamil hain. Kya aap is order ko confirm/finalize karna chahte hain ya mazeed kuch add karoon? 😊';
-                } else if (hasCartItems && !sessionDetails.phoneConfirmed) {
-                    backendReply = RESPONSE_TEMPLATES.phonePrompt({ name: sessionDetails.name, displayPhone: sessionDetails.phone });
-                } else if (hasCartItems && !sessionDetails.address) {
-                    backendReply = RESPONSE_TEMPLATES.addressPrompt({ name: sessionDetails.name });
+                } else if (hasCartItems && !isAskingProductOrMenu) {
+                    if (!hasValidName) {
+                        backendReply = RESPONSE_TEMPLATES.namePrompt();
+                    } else if (!hasValidPhone) {
+                        backendReply = RESPONSE_TEMPLATES.phonePrompt({ name: sessionDetails.name, displayPhone: sessionDetails.phone });
+                    } else if (!hasValidAddress) {
+                        backendReply = RESPONSE_TEMPLATES.addressPrompt({ name: sessionDetails.name });
+                    } else if (!hasValidPayment) {
+                        backendReply = RESPONSE_TEMPLATES.paymentPrompt({ name: sessionDetails.name });
+                    } else if (!sessionDetails.extraItemsAnswered) {
+                        backendReply = RESPONSE_TEMPLATES.extraItemsUpsell({ name: sessionDetails.name });
+                    } else {
+                        backendReply = `📋 *AAP KA ORDER SUMMARY:*\n\n${activeCartSummary}\n\n*Naam:* ${sessionDetails.name}\n*Contact:* ${sessionDetails.phone}\n*Address:* ${sessionDetails.address}\n*Payment:* ${sessionDetails.paymentMethod === 'EASYPAISA' ? 'EasyPaisa' : 'Cash on Delivery (COD)'}\n\nKya aap tamam details check karke is order ko confirm karte hain? 😊 (Order book karne ke liye *"Haan"* ya *"Confirm"* likhein)`;
+                    }
                 } else {
                     backendReply = RESPONSE_TEMPLATES.greeting({ storeName: 'Cravey Crust' });
                 }
