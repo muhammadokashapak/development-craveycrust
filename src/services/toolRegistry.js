@@ -317,9 +317,11 @@ export async function add_to_cart(args = {}, context = {}) {
             let extractedFlavours = [];
             if (Array.isArray(args.flavours)) {
                 extractedFlavours = args.flavours.filter(f => typeof f === 'string' && f.trim() && !/^(?:undefined|null)$/i.test(f.trim()));
+            } else if (typeof args.flavour === 'string' || typeof args.flavours === 'string') {
+                extractedFlavours = extractFlavoursFromText(args.flavour || args.flavours, pizzaInfo.pizzaCount);
             }
             if (extractedFlavours.length === 0) {
-                extractedFlavours = extractFlavoursFromText(itemName, pizzaInfo.pizzaCount);
+                extractedFlavours = extractFlavoursFromText(context.effectiveText || itemName, pizzaInfo.pizzaCount);
             }
             if (extractedFlavours.length < pizzaInfo.pizzaCount) {
                 const firstFlv = (extractedFlavours[0] && !/^(?:undefined|null)$/i.test(extractedFlavours[0])) ? extractedFlavours[0] : null;
@@ -342,6 +344,32 @@ export async function add_to_cart(args = {}, context = {}) {
                     reply: flavourPrompt,
                 };
             }
+
+            clearPendingDealFlavour(sessionKey);
+            const notesStr = extractedFlavours.join(', ');
+            await addItemToCart({
+                sessionKey,
+                restaurantId: restId,
+                chatId,
+                verifiedPhone: whatsappPhone,
+                dealId: dealObj.id,
+                quantity,
+                notes: notesStr,
+            });
+
+            const nextPrompt = 'Kya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+            return {
+                success: true,
+                itemName: `${dealObj.name} (${notesStr})`,
+                quantity,
+                price: Number(dealObj.deal_price),
+                reply: RESPONSE_TEMPLATES.itemAdded({
+                    itemName: `${dealObj.name} (${notesStr})`,
+                    quantity,
+                    price: Number(dealObj.deal_price),
+                    nextStepPrompt: nextPrompt,
+                }),
+            };
         }
 
         await addItemToCart({

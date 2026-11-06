@@ -170,6 +170,7 @@ export async function handleCustomerMessage({
 
         // ── 2. Zero-Token Fast Route Interceptor ──
         try {
+            const hadPendingFlavour = Boolean(getPendingDealFlavour(canonicalKey));
             const fastResult = await checkFastRoute({
                 text: resolvedText,
                 whatsappPhone,
@@ -200,10 +201,15 @@ export async function handleCustomerMessage({
                 'flavour_first_confirmed',
             ]);
 
-            const hasPendingFlavour = Boolean(getPendingDealFlavour(canonicalKey));
+            const hasPendingFlavourNow = Boolean(getPendingDealFlavour(canonicalKey));
+            const isFlavourRoute = fastResult.routeName && (
+                fastResult.routeName.includes('flavour') ||
+                fastResult.routeName === 'deal_flavour_prompt' ||
+                ((hadPendingFlavour || hasPendingFlavourNow) && (fastResult.routeName === 'step_item_added_ask_confirm' || fastResult.routeName === 'step_name_needed'))
+            );
             const isAllowedFast = fastResult.routeName && (
                 ALLOWED_FAST_ROUTES.has(fastResult.routeName) ||
-                (hasPendingFlavour && fastResult.routeName.includes('flavour'))
+                isFlavourRoute
             );
 
             if ((fastResult.handled || fastResult.reply) && hasFastContent && isAllowedFast) {
