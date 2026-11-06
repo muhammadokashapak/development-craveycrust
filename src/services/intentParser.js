@@ -847,7 +847,7 @@ const START_ORDER_REGEX = /^(?:order\s+book\s+(?:krwana|karna|karwana|ah)|order\
 const MENU_REGEX = /^(?:menu|show\s+menu|menu\s+bhejo|menu\s+dikhao|food|khana|items)\b/i;
 const DEALS_REGEX = /^(?:deals|deal|special\s+deals|offers|deals\s+bhejo|deals\s+dikhao)(?!\s*#?\d)\b/i;
 const CART_VIEW_REGEX = /^(?:cart|mera\s+cart|my\s+cart|show\s+cart|view\s+cart|basket|cart\s+dikhao|cart\s+dekho|cart\s+batao|apna\s+cart)$/i;
-const CLEAR_CART_REGEX = /^(?:clear\s+cart|empty\s+cart|cart\s+clear|cart\s+khali(?:\s+kar\s*do)?|delete\s+cart)\b/i;
+const CLEAR_CART_REGEX = /^(?:clear\s+(?:the\s+)?cart|empty\s+(?:the\s+)?cart|cart\s+clear|cart\s+khali(?:\s+kar\s*do)?|delete\s+(?:the\s+)?cart|remove\s+all(?:\s+of\s+them|\s+items)?|delete\s+all(?:\s+of\s+them|\s+items)?)\b/i;
 const CHECKOUT_REGEX = /^(?:checkout|check\s+out|order\s+karna\s+hai|order\s+please|place\s+order|done\s+ordering|proceed)\b/i;
 const HELP_REGEX = /^(?:help|madad|options|commands|guide)\b/i;
 const HUMAN_HANDOFF_REGEX = /^(?:human|agent|talk\s+to\s+human|representative|bande\s+se\s+baat|admin\s+se\s+baat)\b/i;
@@ -1808,7 +1808,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
     // ── Check Fast Route: Intercept Pending Cart Action Clarification (Zero Tokens) ──
     const { getPendingCartAction, clearPendingCartAction, setPendingCartAction } = await import('./sessionService.js');
-    const { isRemovalIntent, isPendingActionCancellation, resolveCartItemForRemoval, executeCartItemRemoval } = await import('./cartItemResolver.js');
+    const { isRemovalIntent, isClearCartIntent, isPendingActionCancellation, resolveCartItemForRemoval, executeCartItemRemoval } = await import('./cartItemResolver.js');
     const pendingCartAction = userSessionId ? getPendingCartAction(userSessionId, cleanPhone) : null;
     if (pendingCartAction && pendingCartAction.action === 'REMOVE_DEAL_CONFIRMATION' && userSessionId) {
         if (isPendingActionCancellation(lower)) {
@@ -1817,6 +1817,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 handled: true,
                 routeName: 'pending_deal_removal_cancelled',
                 reply: 'Theek hai, deal remove nahi ki gayi. Cart mein items barkarar hain. 😊',
+            };
+        }
+        if (isClearCartIntent(lower)) {
+            clearPendingCartAction(userSessionId, cleanPhone);
+            const { clearCart } = await import('./cartService.js');
+            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            await clearCart({ sessionKey: userSessionId });
+            clearSessionOrderDetails(userSessionId, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'fast_cart_cleared',
+                reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye \'menu\' ya \'deals\' likhein. 😊',
             };
         }
         const isAffirmativeOrRemoval = /^(?:kr\s*d[aoeiu]+n?|kar\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|kar\s*dein|kr\s*dein|karden|kar\s*dain|kr\s*dain|hata\s*do|nikal\s*do|remove|remove\s*kr\s*do|delete|haan|han|hn|ji|jee|g|yes|theek\s*hai|ok|okay|kar\s*do|pura\s*deal\s*hata\s*do|deal\s*hata\s*do)[\s.!?]*$/i.test(lower.trim()) ||
@@ -1920,12 +1932,36 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 reply: 'Theek hai, cart se koi item remove nahi kiya gaya. 😊',
             };
         }
+        if (isClearCartIntent(lower)) {
+            clearPendingCartAction(userSessionId, cleanPhone);
+            const { clearCart } = await import('./cartService.js');
+            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            await clearCart({ sessionKey: userSessionId });
+            clearSessionOrderDetails(userSessionId, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'fast_cart_cleared',
+                reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye \'menu\' ya \'deals\' likhein. 😊',
+            };
+        }
         try {
             const { getActiveCart } = await import('./cartService.js');
             const cache = await getCatalogCache();
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
                 const resolution = resolveCartItemForRemoval({ cart, text: lower, pendingAction: pendingCartAction });
+                if (resolution.status === 'CLEAR_CART') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    const { clearCart } = await import('./cartService.js');
+                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    await clearCart({ sessionKey: userSessionId });
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_cart_cleared',
+                        reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye \'menu\' ya \'deals\' likhein. 😊',
+                    };
+                }
                 if (resolution.status === 'MATCH_FOUND') {
                     clearPendingCartAction(userSessionId, cleanPhone);
                     const removeRes = await executeCartItemRemoval({
@@ -2344,7 +2380,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     const isCancellationIntent = !isClaimingCancelled && (
         /^(?:(?:order\s*)?cancel|cancle|kansil)[\s!.?]*$/i.test(lower.trim()) ||
         /\b(?:sab|sab\s*kuch|pura|poora|mukammal|tamam)\s*(?:kuch\s*)?(?:order\s*)?cancel\b/i.test(lower) ||
-        /\b(?:cart\s*(?:clear|khali)|clear\s*cart)\b/i.test(lower) ||
+        /\b(?:cart\s*(?:clear|khali)|clear\s*(?:the\s*)?cart|empty\s*(?:the\s*)?cart|remove\s*all(?:\s*of\s*them|\s*items)?|delete\s*all)\b/i.test(lower) ||
         /^(?:nahi\s*(?:chahiye|lena|mangwana|karna)|rehne\s*do|rehn\s*do|chhor\s*do|khatam\s*karo|khatam\s*kr\s*do|rok\s*do)[\s!.?]*$/i.test(lower.trim()) ||
         (/\b(?:rehne\s*do|rehn\s*do|chhor\s*do)\b/i.test(lower) && /\b(?:kuch\s*nahi|nahi\s*chahiye|nahi\s*lena)\b/i.test(lower)) ||
         (/\b(?:order\s*(?:ko\s*)?cancel|cancel\s*(?:my\s*)?order)\b/i.test(lower) && !isItemModificationOrReplacement)
@@ -3447,6 +3483,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId });
             if (cart?.items && cart.items.length > 0) {
                 const resolution = resolveCartItemForRemoval({ cart, text: lower, pendingAction: null });
+                if (resolution.status === 'CLEAR_CART') {
+                    clearPendingCartAction(userSessionId, cleanPhone);
+                    const { clearCart } = await import('./cartService.js');
+                    const { clearSessionOrderDetails } = await import('./sessionService.js');
+                    await clearCart({ sessionKey: userSessionId });
+                    clearSessionOrderDetails(userSessionId, cleanPhone);
+                    return {
+                        handled: true,
+                        routeName: 'fast_cart_cleared',
+                        reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye \'menu\' ya \'deals\' likhein. 😊',
+                    };
+                }
                 if (resolution.status === 'DEAL_COMPONENT_RESTRICTION') {
                     setPendingCartAction(userSessionId, {
                         action: 'REMOVE_DEAL_CONFIRMATION',

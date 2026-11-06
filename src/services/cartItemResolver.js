@@ -37,7 +37,18 @@ function normalizeQuery(str) {
         .replace(/\bfries\b/g, 'fries')
         .replace(/\bwings\b/g, 'wing')
         .replace(/\bnuggets\b/g, 'nugget')
-        .replace(/\brolls\b/g, 'roll');
+        .replace(/\brolls\b/g, 'roll')
+        .replace(/\b(?:litres?|ltrs?)\b/g, 'liter')
+        .replace(/(\d+(?:\.\d+)?)\s*(?:l|ltr)\b/g, '$1 liter');
+}
+
+/**
+ * Detect explicit cart-clearing / remove all items intent across Roman Urdu and English
+ */
+export function isClearCartIntent(text) {
+    if (!text || typeof text !== 'string') return false;
+    const lower = text.trim().toLowerCase();
+    return /\b(?:clear\s*(?:the\s*)?cart|empty\s*(?:the\s*)?cart|cart\s*(?:ko\s*)?(?:clear|khali|empty)|delete\s*(?:the\s*)?cart|cart\s*(?:delete|hata)|remove\s*all(?:\s*of\s*them|\s*items)?|delete\s*all(?:\s*of\s*them|\s*items)?|clear\s*all(?:\s*of\s*them|\s*items)?|empty\s*all(?:\s*of\s*them|\s*items)?|sab\s*(?:kuch\s*)?(?:hata|nikal|remove|khatam|delete|cancel|clear)|sara\s*(?:kuch\s*)?(?:hata|nikal|remove|delete|clear)|saare\s*(?:items?\s*)?(?:hata|nikal|remove|delete|clear)|po?o?ra\s*cart\s*(?:khali|clear|empty|hata|nikal)|sab\s*items?\s*(?:hata|nikal|remove|delete))\b/i.test(lower);
 }
 
 /**
@@ -92,6 +103,13 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
     const rawLower = (text || '').trim().toLowerCase();
     let lower = normalizeQuery(rawLower);
 
+    // ── 0. Check for Full-Cart Clearing Intent ──
+    if (isClearCartIntent(lower)) {
+        return {
+            status: 'CLEAR_CART',
+        };
+    }
+
     // If query has compound clauses (e.g. "is main sy pizza waali cancel kr dain or Burger deal main 1 or add kr dain"),
     // isolate the clause with explicit removal intent for item/deal resolution.
     if (/\b(?:aur|or|and|\+|,|\n)\b/i.test(lower)) {
@@ -138,16 +156,16 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
             : cart.items;
 
         if (candidates.length > 0) {
-            // Check if user answered with a size / variant (e.g. "1.5 liter", "1 liter", "regular", "can")
-            const variantQueryMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
+            // Check if user answered with a size / variant (e.g. "1.5 liter", "1.5 litre", "1 liter", "regular", "can")
+            const variantQueryMatch = lower.match(/\b(1\.5\s*(?:liter|litre|l|ltr)|1\s*(?:liter|litre|l|ltr)|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
             if (variantQueryMatch) {
-                let vQuery = variantQueryMatch[1].replace(/\s+/g, ' ');
-                if (vQuery === '1.5l') vQuery = '1.5 liter';
-                if (vQuery === '1l') vQuery = '1 liter';
-                if (vQuery === 'reg') vQuery = 'regular';
-                if (vQuery === 'bari') vQuery = 'large';
-                if (vQuery === 'cans') vQuery = 'can';
-                if (vQuery === 'tins') vQuery = 'tin';
+                let vQuery = variantQueryMatch[1].replace(/\s+/g, ' ').toLowerCase();
+                if (/1\.5\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1.5 liter';
+                else if (/1\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1 liter';
+                else if (/reg\b/i.test(vQuery)) vQuery = 'regular';
+                else if (/bari\b/i.test(vQuery)) vQuery = 'large';
+                else if (/cans?\b/i.test(vQuery)) vQuery = 'can';
+                else if (/tins?\b/i.test(vQuery)) vQuery = 'tin';
                 const matchedByVariant = candidates.filter(i => {
                     const vName = (i.menu_variant?.name || '').toLowerCase();
                     const notes = (i.notes || '').toLowerCase();
@@ -158,6 +176,18 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
                     return {
                         status: 'MATCH_FOUND',
                         item: matchedByVariant[0],
+                        qtyToRemove: qtyToRemove || null,
+                    };
+                }
+            }
+
+            // Check if user answered with a specific quantity matching one candidate (e.g. "3x" or "3")
+            if (candidates.length > 1 && qtyToRemove) {
+                const qtyMatched = candidates.filter(i => i.quantity === qtyToRemove);
+                if (qtyMatched.length === 1) {
+                    return {
+                        status: 'MATCH_FOUND',
+                        item: qtyMatched[0],
                         qtyToRemove: qtyToRemove || null,
                     };
                 }
@@ -276,17 +306,18 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
 
     // ── 4b. Direct Item / Flavor Matching against items currently in Cart ──
     // e.g. "acha 5x zeggy burgers remove kr do", "behari kebab remove kr dain", "chicken tikka hata do"
-    const cleanItemQuery = lower
+    let cleanItemQuery = lower
         .replace(/\b(?:acha|achha|accha|theek|thek|sahi|ok|okay|ab|aur|bas|sirf|plz|please|bhai|yaar|yar|ji|jee|janab|sunen|suno|meherbani|shukriya)\b/gi, '')
         .replace(/\b(?:remove|hata|hatayein|hatao|hatado|nikal|nikalo|nikalein|nikaldo|delete|khatam|cancel|rehne\s*do|mat\s*bhejo)\b/gi, '')
         .replace(/\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden)\b/gi, '')
-        .replace(/\b(?:is\s*main\s*(?:se|sy|say)?|is\s*mein\s*(?:se|sy|say)?|isme\s*(?:se|sy|say)?|is\s*(?:se|sy|say)|cart\s*(?:se|sy|say)?|order\s*(?:se|sy|say)?|se|sy|say|main\s*(?:se|sy|say)|mein\s*(?:se|sy|say)|main|mein|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|waal[aie]|wali|waali)\b/gi, '')
-        .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*(?:x\s+)?/gi, '')
+        .replace(/\b(?:is\s*main\s*(?:se|sy|say)?|is\s*mein\s*(?:se|sy|say)?|isme\s*(?:se|sy|say)?|is\s*(?:se|sy|say)|cart\s*(?:se|sy|say)?|order\s*(?:se|sy|say)?|se|sy|say|main\s*(?:se|sy|say)|mein\s*(?:se|sy|say)|main|mein|bhi|to|mera|meri|mujhe|mujay|apne|wal[aie]|waal[aie]|wali|waali|ko|k|ka|ki)\b/gi, '')
+        .replace(/\b(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five|che|chey|six|saat|sat|seven|aath|ath|eight|nau|no|nine|das|dus|ten|pandrah|fifteen|bees|twenty)\s*x\b/gi, '')
+        .replace(/^\s*(?:\d+|ak|aik|ek|ik|one|two|teen|tin|char|chaar|four|paanch|panch|five)\s+/i, '')
         .replace(/\s+/g, ' ')
         .trim();
 
     if (cleanItemQuery.length >= 3) {
-        const directMatches = cart.items.filter(i => {
+        let directMatches = cart.items.filter(i => {
             const iName = normalizeQuery(i.menu_item?.name || i.deal?.name || '');
             const vName = normalizeQuery(i.menu_variant?.name || '');
             const notes = normalizeQuery(i.notes || '');
@@ -314,6 +345,45 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
                 qtyToRemove: qtyToRemove || null,
             };
         } else if (directMatches.length > 1) {
+            // Check if variant/size was specified (e.g. "1.5 liter", "1 liter", "regular", "large", "can")
+            const variantMatch = lower.match(/\b(1\.5\s*(?:liter|litre|l|ltr)|1\s*(?:liter|litre|l|ltr)|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
+            if (variantMatch) {
+                let vQuery = variantMatch[1].replace(/\s+/g, ' ').toLowerCase();
+                if (/1\.5\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1.5 liter';
+                else if (/1\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1 liter';
+                else if (/reg\b/i.test(vQuery)) vQuery = 'regular';
+                else if (/bari\b/i.test(vQuery)) vQuery = 'large';
+                else if (/cans?\b/i.test(vQuery)) vQuery = 'can';
+                else if (/tins?\b/i.test(vQuery)) vQuery = 'tin';
+                const vFiltered = directMatches.filter(i => {
+                    const vName = (i.menu_variant?.name || '').toLowerCase();
+                    const notes = (i.notes || '').toLowerCase();
+                    const itName = (i.menu_item?.name || '').toLowerCase();
+                    return vName.includes(vQuery) || notes.includes(vQuery) || itName.includes(vQuery);
+                });
+                if (vFiltered.length === 1) {
+                    return {
+                        status: 'MATCH_FOUND',
+                        item: vFiltered[0],
+                        qtyToRemove: qtyToRemove || null,
+                    };
+                } else if (vFiltered.length > 1) {
+                    directMatches = vFiltered;
+                }
+            }
+
+            // Check if quantity disambiguates (e.g. user said "3x" and one item has qty 3 while other has qty 1)
+            if (directMatches.length > 1 && qtyToRemove) {
+                const qtyMatched = directMatches.filter(i => i.quantity === qtyToRemove);
+                if (qtyMatched.length === 1) {
+                    return {
+                        status: 'MATCH_FOUND',
+                        item: qtyMatched[0],
+                        qtyToRemove: qtyToRemove || null,
+                    };
+                }
+            }
+
             // Check if one item has a closer/more specific match
             const exactNameMatch = directMatches.filter(i => {
                 const iName = normalizeQuery(i.menu_item?.name || i.deal?.name || '');
@@ -406,16 +476,16 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         });
     }
 
-    // If a variant/size was mentioned (e.g. "1.5 liter", "regular", "large"), refine filter
-    const variantMatch = lower.match(/\b(1\.5\s*liter|1\.5l|1\s*liter|1l|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
+    // If a variant/size was mentioned (e.g. "1.5 liter", "1.5 litre", "regular", "large"), refine filter
+    const variantMatch = lower.match(/\b(1\.5\s*(?:liter|litre|l|ltr)|1\s*(?:liter|litre|l|ltr)|regular|reg|large|bari|can|cans|tin|tins|small|medium|party)\b/i);
     if (variantMatch && matchingStandalone.length > 0) {
-        let vQuery = variantMatch[1].replace(/\s+/g, ' ');
-        if (vQuery === '1.5l') vQuery = '1.5 liter';
-        if (vQuery === '1l') vQuery = '1 liter';
-        if (vQuery === 'reg') vQuery = 'regular';
-        if (vQuery === 'bari') vQuery = 'large';
-        if (vQuery === 'cans') vQuery = 'can';
-        if (vQuery === 'tins') vQuery = 'tin';
+        let vQuery = variantMatch[1].replace(/\s+/g, ' ').toLowerCase();
+        if (/1\.5\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1.5 liter';
+        else if (/1\s*(?:liter|litre|l|ltr)/i.test(vQuery)) vQuery = '1 liter';
+        else if (/reg\b/i.test(vQuery)) vQuery = 'regular';
+        else if (/bari\b/i.test(vQuery)) vQuery = 'large';
+        else if (/cans?\b/i.test(vQuery)) vQuery = 'can';
+        else if (/tins?\b/i.test(vQuery)) vQuery = 'tin';
         const vFiltered = matchingStandalone.filter(i => {
             const vName = (i.menu_variant?.name || '').toLowerCase();
             const notes = (i.notes || '').toLowerCase();
@@ -424,6 +494,14 @@ export function resolveCartItemForRemoval({ cart, text, pendingAction = null }) 
         });
         if (vFiltered.length > 0) {
             matchingStandalone = vFiltered;
+        }
+    }
+
+    // If multiple candidates remain, check if quantity disambiguates (e.g. "3x soft drink" where one item has qty 3 and other has qty 1)
+    if (matchingStandalone.length > 1 && qtyToRemove) {
+        const qtyMatched = matchingStandalone.filter(i => i.quantity === qtyToRemove);
+        if (qtyMatched.length === 1) {
+            matchingStandalone = qtyMatched;
         }
     }
 
