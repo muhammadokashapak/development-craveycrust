@@ -1762,9 +1762,17 @@ async function handleMessage(sock, msg, session) {
                 }
             } catch (agentErr) {
                 console.error(`[AI] Agent error for ${jid}:`, agentErr.message);
-                await sock.sendMessage(jid, {
-                    text: 'Mafi chahta hoon, abhi kuch masla aa gaya. Thodi der baad dobara koshish karein.'
-                }).catch(() => {});
+                if (agentErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(agentErr.message)) {
+                    const minMatch = agentErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                    const minVal = agentErr.minOrder || (minMatch ? minMatch[1] : 800);
+                    await sock.sendMessage(jid, {
+                        text: `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minVal).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minVal).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed items add karein taake hum aap ka order book kar sakein! 🛒`
+                    }).catch(() => {});
+                } else {
+                    await sock.sendMessage(jid, {
+                        text: 'Mafi chahta hoon, abhi kuch masla aa gaya. Thodi der baad dobara koshish karein.'
+                    }).catch(() => {});
+                }
             } finally {
                 if (typeof sock?.sendPresenceUpdate === 'function') {
                     sock.sendPresenceUpdate('paused', jid).catch(() => {});

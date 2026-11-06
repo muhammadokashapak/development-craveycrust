@@ -829,6 +829,17 @@ export async function getNextCheckoutStepResponse({
     billLines += `Delivery Charges: ${deliveryFee === 0 ? 'Free' : 'Rs. ' + deliveryFee.toLocaleString('en-PK')}\n`;
     billLines += `Total: Rs. ${total.toLocaleString('en-PK')}`;
 
+    const minOrderLimit = Number(cache?.minOrder || 0);
+    const belowMinOrder = minOrderLimit > 0 && subtotal < minOrderLimit;
+    if (belowMinOrder) {
+        const diffAmt = minOrderLimit - subtotal;
+        billLines += `\n⚠️ *Minimum Order Requirement:* Rs. ${minOrderLimit.toLocaleString('en-PK')} (Mazeed Rs. ${diffAmt.toLocaleString('en-PK')} darkaar hain)`;
+    }
+
+    const confirmPrompt = belowMinOrder
+        ? `⚠️ *Order Requirement Notice:*\nRestaurant ka minimum order Rs. ${minOrderLimit.toLocaleString('en-PK')} hai. Order confirm karne ke liye baraye meherbani cart mein mazeed koi item add karein (jaise Fries ya Drink) taake limit poori ho sake! 🛒`
+        : `Kya aap tamam details check karke is order ko confirm karte hain?\nOrder book karne ke liye “Confirm” ya “Haan” likhein. Agar koi detail change karni hai to bata dein.`;
+
     return {
         handled: true,
         routeName: 'final_order_summary',
@@ -841,8 +852,7 @@ Payment: ${details.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPai
 Contact: ${displayPhone}
 Delivery Location: ${cleanLocation}
 
-Kya aap tamam details check karke is order ko confirm karte hain?
-Order book karne ke liye “Confirm” ya “Haan” likhein. Agar koi detail change karni hai to bata dein.`,
+${confirmPrompt}`,
     };
 }
 
@@ -3440,7 +3450,11 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (err) {
             console.error('[FAST_ROUTE] Error booking confirmed order:', err.message);
             let userFriendlyMsg = 'Maazrat! Aap ka order is waqt process nahi ho saka. Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.';
-            if (err.code === 'DELIVERY_ADDRESS_REQUIRED' || /delivery address|location pin/i.test(err.message)) {
+            if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+                const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                const minAmount = err.minOrder || (minMatch ? minMatch[1] : '800');
+                userFriendlyMsg = `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minAmount).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minAmount).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed items add karein taake hum aap ka order book kar sakein! 🛒`;
+            } else if (err.code === 'DELIVERY_ADDRESS_REQUIRED' || /delivery address|location pin/i.test(err.message)) {
                 userFriendlyMsg = 'Baraye meherbani delivery ke liye apna mukammal address ya WhatsApp location pin bhej dein taake hum aap ka order book kar sakein! 📍';
             } else if (err.code === 'CART_EMPTY' || /empty cart/i.test(err.message)) {
                 userFriendlyMsg = 'Aap ka cart is waqt khali hai. 🛒\n\nOrder confirm karne se pehle menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likh kar item add karein!';
@@ -7136,6 +7150,18 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             reply: `${customerName} bhai, aap ka order successfully confirm ho gaya hai! 🎉\n\n📋 *Order Number:* ${orderNum}${discountMsg}\n💰 *Order Total:* Rs. ${total.toLocaleString('en-PK')}\n💵 *Payment:* ${finalPayment === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa'}${addressLine}\n\nAap ka order Cravey Crust ki kitchen ko bhej diya gaya hai. Shukriya! 🍕✨`,
                         };
                     }
+                } catch (err) {
+                    console.error('[FAST_CONFIRM] Error confirming order:', err.message);
+                    if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+                        const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                        const minAmount = err.minOrder || (minMatch ? minMatch[1] : '800');
+                        return {
+                            handled: true,
+                            routeName: 'fast_order_confirm_failed',
+                            reply: `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minAmount).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minAmount).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed koi item add karein taake order finalize ho sake! 🛒`,
+                        };
+                    }
+                    throw err;
                 } finally {
                     releaseConfirmationLock(userSessionId);
                 }

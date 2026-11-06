@@ -199,6 +199,7 @@ export async function handleCustomerMessage({
                 'flavour_first_selected',
                 'pending_flavour_retry',
                 'flavour_first_confirmed',
+                'fast_order_confirm_failed',
             ]);
 
             const hasPendingFlavourNow = Boolean(getPendingDealFlavour(canonicalKey));
@@ -455,6 +456,23 @@ export async function handleCustomerMessage({
                 }
             } catch (bookingErr) {
                 console.error('[ORCHESTRATOR] Deterministic booking error:', bookingErr.message);
+                if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+                    const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                    const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
+                    const minReply = RESPONSE_TEMPLATES.minimumOrderNotMet({
+                        minOrder: minVal,
+                        subtotal: bookingErr.subtotal,
+                        difference: bookingErr.diff,
+                    });
+                    logZeroTokenReply({
+                        whatsappPhone,
+                        message: resolvedText,
+                        routeName: 'deterministic_order_booking_min_order_failed',
+                    });
+                    appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+                    appendSessionHistory(canonicalKey, 'assistant', minReply, syncEpoch);
+                    return { text: minReply };
+                }
             } finally {
                 releaseConfirmationLock(canonicalKey);
             }

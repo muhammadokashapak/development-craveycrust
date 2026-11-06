@@ -466,6 +466,9 @@ export async function createOrder(params) {
         if (pricing.subtotalDecimal.lessThan(minOrder)) {
             const err = new Error(`Order subtotal does not meet restaurant minimum order of Rs. ${minOrder}`);
             err.code = 'MINIMUM_ORDER_NOT_MET';
+            err.minOrder = Number(minOrder);
+            err.subtotal = Number(pricing.subtotalDecimal);
+            err.diff = Number(minOrder.minus(pricing.subtotalDecimal));
             throw err;
         }
     }

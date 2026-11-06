@@ -1043,20 +1043,34 @@ export async function executeTool(toolName, args, context) {
                 }
 
                 const { createOrder } = await import('./orderService.js');
-                const result = await createOrder({
-                    restaurantId: restId,
-                    sessionKey,
-                    customerName: trimmedName,
-                    phone: cleanPhoneDigits,
-                    delivery: {
-                        address: finalAddress,
-                        latitude: locationData?.latitude ?? null,
-                        longitude: locationData?.longitude ?? null,
-                    },
-                    paymentMethod: chosenPaymentMethod,
-                    notes,
-                    sock,
-                });
+                let result;
+                try {
+                    result = await createOrder({
+                        restaurantId: restId,
+                        sessionKey,
+                        customerName: trimmedName,
+                        phone: cleanPhoneDigits,
+                        delivery: {
+                            address: finalAddress,
+                            latitude: locationData?.latitude ?? null,
+                            longitude: locationData?.longitude ?? null,
+                        },
+                        paymentMethod: chosenPaymentMethod,
+                        notes,
+                        sock,
+                    });
+                } catch (bookingErr) {
+                    console.error('[AI_AGENT] createOrder tool error:', bookingErr.message);
+                    if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+                        const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                        const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
+                        return {
+                            error: 'MINIMUM_ORDER_NOT_MET',
+                            message: `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minVal).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️ Order place karne ke liye subtotal kam az kam Rs. ${Number(minVal).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed koi item add karein! 🛒`,
+                        };
+                    }
+                    throw bookingErr;
+                }
 
                 const finalOrderNum = result.order?.orderNumber || result.order?.order_number;
                 const finalTotal = Number(result.order?.pricing?.total ?? result.order?.total ?? 0);
@@ -2240,6 +2254,14 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
             }
         } catch (bookingErr) {
             console.error('[AI_AGENT] Deterministic booking error:', bookingErr.message);
+            if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+                const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+                const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
+                const reply = `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minVal).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minVal).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed koi item add karein taake order finalize ho sake! 🛒`;
+                appendSessionHistory(sessionKey, 'user', effectiveText, syncEpoch);
+                appendSessionHistory(sessionKey, 'assistant', reply, syncEpoch);
+                return reply;
+            }
         } finally {
             releaseConfirmationLock(sessionKey);
         }

@@ -796,48 +796,70 @@ export async function confirm_order(args = {}, context = {}) {
         };
     }
 
-    const bookingResult = await createOrder({
-        restaurantId: restId,
-        sessionKey,
-        customerName: sessionDetails.name,
-        phone: sessionDetails.phone,
-        delivery: { address: sessionDetails.address },
-        paymentMethod: sessionDetails.paymentMethod,
-        sock,
-    });
-
-    if (bookingResult && bookingResult.success && bookingResult.order) {
-        updateSessionOrderDetails(sessionKey, {
-            orderConfirmed: true,
-            lastOrderNumber: bookingResult.order.orderNumber,
-            summaryShown: false,
-            extraItemsAnswered: false,
-        }, whatsappPhone);
-
-        const safeOrderNum = bookingResult.order.orderNumber || bookingResult.order.order_number;
-        const safeTotal = bookingResult.order.total ?? bookingResult.order.pricing?.total ?? 0;
-
-        const reply = RESPONSE_TEMPLATES.orderConfirmed({
-            name: sessionDetails.name,
-            orderNumber: safeOrderNum,
-            total: safeTotal,
-            paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
-            address: sessionDetails.address,
+    try {
+        const bookingResult = await createOrder({
+            restaurantId: restId,
+            sessionKey,
+            customerName: sessionDetails.name,
+            phone: sessionDetails.phone,
+            delivery: { address: sessionDetails.address },
+            paymentMethod: sessionDetails.paymentMethod,
+            sock,
         });
 
+        if (bookingResult && bookingResult.success && bookingResult.order) {
+            updateSessionOrderDetails(sessionKey, {
+                orderConfirmed: true,
+                lastOrderNumber: bookingResult.order.orderNumber,
+                summaryShown: false,
+                extraItemsAnswered: false,
+            }, whatsappPhone);
+
+            const safeOrderNum = bookingResult.order.orderNumber || bookingResult.order.order_number;
+            const safeTotal = bookingResult.order.total ?? bookingResult.order.pricing?.total ?? 0;
+
+            const reply = RESPONSE_TEMPLATES.orderConfirmed({
+                name: sessionDetails.name,
+                orderNumber: safeOrderNum,
+                total: safeTotal,
+                paymentLabel: sessionDetails.paymentMethod === 'COD' ? 'Cash on Delivery (COD)' : 'EasyPaisa',
+                address: sessionDetails.address,
+            });
+
+            return {
+                success: true,
+                orderNumber: safeOrderNum,
+                total: safeTotal,
+                reply,
+            };
+        }
+
         return {
-            success: true,
-            orderNumber: safeOrderNum,
-            total: safeTotal,
-            reply,
+            success: false,
+            reason: 'BOOKING_FAILED',
+            reply: RESPONSE_TEMPLATES.orderBookingFailed(),
+        };
+    } catch (bookingErr) {
+        console.error('[TOOL_REGISTRY] Error in confirm_order:', bookingErr.message);
+        if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+            const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+            const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
+            return {
+                success: false,
+                reason: 'MINIMUM_ORDER_NOT_MET',
+                reply: RESPONSE_TEMPLATES.minimumOrderNotMet({
+                    minOrder: minVal,
+                    subtotal: bookingErr.subtotal,
+                    difference: bookingErr.diff,
+                }),
+            };
+        }
+        return {
+            success: false,
+            reason: 'BOOKING_FAILED',
+            reply: RESPONSE_TEMPLATES.orderBookingFailed(),
         };
     }
-
-    return {
-        success: false,
-        reason: 'BOOKING_FAILED',
-        reply: RESPONSE_TEMPLATES.orderBookingFailed(),
-    };
 }
 
 /**
@@ -907,38 +929,65 @@ export async function request_order_cancellation(args = {}, context = {}) {
  * Master Tool Execution Router
  */
 export async function executeRegisteredTool(toolName, args = {}, context = {}) {
-    switch (toolName) {
-        case 'get_menu':
-            return await get_menu(args, context);
-        case 'get_deals':
-            return await get_deals(args, context);
-        case 'get_deal_details':
-            return await get_deal_details(args, context);
-        case 'get_product_details':
-            return await get_product_details(args, context);
-        case 'add_to_cart':
-            return await add_to_cart(args, context);
-        case 'update_cart_item':
-            return await update_cart_item(args, context);
-        case 'remove_from_cart':
-            return await remove_from_cart(args, context);
-        case 'get_cart':
-            return await get_cart(args, context);
-        case 'update_customer_details':
-            return await update_customer_details(args, context);
-        case 'validate_delivery_location':
-            return await validate_delivery_location(args, context);
-        case 'confirm_order':
-            return await confirm_order(args, context);
-        case 'get_order_status':
-            return await get_order_status(args, context);
-        case 'request_order_cancellation':
-            return await request_order_cancellation(args, context);
-        default:
+    try {
+        switch (toolName) {
+            case 'get_menu':
+                return await get_menu(args, context);
+            case 'get_deals':
+                return await get_deals(args, context);
+            case 'get_deal_details':
+                return await get_deal_details(args, context);
+            case 'get_product_details':
+                return await get_product_details(args, context);
+            case 'add_to_cart':
+            case 'add_item':
+                return await add_to_cart(args, context);
+            case 'update_cart_item':
+                return await update_cart_item(args, context);
+            case 'remove_from_cart':
+            case 'delete_cart_item':
+                return await remove_from_cart(args, context);
+            case 'get_cart':
+            case 'view_cart':
+                return await get_cart(args, context);
+            case 'update_customer_details':
+                return await update_customer_details(args, context);
+            case 'validate_delivery_location':
+                return await validate_delivery_location(args, context);
+            case 'confirm_order':
+            case 'create_order':
+            case 'place_order':
+                return await confirm_order(args, context);
+            case 'get_order_status':
+                return await get_order_status(args, context);
+            case 'request_order_cancellation':
+                return await request_order_cancellation(args, context);
+            default:
+                return {
+                    success: false,
+                    unknownTool: true,
+                    message: `Tool ${toolName} not recognized`,
+                };
+        }
+    } catch (err) {
+        console.error(`[TOOL_REGISTRY] Tool ${toolName} execution error:`, err.message);
+        if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+            const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
+            const minVal = err.minOrder || (minMatch ? minMatch[1] : 800);
             return {
                 success: false,
-                unknownTool: true,
-                message: `Tool ${toolName} not recognized`,
+                reason: 'MINIMUM_ORDER_NOT_MET',
+                reply: RESPONSE_TEMPLATES.minimumOrderNotMet({
+                    minOrder: minVal,
+                    subtotal: err.subtotal,
+                    difference: err.diff,
+                }),
             };
+        }
+        return {
+            success: false,
+            error: err.message,
+            reply: 'Maazrat! Yeh action complete karne mein masla pesh aaya. Baraye meherbani dobara koshish karein.',
+        };
     }
 }

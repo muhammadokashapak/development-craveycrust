@@ -133,6 +133,25 @@ export const RESPONSE_TEMPLATES = {
         return 'Aap ka order process ho raha hai, baraye meherbani thoda intezar karein... ⏳';
     },
 
+    orderBookingFailed() {
+        return 'Maazrat! Aap ka order is waqt process nahi ho saka. Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.';
+    },
+
+    minimumOrderNotMet({ minOrder = 800, subtotal = null, difference = null }) {
+        const minStr = Number(minOrder).toLocaleString('en-PK');
+        let text = `Aap ka order restaurant ki minimum order requirement (Rs. ${minStr}) par poora nahi utar raha. ⚠️\n\n`;
+        if (subtotal != null && Number(subtotal) > 0) {
+            text += `Aap ka mojooda subtotal: Rs. ${Number(subtotal).toLocaleString('en-PK')}\n`;
+        }
+        if (difference != null && Number(difference) > 0) {
+            text += `Order place karne ke liye kam az kam mazeed Rs. ${Number(difference).toLocaleString('en-PK')} ka order karna hoga.\n\n`;
+        } else {
+            text += `Order book karne ke liye subtotal kam az kam Rs. ${minStr} hona zaroori hai.\n\n`;
+        }
+        text += `Baraye meherbani cart mein mazeed items add karein (jaise Fries, Drinks ya Deals) taake hum aap ka order confirm kar sakein! 🛒`;
+        return text;
+    },
+
     // ── Guards & Context Handlers ──
     emptyCartConfirmGuard() {
         return 'Aap ka cart is waqt khali hai. 🛒\n\nOrder confirm karne se pehle menu dekhne ke liye "menu" ya deals dekhne ke liye "deals" likh kar koi item select karein!';
