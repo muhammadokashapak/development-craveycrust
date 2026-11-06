@@ -773,6 +773,14 @@ export async function confirm_order(args = {}, context = {}) {
     const activeCart = await getActiveCart({ sessionKey, restaurantId: restId });
 
     if (!activeCart?.items || activeCart.items.length === 0) {
+        if (sessionDetails.lastOrderNumber || sessionDetails.orderConfirmed) {
+            return {
+                success: true,
+                alreadyConfirmed: true,
+                orderNumber: sessionDetails.lastOrderNumber,
+                reply: RESPONSE_TEMPLATES.duplicateConfirmNotice({ orderNumber: sessionDetails.lastOrderNumber }),
+            };
+        }
         return {
             success: false,
             reason: 'EMPTY_CART',

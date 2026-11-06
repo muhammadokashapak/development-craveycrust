@@ -317,14 +317,34 @@ export function clearSessionOrderDetails(sessionKey, altKey) {
         if (curr?.name && (curr?.address || curr?.savedAddress)) {
             rememberCustomerDetails(sessionKey, curr, altKey);
         }
+        const lastOrderNumber = curr?.lastOrderNumber;
+        const orderConfirmed = curr?.orderConfirmed;
+        const name = curr?.name;
         _sessionOrderDetails.delete(sessionKey);
+        if (lastOrderNumber || orderConfirmed) {
+            _sessionOrderDetails.set(sessionKey, {
+                lastOrderNumber,
+                orderConfirmed: Boolean(orderConfirmed),
+                name,
+            });
+        }
     }
     if (altKey) {
         const curr = _sessionOrderDetails.get(altKey);
         if (curr?.name && (curr?.address || curr?.savedAddress)) {
             rememberCustomerDetails(altKey, curr, sessionKey);
         }
+        const lastOrderNumber = curr?.lastOrderNumber;
+        const orderConfirmed = curr?.orderConfirmed;
+        const name = curr?.name;
         _sessionOrderDetails.delete(altKey);
+        if (lastOrderNumber || orderConfirmed) {
+            _sessionOrderDetails.set(altKey, {
+                lastOrderNumber,
+                orderConfirmed: Boolean(orderConfirmed),
+                name,
+            });
+        }
     }
     clearMenuSentTracking(sessionKey, altKey);
 }

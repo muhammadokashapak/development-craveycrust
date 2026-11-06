@@ -225,11 +225,19 @@ export async function handleCustomerMessage({
                 fastResult.routeName === 'step_address_clarification' ||
                 fastResult.routeName === 'request_address_change'
             );
+            const isOrderRoute = fastResult.routeName && (
+                fastResult.routeName === 'fast_order_confirm' ||
+                fastResult.routeName === 'fast_order_already_confirmed' ||
+                fastResult.routeName === 'fast_order_confirm_failed' ||
+                fastResult.routeName.startsWith('fast_order_status_') ||
+                fastResult.routeName === 'order_status_check'
+            );
             const isAllowedFast = fastResult.routeName && (
                 ALLOWED_FAST_ROUTES.has(fastResult.routeName) ||
                 isFlavourRoute ||
                 isCartRemovalRoute ||
-                isAddressRoute
+                isAddressRoute ||
+                isOrderRoute
             );
 
             if ((fastResult.handled || fastResult.reply) && hasFastContent && isAllowedFast) {
@@ -443,6 +451,14 @@ export async function handleCustomerMessage({
         }
 
         const confirmIntent = detectConfirmIntent(resolvedText);
+
+        // ── Guard: If cart is empty but order was already placed, acknowledge confirmation ──
+        if (!hasCartItems && confirmIntent) {
+            if (sessionDetails.lastOrderNumber || sessionDetails.orderConfirmed) {
+                const dupReply = RESPONSE_TEMPLATES.duplicateConfirmNotice({ orderNumber: sessionDetails.lastOrderNumber || 'Recent Order' });
+                return { text: dupReply };
+            }
+        }
 
         // ── 4. SCENARIO A: Confirmation Lock & Direct Booking ──
         const isReadyForBooking = hasCartItems && hasValidName && hasValidPhone && hasValidAddress && hasValidPayment && isStep5Done;
@@ -697,7 +713,11 @@ export async function handleCustomerMessage({
             case 'PROCEED_TO_CHECKOUT':
             case 'FINALIZE_ORDER_ATTEMPT': {
                 if (!hasCartItems) {
-                    backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
+                    if (sessionDetails.lastOrderNumber || sessionDetails.orderConfirmed) {
+                        backendReply = RESPONSE_TEMPLATES.duplicateConfirmNotice({ orderNumber: sessionDetails.lastOrderNumber || 'Recent Order' });
+                    } else {
+                        backendReply = RESPONSE_TEMPLATES.emptyCartConfirmGuard();
+                    }
                 } else if (!hasValidName) {
                     backendReply = RESPONSE_TEMPLATES.namePrompt();
                 } else if (!hasValidPhone) {

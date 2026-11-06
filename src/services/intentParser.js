@@ -3431,7 +3431,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         const total = Number(res.order?.pricing?.total ?? res.order?.total ?? 0);
                         const discountTotal = Number(res.order?.pricing?.discountTotal ?? res.order?.discount_total ?? 0);
                         if (orderNum) {
+                            details.lastOrderNumber = orderNum;
+                            details.orderConfirmed = true;
                             clearSessionOrderDetails(userSessionId, cleanPhone);
+                            updateSessionOrderDetails(userSessionId, { lastOrderNumber: orderNum, orderConfirmed: true }, cleanPhone);
                             _lastDiscussedDealBySession.delete(userSessionId);
                             const customerName = details.name ? details.name.trim() : 'Customer';
                             const discountMsg = discountTotal > 0 ? `\nDiscount Applied: -Rs. ${discountTotal.toLocaleString('en-PK')}` : '';
