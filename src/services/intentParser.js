@@ -1648,7 +1648,7 @@ const FAST_COD_CONTAINS = /\b(cash\s*on\s*delivery|cod\s*(?:hai|available|hoga|h
  * @param {Object} [params.sock]
  * @returns {Promise<{handled: boolean, routeName?: string, reply?: string}>}
  */
-export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, sock }) {
+export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, sock, skipItemOrdering = false }) {
     if (!text || typeof text !== 'string') return { handled: false };
 
     const raw = text.trim();
@@ -4284,7 +4284,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         hasMultipleQtySignals
     ) && (hasOrderingVerb || hasMultipleQtySignals || wordCount <= 16);
 
-    if (hasMultiOrderSignals && userSessionId && !isQueryOrQuestion) {
+    if (hasMultiOrderSignals && userSessionId && !isQueryOrQuestion && !skipItemOrdering) {
         try {
             const { extractRequestedItems } = await import('./addonExtractionService.js');
             const extractedMulti = extractRequestedItems(lower);
@@ -4495,7 +4495,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     // ── Check Fast Follow-up: Affirmative confirmation to order last discussed deal (Zero Tokens) ──
     const hasOrderConfirmWord = /\b(?:confirm|final|done|book|oder|order\s*final|bana\s*ha|bill|bil)\b/i.test(lower);
     const isAffirmative = !hasOrderConfirmWord && /^(?:haan|han|jee|ji|yes|kar do|kardo|kr do|kr du|order|oder|order kar do|order kr do|order kr du|order kr di|oder kr di|oder kr do|oder kardo|haan kr du|haan kardo|haan kr do bhai|han order kr du|yeh kr du)\b/i.test(lower);
-    if (isAffirmative && userSessionId && _lastDiscussedDealBySession.has(userSessionId)) {
+    if (isAffirmative && userSessionId && !skipItemOrdering && _lastDiscussedDealBySession.has(userSessionId)) {
         const lastDealEntry = _lastDiscussedDealBySession.get(userSessionId);
         if (lastDealEntry && (Date.now() - lastDealEntry.timestamp < 120 * 1000)) {
             try {
@@ -4520,6 +4520,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                             routeName: 'deal_flavour_prompt',
                             reply: formatDealFlavourPrompt(d, pizzaInfo),
                         };
+                    }
+
+                    if (skipItemOrdering) {
+                        return null;
                     }
 
                     const flavourNotes = extracted.length > 0 ? formatFlavourNotes(extracted) : undefined;
@@ -4758,6 +4762,10 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                         };
                     }
 
+                    if (skipItemOrdering) {
+                        return null;
+                    }
+
                     const flavourNotes = extracted.length > 0 ? formatFlavourNotes(extracted) : undefined;
                     const { getActiveCart, addToCart } = await import('./cartService.js');
                     await addToCart({
@@ -4798,7 +4806,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
 
 // ── Check Fast Follow-up: Size specification for last discussed pizza / item (Zero Tokens) ──
     const isSizeFollowup = /^(?:small|smal|medium|medum|med|large|larg|lrg|party(?:b?\s*size)?|partyb?size|regular|reg|chota|chhota|bara|bada|can|tin|1\s*liter|1\s*litre|1l|1\.5\s*liter|1\.5\s*litre|1\.5l)(?:\s*(?:kr\s*d[ao]|kar\s*d[ao]|kardo|krdo|krdu|kardu|kar\s*dein|karden|chahiye|mangwana|rakh\s*do|bhai|wala|wali|size))?$/i.test(lower.trim());
-    if (isSizeFollowup && userSessionId && (_lastDiscussedItemBySession.has(userSessionId) || (cleanPhone && _lastDiscussedItemBySession.has(cleanPhone)))) {
+    if (isSizeFollowup && !skipItemOrdering && userSessionId && (_lastDiscussedItemBySession.has(userSessionId) || (cleanPhone && _lastDiscussedItemBySession.has(cleanPhone)))) {
         const lastItemEntry = _lastDiscussedItemBySession.get(userSessionId) || (cleanPhone ? _lastDiscussedItemBySession.get(cleanPhone) : null);
         if (lastItemEntry && (Date.now() - lastItemEntry.timestamp < 300 * 1000)) {
             try {
@@ -5055,7 +5063,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 // Check if user combined an item order with their delivery inquiry (e.g. "Main pari pari pizza order krna chahta hon, party size mein. App kin locations py dilover krty hain")
                 const orderPart = raw.replace(/\b(?:app|aap)?\s*(?:kin|kon|konse|kons[ey]|kis\s*kis|which|kahan|kidhar)\s+.*$/i, '').trim();
                 let addedItemMsg = '';
-                if (orderPart && userSessionId && /\b(?:order|chahiye|mangwana|daal\s*do|add)\b/i.test(orderPart)) {
+                if (orderPart && userSessionId && !skipItemOrdering && /\b(?:order|chahiye|mangwana|daal\s*do|add)\b/i.test(orderPart)) {
                     try {
                         const { resolveMenuItemOrDeal } = await import('./menuService.js');
                         const resolved = await resolveMenuItemOrDeal(orderPart, restId);

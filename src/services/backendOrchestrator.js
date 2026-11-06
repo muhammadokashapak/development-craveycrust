@@ -177,6 +177,7 @@ export async function handleCustomerMessage({
                 sessionKey: canonicalKey,
                 chatId: jid,
                 sock,
+                skipItemOrdering: true,
             });
 
             const hasFastContent = Boolean(
@@ -588,17 +589,18 @@ export async function handleCustomerMessage({
                 if (replies.length > 0) {
                     const addItemActions = (context.actions || []).filter(a => a.tool === 'add_to_cart' || a.tool === 'add_item');
                     if (addItemActions.length > 1) {
-                        const lines = [];
-                        for (const r of replies) {
-                            const bulletMatch = r.match(/•\s*[^\n]+/g);
-                            if (bulletMatch) lines.push(...bulletMatch);
-                        }
-                        if (lines.length > 0) {
-                            const promptTail = '\n\nKya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
-                            backendReply = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${lines.join('\n')}${promptTail}`;
-                        } else {
-                            backendReply = replies.join('\n\n');
-                        }
+                        const { getActiveCart, calculateCartTotals } = await import('./cartService.js');
+                        const activeCart = await getActiveCart({ sessionKey: canonicalKey, restaurantId: restId, chatId: jid });
+                        const cartLines = (activeCart?.items || []).map(i => {
+                            const n = i.deal ? i.deal.name : (i.menu_item?.name || 'Item');
+                            const v = i.menu_variant?.name ? ` (${i.menu_variant.name})` : '';
+                            const fText = i.notes ? ` (${i.notes})` : '';
+                            const p = Number(i.deal?.deal_price ?? i.menu_variant?.price ?? i.menu_item?.base_price ?? i.price ?? i.unit_price ?? 0) * i.quantity;
+                            return `• ${i.quantity}x ${n}${v}${fText} — Rs. ${p.toLocaleString('en-PK')}`;
+                        });
+                        const freshTotals = await calculateCartTotals({ sessionKey: canonicalKey, restaurantId: restId });
+                        const promptTail = '\n\nKya aap iske sath kuch aur order karna chahenge (jaise Fries ya Cold Drink), ya order finalize karein? 😊';
+                        backendReply = `Zabardast! Aap ke items cart mein add kar diye gaye hain! 🎉\n${cartLines.join('\n')}\n\n*Subtotal:* Rs. ${Number(freshTotals.subtotal).toLocaleString('en-PK')}${promptTail}`;
                     } else {
                         backendReply = replies.join('\n\n');
                     }
@@ -1191,7 +1193,8 @@ export async function handleCustomerMessage({
         // ── Universal Safeguard: Ensure no requested items from multi-product orders were dropped ──
         try {
             const isOrderPlacement = /\b(?:kr\s*d[aou]+n?|kar\s*d[aou]+n?|kardo|krdo|krdu|kardu|karein|kar\s*dein|kr\s*dein|kar\s*dain|kr\s*dain|karden|order\s*(?:karo|kro|krna|karna|dein|dain|do)|chahiye|mangwao|bhejo|bhej\s*do|daal\s*do|add)\b/i.test(resolvedText);
-            if (isOrderPlacement && !confirmIntent) {
+            const hasToolAddedItems = (context.actions || []).some(a => a.tool === 'add_to_cart' || a.tool === 'add_item');
+            if (isOrderPlacement && !confirmIntent && !hasToolAddedItems) {
                 const { extractRequestedItems } = await import('./addonExtractionService.js');
                 const extractedCheck = extractRequestedItems(resolvedText);
                 if (extractedCheck?.items?.length > 0) {
