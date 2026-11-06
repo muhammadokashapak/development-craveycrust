@@ -184,7 +184,29 @@ export async function handleCustomerMessage({
                 (Array.isArray(fastResult.imageUrls) && fastResult.imageUrls.length > 0)
             );
 
-            if ((fastResult.handled || fastResult.reply) && hasFastContent) {
+            // Restrict Fast Route Interception:
+            // Allow ONLY safety boundaries, human handover, bot start, and active deal flavour continuation.
+            // All conversational messages, food ordering, menu requests, confirmations, refusals,
+            // and customer questions MUST pass through to Step 6 (AI Context Understanding & Action Planner)
+            // so the AI reads the entire message in full context and decides appropriate tool calls!
+            const ALLOWED_FAST_ROUTES = new Set([
+                'abusive_language_boundary',
+                'handover',
+                'human_support_request',
+                'bot_start',
+                'flavour_selection_completed',
+                'flavour_first_selected',
+                'pending_flavour_retry',
+                'flavour_first_confirmed',
+            ]);
+
+            const hasPendingFlavour = Boolean(getPendingDealFlavour(canonicalKey));
+            const isAllowedFast = fastResult.routeName && (
+                ALLOWED_FAST_ROUTES.has(fastResult.routeName) ||
+                (hasPendingFlavour && fastResult.routeName.includes('flavour'))
+            );
+
+            if ((fastResult.handled || fastResult.reply) && hasFastContent && isAllowedFast) {
                 const cleanReply = sanitizeOutput(fastResult.reply);
                 logZeroTokenReply({
                     whatsappPhone,
@@ -284,6 +306,16 @@ export async function handleCustomerMessage({
                 sessionDetails.phone = cleanPhone;
                 sessionDetails.phoneConfirmed = true;
             }
+        }
+        const isTakeaway = /\b(?:takeaway|take\s*away|self[-\s]*pickup|pickup|pick\s*up|outlet\s*(?:se|pe|par|per)?|cravey\s*crust\s*(?:per|par|pe|se)|shop\s*se|counter\s*se)\b/i.test(resolvedText);
+        if (sessionDetails.name && sessionDetails.phoneConfirmed && isTakeaway && !updatePayload.address) {
+            const takeawayAddr = 'Takeaway / Self-Pickup (Cravey Crust Outlet - Ghauri Town Phase 4B)';
+            updatePayload.address = takeawayAddr;
+            sessionDetails.address = takeawayAddr;
+            updatePayload.orderType = 'TAKEAWAY';
+            sessionDetails.orderType = 'TAKEAWAY';
+            updatePayload.summaryShown = false;
+            sessionDetails.summaryShown = false;
         }
         const candidateAddress = cleanExtractedAddress(resolvedText);
         const hasChangeIntent = /\b(?:change|badal|update)\b/i.test(resolvedText);
@@ -554,12 +586,26 @@ export async function handleCustomerMessage({
             intent === 'CLARIFICATION_QUERY' ||
             intent === 'CUSTOM_DEAL_REQUEST' ||
             intent === 'CHEAPEST_DEALS_QUERY' ||
-            intent === 'CHEAPEST_ITEMS_QUERY'
+            intent === 'CHEAPEST_ITEMS_QUERY' ||
+            intent === 'DECLINE_ORDERING'
         )) {
             backendReply = context.conversational_reply;
         }
 
         if (!backendReply) switch (intent) {
+            case 'DECLINE_ORDERING': {
+                const { clearCart } = await import('./cartService.js');
+                await clearCart({ sessionKey: canonicalKey }).catch(() => {});
+                clearOrderSummarySnapshot(canonicalKey);
+                updateSessionOrderDetails(canonicalKey, {
+                    orderStage: ORDER_STAGES.CART_BUILDING,
+                    summaryShown: false,
+                    extraItemsAnswered: false,
+                }, whatsappPhone);
+                backendReply = context.conversational_reply || 'Koi baat nahi! Agar aap ko kisi pareshani ka samna karna para to hum dil se maazrat-khwah hain. Agar aap ko kisi cheez mein madad chahiye ya human support se rabta karna ho to batayein. Cravey Crust aap ki khidmat ke liye hamesha haazir hai! 🙏';
+                break;
+            }
+
             case 'CUSTOM_DEAL_REQUEST': {
                 backendReply = RESPONSE_TEMPLATES.customDealNotPossible();
                 backendImageUrl = null;

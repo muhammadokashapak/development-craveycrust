@@ -60,6 +60,7 @@ export const INTENT_CATEGORIES = {
     CHEAPEST_ITEMS_QUERY: 'CHEAPEST_ITEMS_QUERY',
     PERSONA_QUERY: 'PERSONA_QUERY',
     CLARIFICATION_QUERY: 'CLARIFICATION_QUERY',
+    DECLINE_ORDERING: 'DECLINE_ORDERING',
 
     // Unknown
     UNKNOWN_INTENT: 'UNKNOWN_INTENT',
@@ -176,6 +177,24 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
    - When customer says standalone "What", "kya", "kia", "hein", "?":
    - Return "actions": [], "intent": "CLARIFICATION_QUERY", "conversational_reply": "Ji! Agar aap ko menu, deals ya kisi item ke bare mein maloomat chahiye ya order karna ho to bataein, main aap ki madad ke liye haazir hoon! 😊\\n\\n• Deals dekhne ke liye *\"deals\"* likhein.\\n• Menu dekhne ke liye *\"menu\"* likhein."
 
+15. Customer Refusal / Decline / Cancellation:
+   - When a customer says "Maazrat ma dobara order ni kar sakta", "nahi chahiye", "rehne do", "ab order nahi karna", "mood nahi hai", "cancel kar do cart":
+   - The customer is explicitly declining or canceling their order attempt.
+   - NEVER call get_menu, get_deals, or suggest ordering items!
+   - Return "actions": [], "intent": "DECLINE_ORDERING", "conversational_reply": "Koi baat nahi! Agar aap ko kisi pareshani ka samna karna para to hum dil se maazrat-khwah hain. Agar aap ko kisi cheez mein madad chahiye ya human support se rabta karna ho to batayein. Cravey Crust aap ki khidmat ke liye hamesha haazir hai! 🙏"
+16. Takeaway / Self-Pickup at Branch:
+   - When customer says "Takeaway", "Self-pickup", "cravey crust per", "outlet se le loon ga", "counter se lena hai", "shop se le lenge":
+   - The customer wants Takeaway / Self-Pickup at the Cravey Crust outlet.
+   - Return "actions": [{ "tool": "update_customer_details", "args": { "address": "Takeaway / Self-Pickup (Outlet: Cravey Crust, Ghauri Town Phase 4B)" } }], "intent": "PROVIDE_ADDRESS", "entities": { "address": "Takeaway / Self-Pickup (Outlet: Cravey Crust, Ghauri Town Phase 4B)" }
+17. Affirmative Phone Confirmation during Checkout:
+   - When the assistant asked the customer to confirm their contact number (e.g. "Rabtay ke liye rider ko yahi WhatsApp number dein?"), and customer replies "Han", "Haan", "Ji", "G", "Theek hai", "Yes":
+   - Customer is confirming their PHONE NUMBER, NOT placing the final order!
+   - Return "actions": [{ "tool": "update_customer_details", "args": { "phone": "SAME_WHATSAPP" } }], "intent": "PROVIDE_PHONE"
+   - NEVER call "confirm_order" until ALL details (Name, Phone, Delivery Address/Takeaway, Payment Method) are completed!
+18. Full Sentence Reading & Negation Safety:
+   - ALWAYS read the ENTIRE customer message. NEVER extract keywords out of context.
+   - If there is a negation word ("ni", "nahi", "nahin", "nhi", "mat", "not", "ni kar sakta"), interpret the sentence as a negative intent or refusal!
+
 OUTPUT FORMAT: Respond ONLY with valid raw JSON. No markdown code blocks, no explanation text:
 {
   "reasoning": "<1 sentence explanation of customer intent>",
@@ -264,6 +283,57 @@ function parseAndValidateJson(raw) {
  */
 function fallbackDeterministicInterpretation(text, sessionDetails, orderStage) {
     const lower = (text || '').toLowerCase().trim();
+
+    // 0. Check Customer Refusal / Decline / Cancellation
+    const isRefusalOrDecline = /\b(?:dobara\s*order\s*(?:ni|nahi|nahin|nhi|mat)\s*(?:kr|kar)\s*sakta|order\s*(?:ni|nahi|nahin|nhi|mat)\s*(?:krna|karna|kar\s*sakta|kr\s*sakta)|nahi\s*chahiye|rehne\s*do|ab\s*nahi\s*mangwana|mood\s*nahi\s*hai|cancel\s*(?:kr|kar)\s*do|nahi\s*order\s*karna)\b/i.test(lower) ||
+        (/^(?:nahi|nahin|na|no|never|cancel)[\s.!?]*$/i.test(lower) && (orderStage === 'AWAITING_CONFIRMATION' || orderStage === 'DELIVERY_VALIDATION'));
+    if (isRefusalOrDecline) {
+        return {
+            reasoning: 'Fallback detected customer refusal or ordering cancellation',
+            intent: 'DECLINE_ORDERING',
+            confidence: 0.98,
+            actions: [{ tool: 'clear_cart', args: {} }],
+            conversational_reply: 'Koi baat nahi! Agar aap ko kisi pareshani ka samna karna para to hum dil se maazrat-khwah hain. Agar aap ko kisi cheez mein madad chahiye ya human support se rabta karna ho to batayein. Cravey Crust aap ki khidmat ke liye hamesha haazir hai! 🙏',
+            referenced_entity: { type: 'none', name: null },
+            entities: {},
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 0-takeaway: Check Takeaway / Self-Pickup Selection
+    const isTakeaway = /\b(?:takeaway|take\s*away|self[-\s]*pickup|pickup|pick\s*up|outlet\s*(?:se|pe|par|per)?|cravey\s*crust\s*(?:per|par|pe|se)|shop\s*se|counter\s*se)\b/i.test(lower);
+    if (isTakeaway) {
+        const takeawayAddr = 'Takeaway / Self-Pickup (Cravey Crust Outlet - Ghauri Town Phase 4B)';
+        return {
+            reasoning: 'Fallback detected takeaway / self-pickup selection',
+            intent: 'PROVIDE_ADDRESS',
+            confidence: 0.95,
+            actions: [{ tool: 'update_customer_details', args: { address: takeawayAddr } }],
+            referenced_entity: { type: 'none', name: null },
+            entities: {
+                address: takeawayAddr,
+                customer_name: sessionDetails?.name || null,
+                phone: sessionDetails?.phone || null,
+            },
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
+
+    // 0-phone: Check phone affirmative confirmation during customer details stage
+    if (orderStage === 'CUSTOMER_DETAILS' && sessionDetails?.name && !sessionDetails?.phoneConfirmed && /^(?:han|haan|jee|ji|g|yes|ok|theek\s*hai)[\s.!?]*$/i.test(lower)) {
+        return {
+            reasoning: 'Fallback detected customer confirming their phone number',
+            intent: 'PROVIDE_PHONE',
+            confidence: 0.95,
+            actions: [{ tool: 'update_customer_details', args: { phone: 'SAME_WHATSAPP' } }],
+            referenced_entity: { type: 'none', name: null },
+            entities: { phone: sessionDetails?.phone || 'SAME_WHATSAPP' },
+            operation: 'READ_ONLY',
+            customer_confirmation: false,
+        };
+    }
 
     // 0a. Check Custom Deal Refusal
     const isCustomDeal = (

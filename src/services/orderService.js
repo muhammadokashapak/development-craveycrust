@@ -88,6 +88,49 @@ export async function getRecentOrderBySessionOrPhone({ sessionKey, phone, chatId
     return null;
 }
 
+/**
+ * Resolves ConversationSession robustly across session_key, canonical key, chatId, or verified_phone
+ */
+async function resolveDbSession(prisma, sessionKey, phone = null, restId = null) {
+    if (!prisma || !sessionKey) return null;
+    const { getCanonicalSessionKey, getOrCreateSession } = await import('./sessionService.js');
+    const canonicalKey = getCanonicalSessionKey(sessionKey);
+
+    let session = await prisma.conversationSession.findUnique({
+        where: { session_key: sessionKey },
+    }).catch(() => null);
+
+    if (!session && canonicalKey && canonicalKey !== sessionKey) {
+        session = await prisma.conversationSession.findUnique({
+            where: { session_key: canonicalKey },
+        }).catch(() => null);
+    }
+
+    if (!session) {
+        session = await prisma.conversationSession.findFirst({
+            where: {
+                OR: [
+                    { session_key: sessionKey },
+                    { session_key: canonicalKey },
+                    { chat_id: sessionKey },
+                    { id: sessionKey },
+                    ...(phone ? [{ verified_phone: String(phone).replace(/\D/g, '') }] : []),
+                ],
+            },
+        }).catch(() => null);
+    }
+
+    if (!session && restId) {
+        session = await getOrCreateSession({
+            sessionKey: canonicalKey || sessionKey,
+            chatId: sessionKey,
+            phone,
+            restaurantId: restId,
+        }).catch(() => null);
+    }
+    return session;
+}
+
 export async function createOrder(params) {
     const prisma = getDbClient();
     const {
@@ -304,9 +347,7 @@ export async function createOrder(params) {
         throw err;
     }
 
-    const session = await prisma.conversationSession.findUnique({
-        where: { session_key: sessionKey },
-    });
+    const session = await resolveDbSession(prisma, sessionKey, phone, restId);
 
     if (!session) {
         const err = new Error('Conversation session not found');
@@ -485,7 +526,8 @@ export async function createOrder(params) {
         const areaLabel = pricing.deliveryArea?.name || delivery?.areaName || '';
         const isOnlyAreaName = areaLabel && finalDeliveryAddress.toLowerCase() === areaLabel.toLowerCase();
 
-        if (dummyAddressRegex.test(finalDeliveryAddress) || isRestaurantAddress || isOnlyAreaName) {
+        const isTakeaway = /\b(?:takeaway|take\s*away|self[-\s]*pickup|pickup|outlet)\b/i.test(finalDeliveryAddress);
+        if (!isTakeaway && (dummyAddressRegex.test(finalDeliveryAddress) || isRestaurantAddress || isOnlyAreaName)) {
             finalDeliveryAddress = '';
         }
 
@@ -710,9 +752,7 @@ export async function requestOrderCancellation({ restaurantId, orderNumber, sess
         throw err;
     }
 
-    const session = await prisma.conversationSession.findUnique({
-        where: { session_key: sessionKey },
-    });
+    const session = await resolveDbSession(prisma, sessionKey, phone, restId);
 
     if (!session) {
         const err = new Error('Conversation session not found');
@@ -786,9 +826,7 @@ export async function confirmOrderCancellation({ restaurantId, orderNumber, sess
 
     const restId = restaurantId || await getDefaultRestaurantId();
 
-    const session = await prisma.conversationSession.findUnique({
-        where: { session_key: sessionKey },
-    });
+    const session = await resolveDbSession(prisma, sessionKey, phone, restId);
 
     if (!session) {
         const err = new Error('Conversation session not found');

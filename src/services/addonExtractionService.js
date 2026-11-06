@@ -134,7 +134,7 @@ export function getCartIncludedComponents(cart) {
 }
 
 const QTY_WORD_MAP = {
-    'ek': 1, 'aik': 1, 'ik': 1, 'one': 1, '1': 1,
+    'ak': 1, 'ek': 1, 'aik': 1, 'ik': 1, 'one': 1, '1': 1,
     'do': 2, 'doo': 2, 'two': 2, '2': 2,
     'teen': 3, 'tin': 3, 'three': 3, '3': 3,
     'char': 4, 'chaar': 4, 'four': 4, '4': 4,
@@ -192,7 +192,7 @@ export function extractRequestedItems(text, activeCart = null) {
     };
 
     // 1. Detect Deals (e.g. "1 deal 3", "zinger deal 3", "deal 4", "deal 5")
-    const dealRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(zinger\s*deal\s*[1-4]|burger\s*deal\s*[1-3]|deal\s*#?\s*[1-5]|burger\s*meal\s*for\s*[1-3]|pizza\s*meal\s*for\s*[1-4])\b/gi;
+    const dealRegex = /(?:\b(\d+|ak|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(zinger\s*deal\s*[1-4]|burger\s*deal\s*[1-3]|deal\s*#?\s*[1-5]|burger\s*meal\s*for\s*[1-3]|pizza\s*meal\s*for\s*[1-4])\b/gi;
     let dMatch;
     while ((dMatch = dealRegex.exec(lower)) !== null) {
         const qty = parseQuantity(dMatch[1], 1);
@@ -228,7 +228,7 @@ export function extractRequestedItems(text, activeCart = null) {
     }
 
     // 2. Detect Burger Mentions (matches ALL burger occurrences: Zinger, Zegy)
-    const burgerRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/gi;
+    const burgerRegex = /(?:\b(\d+|ak|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(zinger|ziggy|zegy|zeggy)\s*(?:burger|burgers)?\b/gi;
     let bMatch;
     while ((bMatch = burgerRegex.exec(lower)) !== null) {
         if (isItemPartOfDeal(bMatch[2], bMatch.index)) continue;
@@ -251,7 +251,7 @@ export function extractRequestedItems(text, activeCart = null) {
     }
 
     // 3. Detect Fries Mentions
-    const friesRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(regular|reg|large|loaded|choti|bari|standard)\s+)?(?:fries|fris|fryz|fraies|french\s*fries)(?:\s+(regular|reg|large|loaded|standard))?\b/gi;
+    const friesRegex = /(?:\b(\d+|ak|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(regular|reg|large|loaded|choti|bari|standard)\s+)?(?:fries|fris|fryz|fraies|french\s*fries)(?:\s+(regular|reg|large|loaded|standard))?\b/gi;
     let fMatch;
     while ((fMatch = friesRegex.exec(lower)) !== null) {
         const qty = parseQuantity(fMatch[1], 1);
@@ -312,7 +312,7 @@ export function extractRequestedItems(text, activeCart = null) {
     }
 
     // 5. Detect Standalone Pizzas (supports both [flavor] [size] and [size] [flavor])
-    const pizzaRegex = /(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty)\s+)?(?:chicken\s+)?(fajita|tikka|supreme|cheese\s*lover|tando?or[ie]?|extreme|peri\s*peri|behari(?:\s*kebab)?|crown\s*crust)(?:\s+pizza)?(?:\s+(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty))?\b/gi;
+    const pizzaRegex = /(?:\b(\d+|ak|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)?(?:^|[^\w])(?:(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty)\s+)?(?:chicken\s+)?(fajita|tikka|supreme|cheese\s*lover|tando?or[ie]?|extreme|peri\s*peri|behari(?:\s*kebab)?|crown\s*crust)(?:\s+pizza)?(?:\s+(small|medium|large|part[yei]?\s*size|prty\s*size|partysize|party|prty))?\b/gi;
     let pMatch;
     while ((pMatch = pizzaRegex.exec(lower)) !== null) {
         if (isItemPartOfDeal(pMatch[3], pMatch.index)) continue;
@@ -376,8 +376,8 @@ export function extractRequestedItems(text, activeCart = null) {
         }
 
         let qty = 1;
-        const drinkQtyMatch = lower.match(/(?:\b(\d+|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|mirinda)\b/i) ||
-                             lower.match(/(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\s*(?:(?:1\.5\s*liter|1\.5\s*litre|1\s*liter|1\s*litre|can|regular|tin|litre|liter)\s*(?:wali|wale)?\s*)?(\d+|aik|ek|ik|1)\b/i) ||
+        const drinkQtyMatch = lower.match(/(?:\b(\d+|ak|aik|ek|ik|do|teen|two|three|four|five|fifteen|twenty|thirty|forty|fifty|\d+)\s*(?:x\s*)?)(?:(?:1\s*liter|1\.5\s*liter|regular|can|tin|soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke|next\s*cola|7up|dew|sprite|mirinda)\b/i) ||
+                             lower.match(/(?:drinks?|cold\s*drinks?|soft\s*drinks?|pepsi|coke)\s*(?:(?:1\.5\s*liter|1\.5\s*litre|1\s*liter|1\s*litre|can|regular|tin|litre|liter)\s*(?:wali|wale)?\s*)?(\d+|ak|aik|ek|ik|1)\b/i) ||
                              lower.match(/(?:^|\n)\s*(\d+)\s*(?:x\s*)?(?:(?:soft|cold|sift|suft)\s+)*(?:drinks?|pepsi|coke)/i);
         if (drinkQtyMatch) {
             qty = parseQuantity(drinkQtyMatch[1], 1);

@@ -24,7 +24,7 @@ export const CLASSIC_PIZZA_FLAVOURS = [
     {
         name: 'Cheese Lover',
         slug: 'cheese-lover',
-        regex: /\b(?:cheese\s*lovers?|cheesy\s*lovers?|chees\s*lovers?|plain\s*cheese|extra\s*cheese|cheese)\b/i,
+        regex: /\b(?:cheese\s*lovers?|cheesy\s*lovers?|chees\s*lovers?|plain\s*cheese|extra\s*cheese|cheese|lovers?)\b/i,
     },
     {
         name: 'Chicken Tandori',
