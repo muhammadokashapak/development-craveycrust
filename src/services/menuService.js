@@ -338,7 +338,7 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const cleanQ = rawItemQ;
     const { size: extractedSize, cleanQuery: strippedQ } = extractSizeFromQuery(cleanQ);
     // Directive: Unsupported cuisines (e.g. biryani, pulao, karahi, sushi, pasta) fail-closed as NOT_FOUND
-    const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|pasta|daal|roti|naan|saag|anda|egg|shami|chapli|beef|fish|mutton|qeema)\b/i;
+    const UNSUPPORTED_CUISINES = /\b(biryani|pulao|karahi|nihari|haleem|sushi|daal|roti|naan|saag|anda|egg|shami|chapli|beef|fish|mutton|qeema)\b/i;
     if (UNSUPPORTED_CUISINES.test(cleanQ)) {
         return { match: null, status: 'NOT_FOUND', message: 'Cravey Crust sirf pizzas, burgers, fries aur drinks offer karta hai.' };
     }
@@ -350,6 +350,8 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
     const isCategoryFries = !extractedSize && /^(?:fries|frenzy\s*fries)$/i.test(cleanQ);
     const isCategoryDrink = !extractedSize && /^(?:drinks?|cold\s*drinks?|soft\s*drinks?)$/i.test(cleanQ);
     const isCategoryWings = !extractedSize && /^(?:wings?|chicken\s*wings?)$/i.test(cleanQ);
+    const isCategoryPasta = !extractedSize && /^(?:pastas?|pasta)$/i.test(cleanQ);
+    const isCategorySandwich = !extractedSize && /^(?:sandwich(?:es)?|sandwiches)$/i.test(cleanQ);
 
     if (isCategoryPizza) {
         return {
@@ -384,6 +386,20 @@ export async function resolveMenuItemOrDeal(query, restaurantId) {
             status: 'CATEGORY_REQUESTED',
             categoryName: 'Wings',
             reply: 'Hamare paas *Crispy Hot Wings* (Rs. 449) aur *Oven Baked Wings* (Rs. 499) mojood hain. Kaunse wings add karun? 😊',
+        };
+    }
+    if (isCategoryPasta) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Pastas',
+            reply: 'Hamare paas mazedaar pastas mojood hain: *Crispy Pasta* (Rs. 799) aur *Alfredo Pasta* (Rs. 849). Aap kaunsa pasta order karna chahenge? 🍝',
+        };
+    }
+    if (isCategorySandwich) {
+        return {
+            status: 'CATEGORY_REQUESTED',
+            categoryName: 'Sandwiches',
+            reply: 'Hamare paas mazedaar *Crispy Sandwich* (Rs. 799) mojood hai fries ke sath! Kya yeh add kar dein? 🥪',
         };
     }
 
