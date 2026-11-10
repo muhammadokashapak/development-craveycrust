@@ -205,6 +205,15 @@ export function cleanExtractedAddress(text) {
         return 'Takeaway / Self-Pickup (Cravey Crust Outlet - Ghauri Town Phase 4B)';
     }
 
+    // 0a. Reject change/update requests that do not contain an actual address/landmark/sector/street
+    if (/\b(?:location|address|pata|delivery\s*address)\s*(?:bhi\s*|b\s*)?(?:change|badal|update|galat|wrong)\b/i.test(cleaned) ||
+        /\b(?:change|badal|update)\s*(?:location|address|pata)\b/i.test(cleaned)) {
+        const hasRealAddressPattern = /\b(?:phase|street|gali|house|makan|sector|block|plaza|chowk|chok|road|flats?|flat|appartment|apartment|floor|ghauri|ghori|tarlai|khanna|khana|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|rawalpindi|pindi|islamabad|isb)\b/i.test(cleaned);
+        if (!hasRealAddressPattern) {
+            return null;
+        }
+    }
+
     // 0. Do not treat delivery inquiries/questions/arguments as delivery address
     if (isDeliveryAreaInquiry(cleaned) || isDeliveryAreaInquiry(text)) {
         return null;
@@ -223,6 +232,9 @@ export function cleanExtractedAddress(text) {
         prevLead = cleaned;
         cleaned = cleaned.replace(/^(?:(?:haa?n?|hn|jee?|ji|g|yes|ok|okay|theek(?:\s*hai)?|bilkul|aoa|assalam\s*o?\s*alaikum|salam|helo|hello|hi|hey|suno|oye|bhai\s*jan|bhaiya|bhai|yaar|yar|bro|janab|paji|ustaad|sir|boss)\s+)+/i, '');
     } while (cleaned !== prevLead);
+
+    // 1b. Strip references to name change phrases if mixed
+    cleaned = cleaned.replace(/\b(?:aur\s+)?(?:naa?m(?:e)?)\s*(?:bhi|b|change|badal|update)?\b/gi, ' ');
 
     // 2. Strip leading labels like "address:", "mera pata:", "delivery address:", "location:", "pichly order ka address", etc.
     cleaned = cleaned.replace(/^(?:location|address|pata|delivery\s*location|delivery\s*address)\s*(?:bhi\s*|b\s*)?(?:change|badal|update|badalna)?\s*(?:karna|krna|kar\s*do|kr\s*do|kardo|krdo|kr\s*dein|kar\s*dein|karden|kar\s*dain|kr\s*dain|dein|do)?\s*[:=-]?\s*/i, ' ');
@@ -424,7 +436,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
         nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy|had|is).*$/i, '').trim();
         // Strip trailing action verbs/honorifics
         nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|had|is|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
-        if (NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate)) {
+        if (NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate) || !isValidCustomerName(nameCandidate) || /\b(?:change|badal|update|kaha|bola|keha|tha|thi|the|krny|karny|karna|krna|chahiye)\b/i.test(nameCandidate)) {
             nameCandidate = null;
         }
     }
@@ -437,7 +449,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const isQuestionOrInquiry = raw.includes('?') || /\b(?:kya|kia|kab|kese|kaise|kahan|kidhar|kahin|konsa|konse|kyun|kyu|hai\?|he\?|h\?|btao|batao|dikhao|dekhao)\b/i.test(raw);
     const isMenuOrQueryWord = /\b(?:menu|manu|manue|menue|meny|mainu|mainue|mny|catalog|catlog|rate|list|dikhao|dekhao|dikhayein|batao|bhejo|kase|kaise|kese|haal?|scene)\b/i.test(lower);
     const nameExplicit = Boolean(directNameSetMatch || nameUpdateMatch || nameBefore || nameAfter);
-    if (!nameCandidate && !knownDetails.name && knownDetails.isAwaitingName && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord && !isQuestionOrInquiry) {
+    if (!nameCandidate && (!knownDetails.name || knownDetails.nameChangeRequested) && (knownDetails.isAwaitingName || knownDetails.nameChangeRequested) && !paymentMethod && !phone && !invalidPhone && !ADDRESS_INDICATORS.test(lower) && !isMenuOrQueryWord && !isQuestionOrInquiry) {
         const isGreetingOrFiller = /^(?:hlo|hlw|hy|helo|hellow|hi|hii|hiii|hello|hey|heyy|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|bhai|sir|bro|good|great|nice|fine|best|cool|super|bad|awesome|perfect|well|wese|waise|chalo|yar|yaar|acha|achha|accha|done|thanks|thank|thx|shukriya|ok|okay)[\s.!?]*$/i.test(raw.trim());
         if (!isGreetingOrFiller) {
             let direct = raw.trim().replace(/^(?:same|wahi|yahi|yehi|isi)\s+/i, '').trim();
@@ -6785,11 +6797,40 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (_) {}
     }
 
-    // ── Check Fast Route: Address Change / Correction Request (Zero Tokens) ──
-    const isAddressChangeRequest = /\b(?:(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do)|change\s*(?:bhi\s*|b\s*)?location|wrong\s*ad(?:d)?re(?:e)?s(?:s)?|galat\s*ad(?:d)?re(?:e)?s(?:s)?|naya\s*(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:ka\s*)?(?:maza\s*nahi|achi\s*nahi|theek\s*nahi|galat|wrong|sahi\s*nahi)|(?:khi|kahin|kisi\s*aur\s*jagah|dusri\s*jagah)\s*(?:or|aur)?\s*(?:replace|shift|bhejna|mangwana)\s*(?:krwna|karwana|krna|karna)|replace\s*(?:krwna|karwana|krna|karna))\b/i.test(lower);
-    const candidateNewAddress = isAddressChangeRequest ? cleanExtractedAddress(raw) : null;
+        // ── Check Fast Route: Address / Name / Both Change Request (Zero Tokens) ──
+    const isLocationChangeRequest = /\b(?:(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do|krny|karny|kaha|bola)|change\s*(?:bhi\s*|b\s*)?(?:delivery\s*)?ad(?:d)?re(?:e)?s(?:s)?|location\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do|krny|karny|kaha|bola)|change\s*(?:bhi\s*|b\s*)?location|wrong\s*(?:ad(?:d)?re(?:e)?s(?:s)?|location)|galat\s*(?:ad(?:d)?re(?:e)?s(?:s)?|location)|naya\s*(?:delivery\s*)?(?:ad(?:d)?re(?:e)?s(?:s)?|location)|location\s*(?:ka\s*)?(?:maza\s*nahi|achi\s*nahi|theek\s*nahi|galat|wrong|sahi\s*nahi)|(?:khi|kahin|kisi\s*aur\s*jagah|dusri\s*jagah)\s*(?:or|aur)?\s*(?:replace|shift|bhejna|mangwana)\s*(?:krwna|karwana|krna|karna)|replace\s*(?:krwna|karwana|krna|karna))\b/i.test(lower);
+    const isNameChangeRequest = /\b(?:(?:customer\s*)?naa?m(?:e)?\s*(?:bhi\s*|b\s*)?(?:change|badal|update|theek|sahi|galat|ghalat|karna|krna|kar\s*do|kr\s*do|krny|karny|kaha|bola|keha)|change\s*(?:bhi\s*|b\s*)?(?:customer\s*)?naa?m(?:e)?|wrong\s*naa?m(?:e)?|galat\s*naa?m(?:e)?|naya\s*naa?m(?:e)?|naa?m(?:e)?\s*(?:badalna|badal\s*do|change\s*krna|change\s*karna|update\s*krna|theek\s*nahi|galat|wrong|sahi\s*nahi)|naam\s*bhi|name\s*bhi)\b/i.test(lower);
 
-    if (isAddressChangeRequest && !candidateNewAddress && userSessionId) {
+    const isAddressChangeRequest = isLocationChangeRequest;
+    const candidateNewAddress = isAddressChangeRequest ? cleanExtractedAddress(raw) : null;
+    const preExtractForChange = extractCustomerDetails(raw, {});
+    const candidateNewName = preExtractForChange.name && isValidCustomerName(preExtractForChange.name) ? preExtractForChange.name : null;
+
+    // Case 1: Customer wants to change BOTH name and location
+    if (isLocationChangeRequest && isNameChangeRequest && !candidateNewAddress && !candidateNewName && userSessionId) {
+        try {
+            const { updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            updateSessionOrderDetails(userSessionId, {
+                name: null,
+                nameExplicit: false,
+                address: null,
+                location: null,
+                locationConfirmed: false,
+                addressConfirmed: false,
+                summaryShown: false,
+                awaitingFinalConfirmation: false,
+            }, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'both_name_and_location_change_prompt',
+                reply: 'Ji bilkul! Baraye meherbani pehle apna naya naam bata dein, aur sath apni nayi delivery location ya WhatsApp location pin share karein. 📍',
+            };
+        } catch (_) {}
+    }
+
+    // Case 2: Customer wants to change ONLY location/address
+    if (isAddressChangeRequest && !isNameChangeRequest && !candidateNewAddress && userSessionId) {
         try {
             const { updateSessionOrderDetails, getSessionOrderDetails } = await import('./sessionService.js');
             const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
@@ -6805,7 +6846,26 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
             return {
                 handled: true,
                 routeName: 'address_change_prompt',
-                reply: `Koi masla nahi ${currDetails?.name ? currDetails.name + ' bhai! ' : 'Ji! '}Delivery kahan karni hai? Baraye meherbani apna naya address ya WhatsApp location pin bhej dein. 📍`,
+                reply: `Koi masla nahi ${currDetails?.name ? currDetails.name + ' bhai! ' : 'Ji! '}Baraye meherbani apni nayi delivery location ya WhatsApp location pin bhej dein. 📍`,
+            };
+        } catch (_) {}
+    }
+
+    // Case 3: Customer wants to change ONLY name
+    if (isNameChangeRequest && !isLocationChangeRequest && !candidateNewName && userSessionId) {
+        try {
+            const { updateSessionOrderDetails } = await import('./sessionService.js');
+            const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
+            updateSessionOrderDetails(userSessionId, {
+                name: null,
+                nameExplicit: false,
+                summaryShown: false,
+                awaitingFinalConfirmation: false,
+            }, cleanPhone);
+            return {
+                handled: true,
+                routeName: 'name_change_prompt',
+                reply: 'Theek hai Ji! Baraye meherbani apna naya naam bata dein taake hum update kar sakein? 😊',
             };
         } catch (_) {}
     }

@@ -217,6 +217,8 @@ export async function handleCustomerMessage({
                 fastResult.routeName === 'item_not_in_cart_removal'
             );
             const isAddressRoute = fastResult.routeName && (
+                fastResult.routeName === 'both_name_and_location_change_prompt' ||
+                fastResult.routeName === 'name_change_prompt' ||
                 fastResult.routeName === 'address_change_prompt' ||
                 fastResult.routeName === 'step_address_change_requested' ||
                 fastResult.routeName === 'step_address_incomplete' ||
@@ -280,11 +282,11 @@ export async function handleCustomerMessage({
         const rememberedDetails = await getRememberedCustomerDetails(canonicalKey, whatsappPhone);
 
         // Populate remembered profile if not already set
-        if (rememberedDetails?.name && !sessionDetails.name) {
+        if (rememberedDetails?.name && !sessionDetails.name && !sessionDetails.nameChangeRequested) {
             sessionDetails.name = rememberedDetails.name;
             sessionDetails.nameExplicit = true;
         }
-        if (rememberedDetails?.address && !sessionDetails.address) {
+        if (rememberedDetails?.address && !sessionDetails.address && !sessionDetails.addressChangeRequested) {
             sessionDetails.address = rememberedDetails.address;
         }
         const cleanPhone = (whatsappPhone || '').replace(/\D/g, '');
@@ -306,7 +308,9 @@ export async function handleCustomerMessage({
         const updatePayload = {};
 
         if (extracted.name) {
-            if (!sessionDetails.name || !sessionDetails.nameExplicit) {
+            if (!sessionDetails.name || !sessionDetails.nameExplicit || sessionDetails.nameChangeRequested) {
+                updatePayload.nameChangeRequested = false;
+                sessionDetails.nameChangeRequested = false;
                 updatePayload.name = extracted.name;
                 updatePayload.nameExplicit = true;
                 sessionDetails.nameExplicit = true;
@@ -320,7 +324,9 @@ export async function handleCustomerMessage({
                 }
             }
         }
-        if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase())) {
+        if (extracted.address && (!sessionDetails.address || extracted.address.toLowerCase() !== sessionDetails.address.toLowerCase() || sessionDetails.addressChangeRequested)) {
+            updatePayload.addressChangeRequested = false;
+            sessionDetails.addressChangeRequested = false;
             updatePayload.address = extracted.address;
             sessionDetails.address = extracted.address;
         }

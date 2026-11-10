@@ -49,6 +49,7 @@ export const CUSTOMER_NAME_BLACKLIST = [
     'karein', 'chahiye', 'chahye', 'chaiye', 'chahie', 'chahey', 'rakh', 'rakho',
     'rakhdo', 'likh', 'likho', 'likhdo', 'daal', 'daaldo', 'dedo', 'dein', 'do',
     'lo', 'le', 'banao', 'bana', 'bhej', 'parcel',
+    'krny', 'karny', 'kaha', 'keha', 'bola', 'boli', 'bole', 'boly', 'kahy', 'kahn', 'bolna', 'kehna', 'badalna', 'rakhna', 'likhna', 'tha', 'thi', 'the',
 
     // Affirmatives, negatives, greetings & conversational fillers
     'theek', 'thk', 'thek', 'done', 'ok', 'okk', 'okay', 'sure', 'yes', 'yup', 'yep',
@@ -107,6 +108,7 @@ export const FOOD_OR_COMMAND_WORDS_SET = new Set([
     'confirm', 'comfirm', 'konfirm', 'cnfrm', 'confrm', 'checkout', 'cancel',
     'cod', 'cash', 'easypaisa', 'menu', 'order', 'bill', 'discount',
     'delivery', 'address', 'location',
+    'change', 'badal', 'badalna', 'update', 'kaha', 'bola', 'keha', 'krny', 'karny', 'karna', 'krna', 'rakhna', 'likhna', 'chahiye', 'tha', 'thi', 'the',
 ]);
 
 // ─── 2. Regex for Quick Pattern Matching ───────────────────────────────────────
