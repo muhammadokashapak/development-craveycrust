@@ -91,7 +91,7 @@ export function detectConfirmIntent(text) {
     const MODIFICATION_INTENT = /\b(?:add|change|badal|update|hatao?|nikal|remove|wapas|aur|extra|fries|drink|pepsi|coke|7up|deal|item|burger|pizza|wings|roll|naya|doosra)\b/i;
     if (MODIFICATION_INTENT.test(t)) return false;
 
-    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|hau|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|\bhau\b)\b/i;
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|checkout|check\s*out|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|hau|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|\bhau\b)\b/i;
     if (EXPLICIT_CONFIRM.test(t)) return true;
 
     const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|hau|haun|hawn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
@@ -470,8 +470,12 @@ export async function handleCustomerMessage({
         }
 
         // ── 4. SCENARIO A: Confirmation Lock & Direct Booking ──
-        const isCheckoutIntent = /\b(?:checkout|done|confirm|kar\s*do|kr\s*do|kardo|krdo|book|order|hau|haan)\b/i.test(resolvedText);
-        if (hasCartItems && !meetsMinimumOrder && (confirmIntent || isCheckoutIntent || sessionDetails.summaryShown)) {
+        if (!confirmIntent && sessionDetails.summaryShown) {
+            sessionDetails.summaryShown = false;
+            updateSessionOrderDetails(canonicalKey, { summaryShown: false }, whatsappPhone);
+        }
+
+        if (hasCartItems && !meetsMinimumOrder && confirmIntent) {
             const diff = minOrderRequirement - subtotalNumber;
             const minReply = RESPONSE_TEMPLATES.minimumOrderNotMet({
                 minOrder: minOrderRequirement,
