@@ -91,10 +91,10 @@ export function detectConfirmIntent(text) {
     const MODIFICATION_INTENT = /\b(?:add|change|badal|update|hatao?|nikal|remove|wapas|aur|extra|fries|drink|pepsi|coke|7up|deal|item|burger|pizza|wings|roll|naya|doosra)\b/i;
     if (MODIFICATION_INTENT.test(t)) return false;
 
-    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|hau|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|\bhau\b)\b/i;
     if (EXPLICIT_CONFIRM.test(t)) return true;
 
-    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
+    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|hau|haun|hawn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
     return AFFIRMATIVE.test(t);
 }
 
@@ -439,8 +439,12 @@ export async function handleCustomerMessage({
         const hasValidPayment = Boolean(sessionDetails.paymentMethod === 'COD' || sessionDetails.paymentMethod === 'EASYPAISA');
         const isStep5Done = Boolean(sessionDetails.extraItemsAnswered || sessionDetails.summaryShown);
 
+        const minOrderRequirement = Number(cache.minOrder || 800);
+        const subtotalNumber = Number(cartTotals.subtotal || 0);
+        const meetsMinimumOrder = !hasCartItems || subtotalNumber >= minOrderRequirement;
+
         let currentStage = ORDER_STAGES.CART_BUILDING;
-        if (hasCartItems) {
+        if (hasCartItems && meetsMinimumOrder) {
             if (!hasValidName) currentStage = ORDER_STAGES.CUSTOMER_DETAILS;
             else if (!hasValidPhone) currentStage = ORDER_STAGES.CUSTOMER_DETAILS;
             else if (!hasValidAddress) currentStage = ORDER_STAGES.DELIVERY_VALIDATION;
@@ -461,7 +465,25 @@ export async function handleCustomerMessage({
         }
 
         // ── 4. SCENARIO A: Confirmation Lock & Direct Booking ──
-        const isReadyForBooking = hasCartItems && hasValidName && hasValidPhone && hasValidAddress && hasValidPayment && isStep5Done;
+        const isCheckoutIntent = /\b(?:checkout|done|confirm|kar\s*do|kr\s*do|kardo|krdo|book|order|hau|haan)\b/i.test(resolvedText);
+        if (hasCartItems && !meetsMinimumOrder && (confirmIntent || isCheckoutIntent || sessionDetails.summaryShown)) {
+            const diff = minOrderRequirement - subtotalNumber;
+            const minReply = RESPONSE_TEMPLATES.minimumOrderNotMet({
+                minOrder: minOrderRequirement,
+                subtotal: subtotalNumber,
+                difference: diff,
+            });
+            logZeroTokenReply({
+                whatsappPhone,
+                message: resolvedText,
+                routeName: 'deterministic_cart_subtotal_under_minimum',
+            });
+            appendSessionHistory(canonicalKey, 'user', resolvedText, syncEpoch);
+            appendSessionHistory(canonicalKey, 'assistant', minReply, syncEpoch);
+            return { text: minReply };
+        }
+
+        const isReadyForBooking = hasCartItems && meetsMinimumOrder && hasValidName && hasValidPhone && hasValidAddress && hasValidPayment && isStep5Done;
         if (isReadyForBooking && confirmIntent) {
             if (isConfirmationLocked(canonicalKey)) {
                 return { text: RESPONSE_TEMPLATES.orderProcessing() };
@@ -508,7 +530,7 @@ export async function handleCustomerMessage({
                 }
             } catch (bookingErr) {
                 console.error('[ORCHESTRATOR] Deterministic booking error:', bookingErr.message);
-                if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+                if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || bookingErr.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(bookingErr.message)) {
                     const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
                     const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
                     const minReply = RESPONSE_TEMPLATES.minimumOrderNotMet({
@@ -1056,7 +1078,14 @@ export async function handleCustomerMessage({
             case 'PROVIDE_ADDRESS': {
                 const rawAddr = entities.address || resolvedText;
                 const cleaned = cleanExtractedAddress(rawAddr);
-                const check = await checkDeliveryAvailability({ address: cleaned, restaurantId: restId });
+                const checkLat = activeLocation?.latitude ?? null;
+                const checkLng = activeLocation?.longitude ?? null;
+                const check = await checkDeliveryAvailability({
+                    address: cleaned,
+                    latitude: checkLat,
+                    longitude: checkLng,
+                    restaurantId: restId,
+                });
                 if (!check.available && check.code === 'ADDRESS_INCOMPLETE') {
                     backendReply = RESPONSE_TEMPLATES.addressIncomplete({ locality: check.areaName || cleaned });
                 } else if (!check.available) {

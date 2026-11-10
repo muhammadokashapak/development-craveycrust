@@ -499,6 +499,9 @@ export async function calculatePricing(params) {
         if (deliveryCheck.minimumMet === false) {
             const err = new Error(deliveryCheck.message);
             err.code = deliveryCheck.code || 'DELIVERY_MINIMUM_NOT_MET';
+            err.minOrder = deliveryCheck.minimumOrder || 800;
+            err.subtotal = Number(roundMoney(subtotal));
+            err.diff = Number(new Decimal(err.minOrder).minus(subtotal));
             throw err;
         }
 

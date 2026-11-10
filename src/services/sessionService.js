@@ -21,17 +21,11 @@ export function getCanonicalSessionKey(sessionKey, chatId, phone) {
 }
 
 
+import { isValidCustomerName as validateName } from '../config/nameBlacklist.js';
+
 // ─── Customer Name Validator & Anti-Corruption Guard ────────────────────
 export function isValidCustomerName(name) {
-    if (!name || typeof name !== 'string') return false;
-    const clean = name.trim();
-    if (clean.length < 2 || clean.length > 40) return false;
-    const lower = clean.toLowerCase();
-    // Negative keywords that can NEVER be a customer name
-    if (/\b(?:discount|discounts|riayat|nahii?|nhi|nahi|na|mat|no|none|change|badal|update|kuch|koi|sab|sari|cancel|order|bill|menu|manu|deals?|burger|pizza|fries|drink|pepsi|coke|sauce|wings|tikka|fajita|regular|large|small|party|medium|customer|user|guest|anonymous|client|bhai|sir|bro|madam|ji|jee|hi|hii|hiii|hello|helo|hellow|hey|heyy|salam|aoa|assalam|slam|assalamualaikum|confirm|theek|ok|done|call|calls|dsml|invoke)\b/i.test(lower)) {
-        return false;
-    }
-    return true;
+    return validateName(name);
 }
 
 import { getDbClient } from '../db/client.js';

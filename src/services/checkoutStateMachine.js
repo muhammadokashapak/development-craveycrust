@@ -1,3 +1,4 @@
+import { isValidCustomerName as validateName } from '../config/nameBlacklist.js';
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║   Checkout State Machine — src/services/checkoutStateMachine.js║
@@ -168,13 +169,7 @@ export function clearOrderSummarySnapshot(sessionKey) {
  * Validates customer name. Rejects greetings, affirmatives, slangs, or single characters.
  */
 export function isValidCustomerName(name) {
-    if (!name || typeof name !== 'string') return false;
-    const clean = name.trim();
-    if (clean.length < 2 || clean.length > 50) return false;
-    if (DUMMY_NAMES_REGEX.test(clean)) return false;
-    // Reject numbers or instructions
-    if (/^\d+$/.test(clean) || /\b(instruction|discount|price|burger|pizza)\b/i.test(clean)) return false;
-    return true;
+    return validateName(name);
 }
 
 /**
@@ -199,9 +194,24 @@ export function isValidPhoneNumber(phone) {
  * @param {boolean} [params.confirmIntent]
  * @returns {{ stage: string, currentState: string, nextAction: string, prompt: string, canProceedToOrder: boolean }}
  */
-export function evaluateCheckoutState({ cart, details, totals, confirmIntent = false }) {
+export function evaluateCheckoutState({ cart, details, totals, confirmIntent = false, minOrder = 800 }) {
     // 0. ORDER_FAILED (Recoverable checkout state)
     if (details?.orderStage === ORDER_STAGES.ORDER_FAILED && cart?.items && cart.items.length > 0) {
+        const currentSubtotal = Number(totals?.subtotal ?? cart.items.reduce((sum, item) => sum + (Number(item.price || item.unit_price || 0) * (item.quantity || 1)), 0));
+        const effectiveMinOrder = Number(minOrder || 800);
+        if (currentSubtotal < effectiveMinOrder) {
+            const diff = effectiveMinOrder - currentSubtotal;
+            return {
+                stage: ORDER_STAGES.CART_BUILDING,
+                currentState: 'MINIMUM_ORDER_NOT_MET',
+                nextAction: 'ADD_MORE_ITEMS',
+                prompt: `Cravey Crust ka minimum delivery order Rs. ${effectiveMinOrder.toLocaleString('en-PK')} hai. Aap ka current subtotal Rs. ${currentSubtotal.toLocaleString('en-PK')} hai. ⚠️\n\nOrder confirm karne ke liye kam az kam mazeed Rs. ${diff.toLocaleString('en-PK')} ka item add karein taake order process kiya ja sake! 🛒`,
+                canProceedToOrder: false,
+                minOrder: effectiveMinOrder,
+                subtotal: currentSubtotal,
+                difference: diff,
+            };
+        }
         return {
             stage: ORDER_STAGES.ORDER_FAILED,
             currentState: 'ORDER_FAILED',
@@ -219,6 +229,23 @@ export function evaluateCheckoutState({ cart, details, totals, confirmIntent = f
             nextAction: 'ADD_ITEMS',
             prompt: "Aap ka cart is waqt khali hai. Hamara menu dekhne ke liye 'menu' ya deals dekhne ke liye 'deals' likhein!",
             canProceedToOrder: false,
+        };
+    }
+
+    // 1b. MINIMUM ORDER REQUIREMENT GUARD (Rs. 800)
+    const effectiveMinOrder = Number(minOrder || 800);
+    const subtotal = Number(totals?.subtotal ?? cart.items.reduce((sum, item) => sum + (Number(item.price || item.unit_price || 0) * (item.quantity || 1)), 0));
+    if (subtotal < effectiveMinOrder) {
+        const diff = effectiveMinOrder - subtotal;
+        return {
+            stage: ORDER_STAGES.CART_BUILDING,
+            currentState: 'MINIMUM_ORDER_NOT_MET',
+            nextAction: 'ADD_MORE_ITEMS',
+            prompt: `Cravey Crust ka minimum delivery order Rs. ${effectiveMinOrder.toLocaleString('en-PK')} hai. Aap ka current subtotal Rs. ${subtotal.toLocaleString('en-PK')} hai. ⚠️\n\nOrder confirm karne ke liye kam az kam mazeed Rs. ${diff.toLocaleString('en-PK')} ka item add karein taake order process kiya ja sake! 🛒`,
+            canProceedToOrder: false,
+            minOrder: effectiveMinOrder,
+            subtotal,
+            difference: diff,
         };
     }
 

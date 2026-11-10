@@ -734,7 +734,14 @@ export async function update_customer_details(args = {}, context = {}) {
 export async function validate_delivery_location(args = {}, context = {}) {
     const restId = context.restId || await getDefaultRestaurantId().catch(() => 'default');
     const address = args.address || '';
-    const check = await checkDeliveryAvailability({ address, restaurantId: restId });
+    const lat = args.latitude ?? context.locationData?.latitude ?? context.locationData?.locationLat ?? null;
+    const lng = args.longitude ?? context.locationData?.longitude ?? context.locationData?.locationLng ?? null;
+    const check = await checkDeliveryAvailability({
+        address,
+        latitude: lat,
+        longitude: lng,
+        restaurantId: restId,
+    });
 
     if (!check.available && check.code === 'ADDRESS_INCOMPLETE') {
         return {
@@ -861,7 +868,7 @@ export async function confirm_order(args = {}, context = {}) {
         };
     } catch (bookingErr) {
         console.error('[TOOL_REGISTRY] Error in confirm_order:', bookingErr.message);
-        if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+        if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || bookingErr.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(bookingErr.message)) {
             const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
             const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
             return {
@@ -991,7 +998,7 @@ export async function executeRegisteredTool(toolName, args = {}, context = {}) {
         }
     } catch (err) {
         console.error(`[TOOL_REGISTRY] Tool ${toolName} execution error:`, err.message);
-        if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+        if (err.code === 'MINIMUM_ORDER_NOT_MET' || err.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(err.message)) {
             const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
             const minVal = err.minOrder || (minMatch ? minMatch[1] : 800);
             return {

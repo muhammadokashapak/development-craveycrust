@@ -1,3 +1,4 @@
+import { isFoodOrFlavorWord as isFoodOrFlavorWordHelper } from '../config/nameBlacklist.js';
 /**
  * ╔══════════════════════════════════════════════════════════════╗
  * ║   Intent Parser — src/services/intentParser.js               ║
@@ -278,7 +279,7 @@ export function cleanExtractedAddress(text) {
 export const ADDRESS_INDICATORS = /\b(town|phase|sector|street|gali|house|guest\s*house|makan|flat|block|road|chowk|chok|pul|pull|pulll|pool|colony|scheme|market|plaza|nearby|near|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|i-8|i-9|i-10|g-8|g-9|g-10|g-11|f-8|f-9|f-10|f-11|pwd|bahria|dha|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|karachi\s*house|juma\s*bazar|school\s*stop|dakhana|tali\s*mor|rehman\s*enclave|zamna|p-v|sudran|mehrban|chistiyan|gulberg|gulzar|xortlogix|xort\s*logix|kuri|kuri\s*road|lehtrar|lehtrar\s*road|park\s*road|shamasabad|faizabad|chandni\s*chowk|commercial\s*market|soan\s*gardens)\b/i;
 
 // Words strictly excluded from customer name extraction (location indicators, greetings, action words, affirmations, food items, pizza flavors, abusive slang)
-export const NOT_NAME_REGEX = /\b(hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|chahye|chaiye|chahie|chahey|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|change|badal|update|kuch|koi|sab|sari|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|tikka|tika|tikkaa|tandori|tandoori|fajita|faita|fejita|fajeeta|fajeta|supreme|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|good|great|nice|fine|best|cool|super|bad|poor|awesome|perfect|wonderful|excellent|welldone|well|wese|waise|chalo|chal|yar|yaar|sahih|acha|achha|accha|shukriya|thanks|thank|thx|ty|plz|pls|please|choti|chota|bari|bara|darmiyan|darmiyani|loaded|spicy|sift|suft|sofe|tin|ltr|wala|wali|wale|hogy|hogya|hogaye|hogayein|same\s*one|same\s*number|wahi\s*number|isi\s*number|burger\s*raja|kashii|kashi|bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|gandu|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|madarchod|behenchod|bhenchod|fuck|fucking|fucker|shit|bitch|bastard|asshole|dick|dickhead)\b/i;
+export const NOT_NAME_REGEX = /\b(pasta|pastas|crispy|macaroni|lasagna|lasagne|alfredo|broast|sandwich|sandwiches|hlo|hlw|hy|helo|hellow|hi|hello|hey|salam|slam|assalam|aoa|assalamualaikum|suno|oye|yo|confirm|comfirm|konfirm|condrim|confrim|confrm|cnfrm|cfrm|smile|smileee|aik|do|teen|char|panch|chay|chey|saat|aath|nau|dus|checkout|proceed|continue|krdo|kardo|kar\s*do|kr\s*do|karo|kro|kar|kr|karna|krna|karein|chahiye|chahye|chaiye|chahie|chahey|mangwao|mangwana|pack|parcel|send|bhej|bhejo|theek|thk|thek|done|ok|okk|okay|sure|yes|yup|yep|haan|han|hn|ha|g|ji|jee|no|nahi|nahii|nhi|nh|nai|na|mat|cancel|cancle|kansil|discount|discounts|riayat|change|badal|update|kuch|koi|sab|sari|payment|cod|cash|easypaisa|easy|paisa|delivery|address|location|pata|order|deal|deals|pizza|burger|menu|manu|manue|meny|menue|mainu|mainue|mny|dikhao|dijhao|dikaho|dekhao|dikhayein|dikhana|dikha|btao|batao|bhejna|kase|kaise|kese|scene|hal|haal|rate|list|kya|kia|hy|hain|hen|dein|bhai|bhaiya|bhae|bhi|sain|sir|bro|madam|food|water|drink|bill|kam|ja|hai|mera|meara|apna|apni|name|naam|nam|is|am|are|my|sahi|shai|koi|kuch|kuchh|method|party|small|medium|large|reg|regular|can|liter|litre|1\.5l|1l|flavor|flavour|crust|cheese|extreme|extrme|chicken|peri|behari|bihari|behri|rol|rolls|rollz|kabab|kebab|kababs|kebabs|shawarma|shwarma|parathas|tikka|tika|tikkaa|tandori|tandoori|fajita|faita|fejita|fajeeta|fajeta|supreme|malai|boti|ranch|cream|creamy|pepperoni|peperoni|veggie|vegetable|onion|olive|mushroom|jalapeno|bbq|zinger|zegy|nuggets|nugget|fries|wings|wing|roll|paratha|sauce|dip|coke|pepsi|sprite|fanta|dew|stuff|stuffed|crown|calzone|combo|box|platter|card|cards|flyer|flyers|brochure|pamphlet|pas|oas|aur|dedo|likh|rakh|daal|same|yahi|yehi|yehe|yhe|wahi|isi|rahyga|rahega|rhega|ryga|rahy|rahe|rehn|rehna|rehne|rakho|rakhein|hoga|hogi|hoge|number|numbr|num|hoo|ho|hu|hun|hoon|jigri|town|phase|sector|street|gali|house|makan|flat|block|road|chowk|chok|pul|pull|pulll|colony|scheme|market|plaza|islamabad|rawalpindi|pindi|tarlai|khanna|khana|ghauri|ghori|sohan|korang|burma|shakral|shakrial|zia|bilal|madina|sarfraz|sharifabad|malik|marwa|basit|albadar|dakhana|rehman|gulberg|gulzar|good|great|nice|fine|best|cool|super|bad|poor|awesome|perfect|wonderful|excellent|welldone|well|wese|waise|chalo|chal|yar|yaar|sahih|acha|achha|accha|shukriya|thanks|thank|thx|ty|plz|pls|please|choti|chota|bari|bara|darmiyan|darmiyani|loaded|spicy|sift|suft|sofe|tin|ltr|wala|wali|wale|hogy|hogya|hogaye|hogayein|same\s*one|same\s*number|wahi\s*number|isi\s*number|burger\s*raja|kashii|kashi|bdsk|bhosdike|bhosdiki|bhosdika|bhosdi|bhosdk|bhosd|bc|mc|chutiya|chutiye|chutya|gandu|lodu|laude|lauda|loda|kutta|kutte|kutti|harami|haramzada|kameena|kameene|salay|saale|madarchod|behenchod|bhenchod|fuck|fucking|fucker|shit|bitch|bastard|asshole|dick|dickhead)\b/i;
 
 export function isAbusiveOrProfane(text) {
     if (!text || typeof text !== 'string') return false;
@@ -405,7 +406,7 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
     const directNameSetMatch = raw.match(/\b(?:naam|name|nam)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)\s*(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|kr\s*dein|kar\s*dein|karo|kro)?$/i) ||
                                raw.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)\s+(?:kr\s*do|kar\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|likh\s*do|kr\s*dein|kar\s*dein)$/i);
     const nameUpdateMatch = raw.match(/\b(?:naam|name|nam)\s*(?:bhi\s*)?(?:badal\s*(?:k\s*|ke\s*)?(?:do|dein|karo|kr\s*do|kar\s*do|kr\s*du|kar\s*du)?|change\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|update\s*(?:kr\s*k\s*|kar\s*k\s*|karke\s*)?(?:do|dein|karo|krna|karna|kr\s*du|kar\s*du)?|rakh\s*(?:do|dein|lo|karo|du)?|likh\s*(?:do|dein|lo|karo|du)?|kar\s*(?:do|dein|karo|du)?|kr\s*(?:do|dein|kro|du)?|ab\s+|(?:(?:is|hai|he|hy|h))|:|=|-)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
-                           raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
+                           raw.match(/\b(?:meara|mera|apna)\s*(?:naam|name|nam)\s*(?:ab\s*)?([A-Za-z.]{1,20}(?:\s+[A-Za-z.]{1,20})*)/i) ||
                            raw.match(/\b(?:my\s+name\s+is|name\s+is)\s*([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i) ||
                            raw.match(/\b(?:pehle\s+.*?\s+tha\s+ab\s+)([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})*)/i);
 
@@ -420,9 +421,9 @@ export function extractCustomerDetails(raw, knownDetails = {}) {
             nameCandidate = nameCandidate.replace(/^(?:is|am|my|name|naam|nam|apna|apni|mera|meara|kr\s*du|kar\s*du|likh\s*du|rakh\s*du|same|wahi|yahi|yehi|isi)\s+/i, '').trim();
         }
         // Strip trailing sentence filler e.g. "bki sari details same ha", "baki sab same hai"
-        nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
+        nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy|had|is).*$/i, '').trim();
         // Strip trailing action verbs/honorifics
-        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
+        nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|had|is|ja|tha|bhai|sir|jee|ji)$/i, '').trim();
         if (NOT_NAME_REGEX.test(nameCandidate) || isFoodOrFlavorWord(nameCandidate)) {
             nameCandidate = null;
         }
@@ -870,7 +871,7 @@ const HELP_REGEX = /^(?:help|madad|options|commands|guide)\b/i;
 const HUMAN_HANDOFF_REGEX = /^(?:human|agent|talk\s+to\s+human|representative|bande\s+se\s+baat|admin\s+se\s+baat)\b/i;
 const DELETE_DATA_REGEX = /^(?:delete\s+(?:my\s+)?data|remove\s+(?:my\s+)?data|clear\s+(?:my\s+)?data|mera\s+data\s+delete(?:\s+kar\s*do)?|mera\s+data\s+hata(?:\s+do)?|mera\s+record\s+delete(?:\s+kar\s*do)?|delete\s+account|forget\s+me)\b/i;
 
-const POSITIVE_REGEX = /^(?:yes|haan|ha|ji|confirm|order\s+kar\s*do|theek\s+hai|ok|yup|done|1)\b/i;
+const POSITIVE_REGEX = /^(?:yes|haan|ha|hau|haun|hawn|ji|jee|g|confirm|cnfrm|confrm|konfirm|order\s+kar\s*do|theek\s+hai|thk\s*hai|ok|okay|yup|done|1)\b/i;
 const NEGATIVE_REGEX = /^(?:no|nahi|na|cancel|mat\s+karo|nope|abort|2)\b/i;
 
 const SAME_NUMBER_REGEX = /^(?:same\s+number|isi\s+number|yehi\s+number|yahi\s+number|same\s+whatsapp|same)\b/i;
@@ -3462,7 +3463,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
         } catch (err) {
             console.error('[FAST_ROUTE] Error booking confirmed order:', err.message);
             let userFriendlyMsg = 'Maazrat! Aap ka order is waqt process nahi ho saka. Baraye meherbani thori der baad dobara koshish karein ya human support se rabta karein.';
-            if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+            if (err.code === 'MINIMUM_ORDER_NOT_MET' || err.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(err.message)) {
                 const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
                 const minAmount = err.minOrder || (minMatch ? minMatch[1] : '800');
                 userFriendlyMsg = `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minAmount).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minAmount).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed items add karein taake hum aap ka order book kar sakein! 🛒`;
@@ -5362,7 +5363,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                            .replace(/(?:\s+(?:naam|name|nam|hai|h|ha|he|hy|ja|mera|meara))+$/i, '')
                            .trim();
     nameCandidate = nameCandidate.replace(/^(?:same|wahi|yahi|yehi|isi|naam|nam|mera|meara|apna|my\s+name\s+is|name\s+is|is|kr\s*du|kar\s*du)\s+/i, '').trim();
-    nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy).*$/i, '').trim();
+    nameCandidate = nameCandidate.replace(/\s+(?:bki|baqi|baki|sari|details|sab|same|ha|hai|h|he|hy|had|is).*$/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:bhai|bhaiya|bhae|bro|sir|madam|jee|ji)$/i, '').trim();
     nameCandidate = nameCandidate.replace(/\s+(?:kar\s*do|kr\s*do|kardo|krdo|ka\s*rdo|rakh\s*do|rakhdo|likh\s*do|likhdo|rakh\s*lo|rakho|likho|kar\s*dein|kr\s*dein|kar\s*du|kr\s*du|karo|kro|do|dein|de|lo|hai|ha|h|he|hy|ja|tha)$/i, '').trim();
     const nameMatch = nameCandidate.match(/^([A-Za-z]{2,20}(?:\s+[A-Za-z]{2,20})?)$/i);
@@ -7197,7 +7198,7 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                     }
                 } catch (err) {
                     console.error('[FAST_CONFIRM] Error confirming order:', err.message);
-                    if (err.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(err.message)) {
+                    if (err.code === 'MINIMUM_ORDER_NOT_MET' || err.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(err.message)) {
                         const minMatch = err.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
                         const minAmount = err.minOrder || (minMatch ? minMatch[1] : '800');
                         return {

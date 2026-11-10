@@ -366,7 +366,7 @@ export async function checkDeliveryAvailability(params) {
     // Auto-extract coords from areaName/address if Google Maps URL or query was passed
     if ((lat == null || lng == null) && (areaName || address)) {
         const textToSearch = `${areaName || ''} ${address || ''}`;
-        const urlMatch = textToSearch.match(/(?:q=|@)(-?\d+\.\d+),\s*(-?\d+\.\d+)/);
+        const urlMatch = textToSearch.match(/(?:q=|@|\(|\b)(-?\d{1,2}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/);
         if (urlMatch) {
             lat = Number(urlMatch[1]);
             lng = Number(urlMatch[2]);
@@ -571,7 +571,8 @@ export async function checkDeliveryAvailability(params) {
     }
 
     // 6. Phase 3: Automated Geocoding fallback when text is not in static DB areas
-    if (!matchedArea && (lat == null || lng == null) && rawAddressText.length >= 3) {
+    const isPlaceholderLocationText = /^(?:location|location\s*pin|gps(?:\s*coordinates)?|shared\s*location(?:\s*pin)?|google\s*maps(?:\s*location)?|\.)\b/i.test(rawAddressText.trim());
+    if (!isPlaceholderLocationText && !matchedArea && (lat == null || lng == null) && rawAddressText.length >= 3) {
         try {
             const queryText = /islamabad|rawalpindi/i.test(rawAddressText) ? rawAddressText : `${rawAddressText}, Islamabad`;
             const geocodeResult = await geocodeAddress(queryText, {

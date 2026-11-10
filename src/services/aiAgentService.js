@@ -74,11 +74,11 @@ export function detectConfirmIntent(text) {
     if (MODIFICATION_INTENT.test(t)) return false;
 
     // Strong confirm keywords — must contain one of these to be treated as a real confirmation
-    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?)\b/i;
+    const EXPLICIT_CONFIRM = /\b(?:co?n?f[iy]?r[mn]+|comfirm|konfirm|final(?:ize|ise)?|order\s*(?:final|co?n?f[iy]?r[mn]+|book|kar|kr)|proceed|bhej\s*do|book\s*(?:kar|kr)\s*d[aoeiu]+n?|order\s*(?:kar|kr)\s*d[aoeiu]+n?|kardo|krdo|krdu|kardu|yahi\s*(?:kr|kar)\s*d[aoeiu]+n?|(?:haan|han|hau|g|ji|theek\s*hai)\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|\bhau\b)\b/i;
     if (EXPLICIT_CONFIRM.test(t)) return true;
 
     // Affirmatives when confirming: haan, han, ji, jee, g, theek hai, ok, yes
-    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
+    const AFFIRMATIVE = /^(?:g|jee?|ji|haan?|han|hn|hau|haun|hawn|yes|yep|ok|okay|theek(?:\s*(?:hai|hy))?|thk(?:\s*(?:hai|hy))?|bilkul|done|zaroor|zarur|(?:kr|kar)\s*d[aoeiu]+n?|bhai\s*(?:kr|kar)\s*d[aoeiu]+n?|haan\s*bhai|g\s*haan|g\s*kr\s*d[aoeiu]+n?|han\s*g(?:\s*(?:kr|kar)\s*d[aoeiu]+n?)?|haan\s*(?:g\s*)?(?:kr|kar)\s*d[aoeiu]+n?|han\s*(?:kr|kar)\s*d[aoeiu]+n?|jee\s*haan|theek\s*(?:hai|hy)\s*(?:kr|kar)\s*d[aoeiu]+n?)[\s!.?]*$/i;
     if (AFFIRMATIVE.test(t)) return true;
 
     return false;
@@ -1061,7 +1061,7 @@ export async function executeTool(toolName, args, context) {
                     });
                 } catch (bookingErr) {
                     console.error('[AI_AGENT] createOrder tool error:', bookingErr.message);
-                    if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+                    if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || bookingErr.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(bookingErr.message)) {
                         const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
                         const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
                         return {
@@ -2254,7 +2254,7 @@ async function _legacyProcessMessageInternal({ sock, msg, session, text, identit
             }
         } catch (bookingErr) {
             console.error('[AI_AGENT] Deterministic booking error:', bookingErr.message);
-            if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || /minimum order/i.test(bookingErr.message)) {
+            if (bookingErr.code === 'MINIMUM_ORDER_NOT_MET' || bookingErr.code === 'DELIVERY_MINIMUM_NOT_MET' || /minimum.*order|below minimum/i.test(bookingErr.message)) {
                 const minMatch = bookingErr.message.match(/Rs\.?\s*(\d+(?:\.\d+)?)/i);
                 const minVal = bookingErr.minOrder || (minMatch ? minMatch[1] : 800);
                 const reply = `Aap ka order restaurant ki minimum order requirement (Rs. ${Number(minVal).toLocaleString('en-PK')}) par poora nahi utar raha. ⚠️\n\nOrder confirm karne ke liye subtotal kam az kam Rs. ${Number(minVal).toLocaleString('en-PK')} hona zaroori hai. Baraye meherbani cart mein mazeed koi item add karein taake order finalize ho sake! 🛒`;
