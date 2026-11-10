@@ -271,6 +271,11 @@ export async function handleCustomerMessage({
             return { text: 'Store database se rabta nahi ho pa raha. Thodi der baad dobara koshish karein.' };
         }
 
+        let cache = {};
+        try {
+            cache = (await getCatalogCache()) || {};
+        } catch (_) {}
+
         const sessionDetails = getSessionOrderDetails(canonicalKey, whatsappPhone);
         const rememberedDetails = await getRememberedCustomerDetails(canonicalKey, whatsappPhone);
 
@@ -439,8 +444,8 @@ export async function handleCustomerMessage({
         const hasValidPayment = Boolean(sessionDetails.paymentMethod === 'COD' || sessionDetails.paymentMethod === 'EASYPAISA');
         const isStep5Done = Boolean(sessionDetails.extraItemsAnswered || sessionDetails.summaryShown);
 
-        const minOrderRequirement = Number(cache.minOrder || 800);
-        const subtotalNumber = Number(cartTotals.subtotal || 0);
+        const minOrderRequirement = Number(cache?.minOrder || 800);
+        const subtotalNumber = Number(cartTotals?.subtotal || 0);
         const meetsMinimumOrder = !hasCartItems || subtotalNumber >= minOrderRequirement;
 
         let currentStage = ORDER_STAGES.CART_BUILDING;
@@ -1103,7 +1108,6 @@ export async function handleCustomerMessage({
             }
 
             case 'CANCEL_ORDER': {
-                const cache = await getCatalogCache();
                 const { getAdminContact } = await import('./restaurantService.js');
                 const adminContact = await getAdminContact(cache?.restId);
                 const waLink = `${adminContact.whatsappLink}?text=${encodeURIComponent('Assalam-o-Alaikum Cravey Crust, mujhe apna order cancel / delete karwana hai.')}`;
