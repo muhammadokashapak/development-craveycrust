@@ -201,6 +201,9 @@ export async function handleCustomerMessage({
                 'pending_flavour_retry',
                 'flavour_first_confirmed',
                 'fast_order_confirm_failed',
+                'fast_cart_cleared',
+                'fast_cancel_cart_cleared',
+                'fast_removal_empty_cart',
             ]);
 
             const hasPendingFlavourNow = Boolean(getPendingDealFlavour(canonicalKey));
@@ -211,7 +214,9 @@ export async function handleCustomerMessage({
             );
             const isCartRemovalRoute = fastResult.routeName && (
                 fastResult.routeName.startsWith('fast_cart_') ||
+                fastResult.routeName.includes('cancel_cart') ||
                 fastResult.routeName.includes('removal') ||
+                fastResult.routeName === 'fast_cancel_cart_cleared' ||
                 fastResult.routeName === 'deal_component_restriction' ||
                 fastResult.routeName === 'ambiguous_removal_clarification' ||
                 fastResult.routeName === 'item_not_in_cart_removal'
@@ -697,6 +702,24 @@ export async function handleCustomerMessage({
         }
 
         if (!backendReply) switch (intent) {
+            case 'CLEAR_CART': {
+                const { getActiveCart, clearCart } = await import('./cartService.js');
+                const activeCart = await getActiveCart({ sessionKey: canonicalKey, restaurantId: restId, chatId: jid, verifiedPhone: whatsappPhone });
+                if (activeCart?.items && activeCart.items.length > 0) {
+                    await clearCart({ sessionKey: canonicalKey }).catch(() => {});
+                    clearOrderSummarySnapshot(canonicalKey);
+                    updateSessionOrderDetails(canonicalKey, {
+                        orderStage: ORDER_STAGES.CART_BUILDING,
+                        summaryShown: false,
+                        extraItemsAnswered: false,
+                    }, whatsappPhone);
+                    backendReply = 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye "menu" ya "deals" likhein! 😊';
+                } else {
+                    backendReply = 'Aap ka cart pehle se khali hai. Menu ya deals dekhne ke liye "menu" ya "deals" likhein! 😊';
+                }
+                break;
+            }
+
             case 'DECLINE_ORDERING': {
                 const { clearCart } = await import('./cartService.js');
                 await clearCart({ sessionKey: canonicalKey }).catch(() => {});

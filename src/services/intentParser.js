@@ -2499,11 +2499,19 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
                 return {
                     handled: true,
                     routeName: 'fast_cancel_cart_cleared',
-                    reply: `Aap ka abhi koi confirmed order place nahi hua tha, albata aap ke cart ke items clear kar diye gaye hain. 👍\n\nJab bhi dobara bhook lagay ya kuch lazeez khana ho, bas 'menu' ya 'deals' likh kar bhej dein! 😊`,
+                    reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye "menu" ya "deals" likhein! 😊',
                 };
             }
 
             // Case E: Neither placed order nor cart items
+            if (isClearCartIntent(lower)) {
+                return {
+                    handled: true,
+                    routeName: 'fast_removal_empty_cart',
+                    reply: 'Aap ka cart pehle se khali hai. Menu ya deals dekhne ke liye "menu" ya "deals" likhein! 😊',
+                };
+            }
+
             return {
                 handled: true,
                 routeName: 'fast_cancel_not_found',
@@ -3525,6 +3533,31 @@ export async function checkFastRoute({ text, whatsappPhone, sessionKey, chatId, 
     }
 
     const pendingFlavour = userSessionId ? getPendingDealFlavour(userSessionId) : null;
+
+    // ── Check Fast Route: Direct Cart Clear Intent (Zero Tokens) ──
+    if (isClearCartIntent(lower) && userSessionId) {
+        try {
+            const { getActiveCart, clearCart } = await import('./cartService.js');
+            const { clearSessionOrderDetails } = await import('./sessionService.js');
+            const cache = await getCatalogCache();
+            const cart = await getActiveCart({ sessionKey: userSessionId, restaurantId: cache.restId, chatId, verifiedPhone: cleanPhone });
+            if (cart?.items && cart.items.length > 0) {
+                await clearCart({ sessionKey: userSessionId });
+                clearSessionOrderDetails(userSessionId, cleanPhone);
+                return {
+                    handled: true,
+                    routeName: 'fast_cart_cleared',
+                    reply: 'Theek hai Ji! Aap ka cart mukammal tor par clear (khali) kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye "menu" ya "deals" likhein! 😊',
+                };
+            } else {
+                return {
+                    handled: true,
+                    routeName: 'fast_removal_empty_cart',
+                    reply: 'Aap ka cart pehle se khali hai. Menu ya deals dekhne ke liye "menu" ya "deals" likhein! 😊',
+                };
+            }
+        } catch (_) {}
+    }
 
     // ── Check Fast Route: Cart Item Removal Intent (Zero Tokens) ──
     const hasRemovalIntent = isRemovalIntent(lower);

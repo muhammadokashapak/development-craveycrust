@@ -230,9 +230,13 @@ export async function add_to_cart(args = {}, context = {}) {
     let itemName = args.itemName || '';
     let quantity = Math.max(1, parseInt(args.quantity, 10) || 1);
 
+    // Clean conversational request verbs from trailing end of itemName first (e.g. "kr do", "kar do", "daal do", "bhej do")
+    itemName = itemName.replace(/\s*\b(?:kr|kar|karo|karein|de|dain|dein|bhej|daal|rakh)\s*d[aoeiu]+n?\b\s*$/i, '').trim();
+    itemName = itemName.replace(/\s*\b(?:kardo|krdo|krdu|kardu|karden|dedo|daaldo|bhejdo|rakhdo)\b\s*$/i, '').trim();
+
     // If itemName contains leading count (e.g. "4 zeggy burgers", "4 zegy burger") and args.quantity was 1
-    const leadingQtyMatch = itemName.match(/^(\d+)\s*(?:x\s+)?(.+)$/i) ||
-        itemName.match(/^(?:aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch)\s*(?:x\s+)?(.+)$/i);
+    const leadingQtyMatch = itemName.match(/^(\d+)(?!\.\d+)\s*(?:x\s+)?(.+)$/i) ||
+        itemName.match(/^(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch)\s*(?:x\s+)?(.+)$/i);
     if (leadingQtyMatch && (!args.quantity || args.quantity === 1)) {
         const numMap = { 'aik': 1, 'ek': 1, 'ik': 1, 'do': 2, 'doo': 2, 'teen': 3, 'tin': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5 };
         const parsedQ = parseInt(leadingQtyMatch[1], 10) || numMap[leadingQtyMatch[1]?.toLowerCase()] || null;
@@ -243,12 +247,13 @@ export async function add_to_cart(args = {}, context = {}) {
     }
 
     // If itemName contains trailing count (e.g. "Can kr dain 10", "Zinger burger 2", "Regular fries 3") and args.quantity was 1
+    // NOTE: Trailing "do" is excluded because in Roman Urdu it is almost always the imperative verb "give/do" (e.g. "burger do", "kr do")!
     const isNumberedComboOrDeal = /\b(?:deal|meal|snack\s*box|snackbox|snakbox|midnight|dual\s*zone|zone|cravey)\b/i.test(itemName);
     if (!isNumberedComboOrDeal) {
         const trailingQtyMatch = itemName.match(/\s+(\d+)$/) ||
-            itemName.match(/\s+(aik|ek|ik|do|doo|teen|tin|char|chaar|panch|paanch)$/i);
+            itemName.match(/\s+(aik|ek|ik|doo|teen|tin|char|chaar|panch|paanch)$/i);
         if (trailingQtyMatch && (!args.quantity || args.quantity === 1)) {
-            const numMap = { 'aik': 1, 'ek': 1, 'ik': 1, 'do': 2, 'doo': 2, 'teen': 3, 'tin': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5 };
+            const numMap = { 'aik': 1, 'ek': 1, 'ik': 1, 'doo': 2, 'teen': 3, 'tin': 3, 'char': 4, 'chaar': 4, 'panch': 5, 'paanch': 5 };
             const parsedQ = parseInt(trailingQtyMatch[1], 10) || numMap[trailingQtyMatch[1]?.toLowerCase()] || null;
             if (parsedQ && parsedQ > 1) {
                 quantity = parsedQ;
@@ -552,10 +557,48 @@ export async function update_cart_item(args = {}, context = {}) {
  * 6. remove_from_cart({ itemName: string, quantity?: number })
  * Authoritatively locates item in active cart and executes removal.
  */
-export async function remove_from_cart(args = {}, context = {}) {
-    const { sessionKey, chatId, restId: ctxRestId, effectiveText } = context;
+/**
+ * 6a. clear_cart()
+ * Authoritatively clears active cart.
+ */
+export async function clear_cart(args = {}, context = {}) {
+    const { sessionKey, chatId, restId: ctxRestId, whatsappPhone } = context;
     const restId = ctxRestId || await getDefaultRestaurantId().catch(() => 'default');
-    const activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId });
+    const activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId, verifiedPhone: whatsappPhone });
+
+    if (!activeCart?.items || activeCart.items.length === 0) {
+        return {
+            success: true,
+            emptyCart: true,
+            reply: 'Aap ka cart pehle se khali hai. Menu ya deals dekhne ke liye "menu" ya "deals" likhein! 😊',
+        };
+    }
+
+    const { clearCart } = await import('./cartService.js');
+    const { clearSessionOrderDetails } = await import('./sessionService.js');
+    await clearCart({ sessionKey });
+    clearSessionOrderDetails(sessionKey, whatsappPhone);
+
+    return {
+        success: true,
+        reply: 'Theek hai Ji! Aap ka cart mukammal clear kar diya gaya hai. 🗑️✅\n\nNaya order shuru karne ke liye "menu" ya "deals" likhein! 😊',
+    };
+}
+
+export async function remove_from_cart(args = {}, context = {}) {
+    const { sessionKey, chatId, restId: ctxRestId, effectiveText, whatsappPhone } = context;
+    const restId = ctxRestId || await getDefaultRestaurantId().catch(() => 'default');
+    const { isClearCartIntent } = await import('./cartItemResolver.js');
+
+    const rawQuery = (args.itemName && !/^(?:item|items|ye|yeh|isko|isay|mera|order)$/i.test(args.itemName.trim()))
+        ? args.itemName
+        : (effectiveText || args.itemName || '');
+
+    if (args.itemName === 'all' || args.itemName === 'cart' || isClearCartIntent(rawQuery) || isClearCartIntent(effectiveText)) {
+        return await clear_cart(args, context);
+    }
+
+    const activeCart = await getActiveCart({ sessionKey, restaurantId: restId, chatId, verifiedPhone: whatsappPhone });
 
     if (!activeCart?.items || activeCart.items.length === 0) {
         return {
@@ -565,9 +608,7 @@ export async function remove_from_cart(args = {}, context = {}) {
         };
     }
 
-    const rawQuery = (args.itemName && !/^(?:item|items|ye|yeh|isko|isay|mera|order)$/i.test(args.itemName.trim()))
-        ? args.itemName
-        : (effectiveText || args.itemName || '');
+
 
     let resolution = resolveCartItemForRemoval({
         cart: activeCart,
@@ -971,6 +1012,9 @@ export async function executeRegisteredTool(toolName, args = {}, context = {}) {
                 return await add_to_cart(args, context);
             case 'update_cart_item':
                 return await update_cart_item(args, context);
+            case 'clear_cart':
+            case 'empty_cart':
+                return await clear_cart(args, context);
             case 'remove_from_cart':
             case 'delete_cart_item':
                 return await remove_from_cart(args, context);

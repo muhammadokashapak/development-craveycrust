@@ -91,6 +91,7 @@ AVAILABLE BACKEND TOOLS (select 1 or more actions in the "actions" array):
 11. "confirm_order" — args: {} (when customer explicitly confirms: "haan", "confirm", "theek hai order book kr do")
 12. "get_order_status" — args: { "orderNumber"?: string } (when customer asks "order show kro" or "mera order kahan hai")
 13. "request_order_cancellation" — args: {} (when customer wants to cancel an existing order)
+14. "clear_cart" — args: {} (when customer wants to clear or empty all items from their cart, e.g. "cart clear kr do", "cart khali kr do", "clear cart")
 
 CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
 1. Multi-Intent Handling:
@@ -142,7 +143,9 @@ CRITICAL SENTENCE UNDERSTANDING & DISAMBIGUATION RULES:
    - "location change kr do Xortlogix, Ghauri VIP Block" / "address update kardo street 5" / "pata badal do":
      Extract the updated address without resetting other customer details:
      "actions": [{ "tool": "update_customer_details", "args": { "address": "Xortlogix, Ghauri VIP Block" } }], "intent": "UPDATE_CUSTOMER_DETAILS"
-9. Cart Item Removal (Direct Execution):
+9. Cart Item Removal & Cart Clearing:
+   - When customer wants to clear the entire cart ("cart clear kr do", "cart khali kr do", "clear cart", "empty cart", "sab hata do", "pura cart clear kr do"):
+     Call "clear_cart" with args: {}, intent: "CLEAR_CART".
    - When customer says "Behari kebab remove kr dain" / "Zinger burger hata do" / "Deal 3 nikal do" / "Cold drink remove krdo":
      Customer is requesting removal of an item from cart!
      Call "remove_from_cart" with "itemName": "<item name requested, e.g. 'Behari Kebab Pizza' or 'Behari kebab'>".
